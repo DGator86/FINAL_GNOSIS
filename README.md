@@ -142,16 +142,106 @@ V2---Gnosis/
     └── ledger.jsonl (created at runtime)
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
-Install dependencies and run a single pipeline pass:
+### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/DGator86/FINAL_GNOSIS.git
+cd FINAL_GNOSIS
+
+# Install dependencies
+pip install -r requirements.txt
 pip install -e .[dev]
-python main.py run-once --symbol SPY
 ```
 
-The CLI wires up stub adapters that generate deterministic sample data, so the pipeline runs end-to-end without external services. Replace the stub adapters with production data providers by supplying your own implementations of `OptionsChainAdapter`, `MarketDataAdapter`, and `NewsAdapter`.
+### Configuration
+
+```bash
+# Copy example environment file
+cp .env.example .env
+
+# Edit .env with your API credentials
+# - ALPACA_API_KEY and ALPACA_SECRET_KEY (required for trading)
+# - UNUSUAL_WHALES_API_KEY (optional for options data)
+nano .env
+```
+
+### Run the System
+
+**Option 1: Enhanced Dashboard (Recommended)** 🎯
+```bash
+# Start the live trading dashboard
+./start_dashboard.sh
+# OR
+streamlit run dashboard.py
+```
+Opens a beautiful web interface with:
+- Real-time position tracking
+- Live P&L monitoring
+- Engine analytics visualization
+- Agent suggestions display
+- Trade history viewer
+
+**Option 2: Command Line Interface**
+```bash
+# Single pipeline run
+python main.py run-once --symbol SPY
+
+# Live trading loop
+python main.py live-loop --symbol SPY
+
+# Scan for opportunities
+python main.py scan-opportunities --top 25
+
+# Multi-symbol autonomous trading
+python main.py multi-symbol-loop --top 5
+```
+
+**Option 3: API Connection Test**
+```bash
+# Verify your API credentials
+python test_api_connections.py
+```
+
+**Option 4: Live Demo**
+```bash
+# Beautiful terminal output
+python demo_live_trading.py
+```
+
+### 📊 Dashboard Features
+
+The enhanced dashboard provides:
+- 💰 **Account Overview**: Portfolio value, cash, buying power, daily P&L
+- 💼 **Position Tracking**: All open positions with live P&L
+- 📈 **Live Analytics**: Hedge Engine v3.0 metrics, elasticity, movement energy
+- 🤖 **Agent Intelligence**: Individual suggestions and consensus
+- 📜 **Trade History**: Historical pipeline executions
+- ⚙️ **Engine Metrics**: Performance tracking over time
+
+See [`DASHBOARD_GUIDE.md`](./DASHBOARD_GUIDE.md) for complete documentation.
+
+---
+
+## 🔌 Live API Integrations
+
+The system connects to real trading APIs:
+
+### Alpaca Markets (Required)
+- Paper and live trading support
+- Real-time market data
+- Position and order management
+- Account tracking
+
+### Unusual Whales (Optional)
+- Options chain data with Greeks
+- Unusual activity alerts
+- Options flow analysis
+- Implied volatility tracking
+
+The adapter factory automatically falls back to stub data if APIs are unavailable, ensuring the system always runs.
 
 ## Testing
 
