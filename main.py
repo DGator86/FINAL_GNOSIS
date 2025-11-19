@@ -17,14 +17,15 @@ from agents.sentiment_agent_v1 import SentimentAgentV1
 from config import AppConfig, load_config
 from engines.elasticity.elasticity_engine_v1 import ElasticityEngineV1
 from engines.hedge.hedge_engine_v3 import HedgeEngineV3
+from engines.inputs.adapter_factory import (
+    create_broker_adapter,
+    create_market_data_adapter,
+    create_news_adapter,
+    create_options_adapter,
+)
 from engines.inputs.market_data_adapter import MarketDataAdapter
 from engines.inputs.news_adapter import NewsAdapter
 from engines.inputs.options_chain_adapter import OptionsChainAdapter
-from engines.inputs.stub_adapters import (
-    StaticMarketDataAdapter,
-    StaticNewsAdapter,
-    StaticOptionsAdapter,
-)
 from engines.liquidity.liquidity_engine_v1 import LiquidityEngineV1
 from engines.orchestration.pipeline_runner import PipelineRunner
 from engines.sentiment.processors import FlowSentimentProcessor, NewsSentimentProcessor, TechnicalSentimentProcessor
@@ -46,9 +47,12 @@ def build_pipeline(
     """Assemble a :class:`PipelineRunner` for ``symbol`` using ``config``."""
 
     adapters = adapters or {}
-    options_adapter: OptionsChainAdapter = adapters.get("options") or StaticOptionsAdapter()
-    market_adapter: MarketDataAdapter = adapters.get("market") or StaticMarketDataAdapter()
-    news_adapter: NewsAdapter = adapters.get("news") or StaticNewsAdapter()
+    
+    # Use adapter factory for automatic fallback
+    # Try real adapters first, fall back to stubs if they fail
+    options_adapter: OptionsChainAdapter = adapters.get("options") or create_options_adapter(prefer_real=True)
+    market_adapter: MarketDataAdapter = adapters.get("market") or create_market_data_adapter(prefer_real=True)
+    news_adapter: NewsAdapter = adapters.get("news") or create_news_adapter(prefer_real=False)
 
     engines = {
         "hedge": HedgeEngineV3(options_adapter, config.engines.hedge.model_dump()),
@@ -134,8 +138,6 @@ def live_loop(
         # Custom interval (5 minutes)
         python main.py live-loop --symbol SPY --interval 300
     """
-    from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
-    
     config = load_config()
     
     # Initialize broker (Alpaca Paper)
@@ -143,7 +145,7 @@ def live_loop(
     if not dry_run:
         try:
             typer.echo("🔌 Connecting to Alpaca Paper Trading...")
-            broker = AlpacaBrokerAdapter(paper=True)
+            broker = create_broker_adapter(paper=True, prefer_real=True)
             account = broker.get_account()
             typer.echo(f"✅ Connected to Alpaca Paper Trading")
             typer.echo(f"   Account: {account.account_id}")
@@ -293,9 +295,9 @@ def scan_opportunities(
     
     # Build engines for scanner
     typer.echo("Building engines...")
-    options_adapter = StaticOptionsAdapter()
-    market_adapter = StaticMarketDataAdapter()
-    news_adapter = StaticNewsAdapter()
+    options_adapter = create_options_adapter(prefer_real=True)
+    market_adapter = create_market_data_adapter(prefer_real=True)
+    news_adapter = create_news_adapter(prefer_real=False)
     
     hedge_engine = HedgeEngineV3(options_adapter, config.engines.hedge.model_dump())
     liquidity_engine = LiquidityEngineV1(market_adapter, config.engines.liquidity.model_dump())
@@ -425,7 +427,6 @@ def multi_symbol_loop(
         python main.py multi-symbol-loop --dry-run
     """
     from engines.scanner import OpportunityScanner, DEFAULT_UNIVERSE
-    from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
     
     config = load_config()
     
@@ -440,7 +441,7 @@ def multi_symbol_loop(
     if not dry_run:
         try:
             typer.echo("🔌 Connecting to Alpaca Paper Trading...")
-            broker = AlpacaBrokerAdapter(paper=True)
+            broker = create_broker_adapter(paper=True, prefer_real=True)
             account = broker.get_account()
             typer.echo(f"✅ Connected to Alpaca Paper Trading")
             typer.echo(f"   Account: {account.account_id}")
@@ -461,9 +462,9 @@ def multi_symbol_loop(
     typer.echo("="*80 + "\n")
     
     # Build scanner
-    options_adapter = StaticOptionsAdapter()
-    market_adapter = StaticMarketDataAdapter()
-    news_adapter = StaticNewsAdapter()
+    options_adapter = create_options_adapter(prefer_real=True)
+    market_adapter = create_market_data_adapter(prefer_real=True)
+    news_adapter = create_news_adapter(prefer_real=False)
     
     hedge_engine = HedgeEngineV3(options_adapter, config.engines.hedge.model_dump())
     liquidity_engine = LiquidityEngineV1(market_adapter, config.engines.liquidity.model_dump())
