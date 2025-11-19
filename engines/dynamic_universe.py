@@ -133,8 +133,11 @@ class DynamicUniverseRanker:
             try:
                 metrics = self._get_metrics_for_symbol(symbol)
                 
-                # Filter out low-volume names
-                if metrics.options_volume < self.min_volume:
+                # Filter out low-volume names (on normalized 0-100 scale)
+                # min_volume config is for real data; here we use normalized threshold
+                normalized_min_threshold = 30.0  # Only include symbols scoring >30/100
+                if metrics.options_volume < normalized_min_threshold:
+                    logger.debug(f"Filtered {symbol}: volume {metrics.options_volume:.1f} < {normalized_min_threshold}")
                     continue
                 
                 scored_symbols.append(metrics)
@@ -172,7 +175,9 @@ class DynamicUniverseRanker:
             try:
                 metrics = self._get_metrics_for_symbol(symbol)
                 
-                if metrics.options_volume < self.min_volume:
+                # Filter using normalized threshold
+                normalized_min_threshold = 30.0
+                if metrics.options_volume < normalized_min_threshold:
                     continue
                 
                 scored_symbols.append(metrics)
