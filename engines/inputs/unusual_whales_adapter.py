@@ -156,12 +156,12 @@ class UnusualWhalesAdapter:
         
         # Import stub adapter for fallback
         try:
-            from engines.inputs.stub_adapters import StubOptionsAdapter
-            stub = StubOptionsAdapter()
+            from engines.inputs.stub_adapters import StaticOptionsAdapter
+            stub = StaticOptionsAdapter()
             return stub.get_chain(symbol, timestamp)
-        except ImportError:
+        except (ImportError, Exception) as e:
             # Emergency fallback if stub not available
-            logger.warning(f"Stub adapter not found, returning empty chain for {symbol}")
+            logger.warning(f"Stub adapter error for {symbol}: {e} - returning empty chain")
             return []
     
     def get_unusual_activity(self, symbol: Optional[str] = None) -> List[dict]:
