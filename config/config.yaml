@@ -1,0 +1,52 @@
+# Super Gnosis / DHPE v3 Configuration
+
+engines:
+  hedge:
+    enabled: true
+    lookback_days: 30
+    min_dte: 7
+    max_dte: 60
+    
+  liquidity:
+    enabled: true
+    min_volume: 100000.0
+    max_spread_pct: 0.5
+    
+  sentiment:
+    enabled: true
+    news_weight: 0.4
+    flow_weight: 0.3
+    technical_weight: 0.3
+    
+  elasticity:
+    enabled: true
+    volatility_window: 20
+
+agents:
+  hedge:
+    enabled: true
+    min_confidence: 0.5
+    
+  liquidity:
+    enabled: true
+    min_liquidity_score: 0.3
+    
+  sentiment:
+    enabled: true
+    min_sentiment_threshold: 0.2
+    
+  composer:
+    enabled: true
+    weights:
+      hedge: 0.4
+      liquidity: 0.2
+      sentiment: 0.4
+      
+  trade:
+    enabled: true
+    max_position_size: 10000.0
+    risk_per_trade: 0.02
+
+tracking:
+  ledger_path: "data/ledger.jsonl"
+  log_level: "INFO"
