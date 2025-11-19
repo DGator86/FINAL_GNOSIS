@@ -1,0 +1,50 @@
+# DHPE Pipeline Requirements
+
+# Core dependencies
+loguru>=0.7
+pydantic>=2.0
+pyyaml>=6.0
+typer>=0.9
+
+# Optional: Performance enhancement
+polars>=0.20.0  # For faster hedge engine computations
+
+# Optional: Advanced features
+# numpy>=1.24.0  # For numerical operations
+pandas>=2.0.0  # Required for backtesting harness
+
+# API dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+httpx>=0.25.0  # For TestClient and Public.com API
+
+# Execution Layer dependencies (Phase 8)
+duckdb>=0.9.0  # For execution registry persistence
+
+# Broker Integrations (Phase 3)
+alpaca-py>=0.43.0  # Alpaca broker API
+python-dotenv>=1.0.0  # Environment variable management
+
+# ML dependencies
+lightgbm>=4.0.0
+xgboost>=2.0.0
+scikit-learn>=1.3.0
+optuna>=3.0.0
+numpy>=1.24.0
+
+# Market data sources
+# Public.com API (primary market data source) - uses httpx from API dependencies
+scipy>=1.11.0  # For Black-Scholes calculations in sample options generator
+fredapi>=0.5.0  # Federal Reserve Economic Data (macro regime features)
+ta>=0.11.0  # Technical Analysis Library (130+ indicators)
+# pyEX>=0.5.0  # IEX Cloud data (backup source) - DISABLED: metadata incompatible with pip 24.1+
+praw>=7.6.0  # Reddit API for WSB sentiment
+# greekcalc>=0.3.0  # DISABLED: Package not available on PyPI - code handles absence gracefully
+# Alternative: py_vollib or mibian for Greeks calculations if needed
+# yfinance>=0.2.40  # REMOVED: No longer using yfinance
+pyarrow>=14.0.0  # Arrow format support - REQUIRED for tests
+
+# Development dependencies
+pytest>=7.4.0
+pytest-cov>=4.0.0
+pytest-asyncio>=0.21.0

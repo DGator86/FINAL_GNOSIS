@@ -1,0 +1,52 @@
+[project]
+name = "super-gnosis"
+version = "0.1.0"
+description = "Super Gnosis DHPE multi-engine, multi-agent pipeline"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "loguru>=0.7",
+    "polars>=0.20",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "typer>=0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "ruff>=0.1.0",
+    "mypy>=1.5",
+]
+test = [
+    "pytest>=7.4",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.21",
+    "pyarrow>=14.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+strict = true
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pytest.ini_options]
+markers = [
+    "regime_slow: Long-running regime-specific performance tests (deselect with '-m \"not regime_slow\"')",
+    "integration: mark a test as an integration test",
+]
+asyncio_mode = "auto"

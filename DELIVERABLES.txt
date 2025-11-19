@@ -1,0 +1,40 @@
+Super Gnosis / DHPE v3 – Deliverables
+=====================================
+
+Status: ✅ Canonical architecture implemented and documented.
+
+Key Deliverables
+----------------
+- `main.py` Typer CLI (`python main.py run-once --symbol SPY`).
+- Typed configuration (`config/config_models.py`) with default YAML (`config/config.yaml`).
+- Canonical schemas (`schemas/core_schemas.py`).
+- Engines: hedge, liquidity, sentiment, elasticity (under `engines/`).
+- Agents: primary hedge/liquidity/sentiment, composer (`agents/`).
+- Trade layer (`trade/trade_agent_v1.py`) producing stock, debit spread, iron condor, and calendar strategies.
+- Pipeline orchestration (`engines/orchestration/pipeline_runner.py`).
+- Ledger + metrics + feedback (`ledger/`, `feedback/`).
+- ML placeholders (`models/feature_builder.py`, `models/lookahead_model.py`).
+- Backtester (`backtest/runner.py`).
+- Execution stubs (`execution/broker_adapter.py`, `execution/order_simulator.py`).
+- UI stub (`ui/dashboard.py`).
+- Stub adapters for deterministic runs (`engines/inputs/stub_adapters.py`).
+- Example + verification scripts (`scripts/example_usage.py`, `scripts/verify_integration.py`).
+- Updated documentation: README, QUICKSTART, QUICK_REFERENCE, FINAL_SUMMARY, IMPLEMENTATION_COMPLETE, INDEX, DELIVERABLES.
+- Tests: schema smoke, pipeline smoke, per-engine coverage (`tests/`).
+
+How to Run & Test
+-----------------
+```bash
+pip install -e .[dev]
+python main.py run-once --symbol SPY
+pytest
+```
+
+Next Steps (for production build-out)
+-------------------------------------
+1. Replace stub adapters with production data providers.
+2. Enrich engine analytics while preserving schema contracts.
+3. Connect the trade agent to execution via `execution/broker_adapter`.
+4. Surface metrics in `ui/dashboard.py` or a custom UI.
+
+The repository now serves as the authoritative Super Gnosis / DHPE v3 skeleton.
