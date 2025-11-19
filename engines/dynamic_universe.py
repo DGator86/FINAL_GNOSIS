@@ -19,7 +19,7 @@ from typing import Dict, List, Optional
 
 import httpx
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Comprehensive universe of potential options underlyings
 # Includes: major indices, mega-caps, popular growth/tech, meme stocks, sector ETFs
