@@ -47,6 +47,29 @@ agents:
     max_position_size: 10000.0
     risk_per_trade: 0.02
 
+# Dynamic Top 25 Scanner Configuration
+scanner:
+  mode: dynamic_top_n          # forces dynamic ranking every run
+  default_top_n: 25            # THIS IS THE MAGIC LINE - always top 25
+  ranking_criteria:
+    options_volume_weight: 0.40     # highest weight on actual options activity
+    open_interest_weight: 0.25      # OI shows positioning
+    gamma_exposure_weight: 0.20     # dealer gamma pressure
+    liquidity_score_weight: 0.10    # ensure tradability
+    unusual_flow_weight: 0.05       # catch momentum shifts
+  min_daily_options_volume: 500000  # filters out illiquid junk
+  require_unusual_whales: false     # still works without the key (uses public data/fallbacks)
+  update_frequency: 300              # re-rank every 5 minutes (300 seconds)
+  cache_duration: 60                 # cache individual symbol data for 1 minute
+
+# Trading Configuration
+trading:
+  multi_symbol_default: true    # multi-symbol-loop becomes the default behavior
+  max_concurrent_positions: 10  # max positions across all symbols
+  position_size_pct: 0.04       # 4% of capital per position
+  stop_loss_pct: 0.02           # 2% stop loss
+  take_profit_pct: 0.05         # 5% take profit
+  
 tracking:
   ledger_path: "data/ledger.jsonl"
   log_level: "INFO"

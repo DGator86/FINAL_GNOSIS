@@ -10,13 +10,31 @@ from loguru import logger
 from pydantic import BaseModel
 
 
-# Default universe of symbols to scan
+# Legacy default universe - kept for backwards compatibility
+# BUT: New behavior uses dynamic_universe.py to get current top N
 DEFAULT_UNIVERSE = [
     "SPY", "QQQ", "IWM", "DIA",  # Indices
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA",  # Tech
     "JPM", "BAC", "GS", "MS",  # Finance
     "XLE", "XLF", "XLK", "XLV",  # Sectors
 ]
+
+
+def get_dynamic_universe(config: Dict[str, Any], top_n: int = 25) -> List[str]:
+    """
+    Get current top N options underlyings using dynamic ranking.
+    
+    Args:
+        config: Scanner configuration
+        top_n: Number of symbols to return
+        
+    Returns:
+        List of top N symbols
+    """
+    from engines.dynamic_universe import DynamicUniverseRanker
+    
+    ranker = DynamicUniverseRanker(config)
+    return ranker.get_top_n(top_n)
 
 
 class Opportunity(BaseModel):

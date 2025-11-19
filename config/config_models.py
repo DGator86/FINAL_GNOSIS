@@ -103,6 +103,38 @@ class AgentsConfig(BaseModel):
     trade: TradeAgentConfig = Field(default_factory=TradeAgentConfig)
 
 
+class RankingCriteria(BaseModel):
+    """Ranking criteria for dynamic scanner."""
+    
+    options_volume_weight: float = 0.40
+    open_interest_weight: float = 0.25
+    gamma_exposure_weight: float = 0.20
+    liquidity_score_weight: float = 0.10
+    unusual_flow_weight: float = 0.05
+
+
+class ScannerConfig(BaseModel):
+    """Configuration for dynamic top N scanner."""
+    
+    mode: str = "dynamic_top_n"
+    default_top_n: int = 25
+    ranking_criteria: RankingCriteria = Field(default_factory=RankingCriteria)
+    min_daily_options_volume: float = 500000.0
+    require_unusual_whales: bool = False
+    update_frequency: int = 300  # seconds
+    cache_duration: int = 60  # seconds
+
+
+class TradingConfig(BaseModel):
+    """Configuration for trading behavior."""
+    
+    multi_symbol_default: bool = True
+    max_concurrent_positions: int = 10
+    position_size_pct: float = 0.04
+    stop_loss_pct: float = 0.02
+    take_profit_pct: float = 0.05
+
+
 class TrackingConfig(BaseModel):
     """Configuration for tracking and logging."""
     
@@ -115,4 +147,6 @@ class AppConfig(BaseModel):
     
     engines: EnginesConfig = Field(default_factory=EnginesConfig)
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
+    scanner: ScannerConfig = Field(default_factory=ScannerConfig)
+    trading: TradingConfig = Field(default_factory=TradingConfig)
     tracking: TrackingConfig = Field(default_factory=TrackingConfig)

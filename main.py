@@ -267,14 +267,17 @@ def scan_opportunities(
         # Save to file
         python main.py scan-opportunities --output opportunities.json
     """
-    from engines.scanner import OpportunityScanner, DEFAULT_UNIVERSE
+    from engines.scanner import OpportunityScanner, DEFAULT_UNIVERSE, get_dynamic_universe
     import json
     
     config = load_config()
     
     # Determine universe
     if universe == "default":
-        symbol_list = DEFAULT_UNIVERSE
+        # Use dynamic top-N ranking system
+        typer.echo("📊 Ranking universe using dynamic scanner...")
+        symbol_list = get_dynamic_universe(config.scanner.model_dump(), config.scanner.default_top_n)
+        typer.echo(f"✅ Selected top {len(symbol_list)} most active options underlyings")
     elif universe == "sp500":
         typer.echo("⚠️ SP500 universe not yet implemented, using default")
         symbol_list = DEFAULT_UNIVERSE
@@ -426,13 +429,16 @@ def multi_symbol_loop(
         # Dry-run mode
         python main.py multi-symbol-loop --dry-run
     """
-    from engines.scanner import OpportunityScanner, DEFAULT_UNIVERSE
+    from engines.scanner import OpportunityScanner, DEFAULT_UNIVERSE, get_dynamic_universe
     
     config = load_config()
     
     # Determine universe
     if universe == "default":
-        symbol_list = DEFAULT_UNIVERSE
+        # Use dynamic top-N ranking system
+        typer.echo("📊 Ranking universe using dynamic scanner...")
+        symbol_list = get_dynamic_universe(config.scanner.model_dump(), top_n)
+        typer.echo(f"✅ Selected top {len(symbol_list)} most active options underlyings")
     else:
         symbol_list = [s.strip().upper() for s in universe.split(',')]
     
