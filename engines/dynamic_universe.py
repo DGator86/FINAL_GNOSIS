@@ -37,11 +37,11 @@ FULL_UNIVERSE = [
     # AI/ML Hype
     "PLTR", "SNOW", "CRWD", "ZS", "DDOG", "NET",
     
-    # Semiconductors
-    "TSM", "AVGO", "QCOM", "MRVL", "ON", "MPWR",
+    # Semiconductors (AVGO, QCOM already listed above)
+    "TSM", "MRVL", "ON", "MPWR",
     
-    # EV / Clean Energy
-    "TSLA", "RIVN", "LCID", "NIO", "XPEV", "F", "GM",
+    # EV / Clean Energy (TSLA already listed above)
+    "RIVN", "LCID", "NIO", "XPEV", "F", "GM",
     
     # Finance
     "JPM", "BAC", "GS", "MS", "WFC", "C", "BLK", "SCHW",
@@ -51,8 +51,8 @@ FULL_UNIVERSE = [
     "UNH", "JNJ", "LLY", "ABBV", "MRK", "PFE", "TMO", "ABT",
     "AMGN", "GILD", "BIIB", "REGN", "VRTX", "MRNA", "BNTX",
     
-    # Consumer
-    "AMZN", "BABA", "WMT", "HD", "NKE", "MCD", "SBUX", "TGT",
+    # Consumer (AMZN already listed above)
+    "BABA", "WMT", "HD", "NKE", "MCD", "SBUX", "TGT",
     "COST", "LOW", "TJX", "DG", "DLTR",
     
     # Energy
@@ -64,11 +64,11 @@ FULL_UNIVERSE = [
     # SPACs & Recent IPOs
     "HOOD", "COIN", "RBLX", "UBER", "LYFT", "DASH", "ABNB",
     
-    # High Vol / Spec
-    "SMCI", "ARM", "MSTR", "COIN", "RIOT", "MARA",
+    # High Vol / Spec (COIN already listed above)
+    "SMCI", "ARM", "MSTR", "RIOT", "MARA",
     
-    # Sector ETFs
-    "XLF", "XLK", "XLV", "XLE", "XLI", "XLP", "XLY", "XLU",
+    # Sector ETFs (XLE already listed above)
+    "XLF", "XLK", "XLV", "XLI", "XLP", "XLY", "XLU",
     "XLB", "XLRE", "XLC",
     
     # Volatility
