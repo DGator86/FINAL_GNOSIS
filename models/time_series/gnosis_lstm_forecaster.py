@@ -5,7 +5,6 @@ Multi-horizon time series prediction with uncertainty quantification.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -17,7 +16,6 @@ from sklearn.preprocessing import StandardScaler
 
 from .attention_mechanism import AttentionLayer
 from .base_model import BaseGnosisModel
-
 
 
 class LSTMForecaster(nn.Module):
@@ -126,7 +124,27 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
         self.logger.info("Starting LSTM training for multiple horizons")
 
-        X_scaled = self.scaler.fit_transform(X.reshape(-1, X.shape[-1])).reshape(X.shape)
+        # Validate and handle input shape
+        if X.ndim == 1:
+            raise ValueError(
+                f"Expected X to be 2D [timesteps, n_features], but got 1D shape {X.shape}"
+            )
+        elif X.ndim == 2:
+            # X is [timesteps, n_features] - expected format
+            self.logger.info(f"Input shape: {X.shape} [timesteps, n_features]")
+            X_scaled = self.scaler.fit_transform(X)
+        elif X.ndim == 3:
+            # X is [n_samples, sequence_length, n_features] - need to flatten for scaling
+            self.logger.info(
+                f"Input shape: {X.shape} [n_samples, sequence_length, n_features] - "
+                "flattening for scaling"
+            )
+            original_shape = X.shape
+            X_scaled = self.scaler.fit_transform(X.reshape(-1, X.shape[-1])).reshape(original_shape)
+        else:
+            raise ValueError(
+                f"Expected X to be 2D or 3D, but got {X.ndim}D with shape {X.shape}"
+            )
 
         split_idx = int(len(X_scaled) * (1 - validation_split))
         X_train, X_val = X_scaled[:split_idx], X_scaled[split_idx:]
@@ -274,7 +292,8 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
         # Defensive shape handling: ensure X is at least 2D
         X_input = np.atleast_2d(X)
-        X_scaled = self.scaler.transform(X_input.reshape(-1, X_input.shape[-1])).reshape(X_input.shape)
+        X_reshaped = X_input.reshape(-1, X_input.shape[-1])
+        X_scaled = self.scaler.transform(X_reshaped).reshape(X_input.shape)
 
         predictions: Dict[str, np.ndarray] = {}
         uncertainties: Dict[str, np.ndarray] = {}
