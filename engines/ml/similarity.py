@@ -34,6 +34,7 @@ class FaissRegimeRetriever:
             self._faiss_available = True
             # Index dimension will be set on the first reference added.
             self._faiss_index = None
+            self._faiss_index = faiss.IndexFlatL2(0)  # placeholder; dimension set on add
             logger.info("Faiss detected; regime retrieval will use Faiss indexes")
         except Exception:
             self._faiss_available = False
@@ -92,6 +93,11 @@ class FaissRegimeRetriever:
                 dists, idx = self._faiss_index.search(
                     query_vec.reshape(1, -1), min(self.k, len(self._history))
                 )
+                dimension = query_vec.shape[0]
+                index = faiss.IndexFlatL2(dimension)
+                for obs in self._history:
+                    index.add(obs.vector.reshape(1, -1))
+                dists, idx = index.search(query_vec.reshape(1, -1), min(self.k, len(self._history)))
                 for dist, i in zip(dists.flatten(), idx.flatten()):
                     neighbors.append(self._history[int(i)])
                     distances.append(float(dist))
