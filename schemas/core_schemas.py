@@ -113,6 +113,17 @@ class TradeIdea(BaseModel):
     reasoning: str = ""
 
 
+class WatchlistEntry(BaseModel):
+    """Adaptive watchlist ranking details for a symbol."""
+
+    symbol: str
+    score: float
+    timestamp: datetime
+    passes_filters: bool = True
+    reasons: List[str] = Field(default_factory=list)
+    metrics: Dict[str, float] = Field(default_factory=dict)
+
+
 class OrderStatus(str, Enum):
     """Order status enum."""
     PENDING = "pending"
@@ -157,3 +168,5 @@ class PipelineResult(BaseModel):
     trade_ideas: List[TradeIdea] = Field(default_factory=list)
     order_results: List[OrderResult] = Field(default_factory=list)
     consensus: Optional[Dict[str, Any]] = None
+    watchlist_entry: Optional[WatchlistEntry] = None
+    watchlist_snapshot: List[WatchlistEntry] = Field(default_factory=list)

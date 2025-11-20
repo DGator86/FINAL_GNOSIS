@@ -33,17 +33,39 @@ from engines.sentiment.sentiment_engine_v1 import SentimentEngineV1
 from ledger.ledger_store import LedgerStore
 from trade.trade_agent_v1 import TradeAgentV1
 from execution.broker_adapters.settings import get_alpaca_paper_setting
+from watchlist import AdaptiveWatchlist
 
 # Load environment variables
 load_dotenv()
 
 app = typer.Typer(help="Super Gnosis / DHPE Pipeline CLI")
 
+DEFAULT_WATCHLIST_UNIVERSE = [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "DIA",
+    "NVDA",
+    "TSLA",
+    "AAPL",
+    "MSFT",
+    "AMZN",
+    "META",
+    "GOOGL",
+    "AMD",
+    "NFLX",
+    "SMH",
+    "XLK",
+    "XLE",
+    "XLF",
+]
+
 
 def build_pipeline(
     symbol: str,
     config: AppConfig,
     adapters: Optional[Dict[str, object]] = None,
+    watchlist: Optional[AdaptiveWatchlist] = None,
 ) -> PipelineRunner:
     """Assemble a :class:`PipelineRunner` for ``symbol`` using ``config``."""
 
@@ -80,6 +102,12 @@ def build_pipeline(
         config.agents.composer.model_dump(),
     )
     trade_agent = TradeAgentV1(options_adapter, config.agents.trade.model_dump())
+    watchlist = watchlist or AdaptiveWatchlist(
+        universe=list({*DEFAULT_WATCHLIST_UNIVERSE, symbol}),
+        min_candidates=3,
+        max_candidates=8,
+        volume_threshold=10_000_000,
+    )
 
     ledger_path = Path(config.tracking.ledger_path)
     ledger_store = LedgerStore(ledger_path)
@@ -92,6 +120,7 @@ def build_pipeline(
         trade_agent=trade_agent,
         ledger_store=ledger_store,
         config=config.model_dump(),
+        watchlist=watchlist,
     )
 
 
