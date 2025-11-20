@@ -59,21 +59,25 @@ class XGBoostClassifier:
         X_train, X_val = X.iloc[:split_idx], X.iloc[split_idx:]
         y_train, y_val = y.iloc[:split_idx], y.iloc[split_idx:]
 
-        self.model.fit(
-            X_train,
-            y_train,
-            eval_set=[(X_val, y_val)],
-            early_stopping_rounds=early_stopping_rounds,
-            verbose=False,
-        )
+        # Handle small datasets that cannot support a validation split
+        if len(X_val) == 0:
+            self.model.fit(X_train, y_train, verbose=False)
+            train_pred = self.model.predict(X_train)
+            val_acc = train_acc = accuracy_score(y_train, train_pred)
+        else:
+            self.model.fit(
+                X_train,
+                y_train,
+                eval_set=[(X_val, y_val)],
+                early_stopping_rounds=early_stopping_rounds,
+                verbose=False,
+            )
+
+            train_pred = self.model.predict(X_train)
+            train_acc = accuracy_score(y_train, train_pred)
+            val_acc = accuracy_score(y_val, self.model.predict(X_val))
 
         self.is_fitted = True
-
-        train_pred = self.model.predict(X_train)
-        val_pred = self.model.predict(X_val)
-
-        train_acc = accuracy_score(y_train, train_pred)
-        val_acc = accuracy_score(y_val, val_pred)
 
         logger.info(f"XGBoost training completed - Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}")
 
@@ -254,6 +258,16 @@ class XGBoostEnsemble:
         return results
 
     def predict_all(self, features: pd.DataFrame) -> Dict:
+        if len(features) == 0:
+            logger.warning("No features provided for prediction; returning default outputs")
+            return {
+                "predicted_regime": "unknown",
+                "regime_probabilities": {"ranging": 0.33, "trending": 0.33, "volatile": 0.34},
+                "signal": "hold",
+                "confidence": 0.5,
+                "signal_probabilities": {"sell": 0.25, "hold": 0.5, "buy": 0.25},
+            }
+
         if len(features) > 1:
             features_current = features.tail(1)
         else:
