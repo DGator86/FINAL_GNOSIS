@@ -18,7 +18,6 @@ from sklearn.preprocessing import StandardScaler
 from .attention_mechanism import AttentionLayer, TemporalAttention
 from .base_model import BaseGnosisModel
 
-warnings.filterwarnings("ignore")
 
 
 class LSTMForecaster(nn.Module):
