@@ -70,6 +70,53 @@ class ElasticitySnapshot(BaseModel):
     trend_strength: float = 0.0
 
 
+class ForecastSnapshot(BaseModel):
+    """Time-series forecast payload (Kats-inspired)."""
+
+    model: str = "unavailable"
+    horizon: int = 0
+    forecast: List[float] = Field(default_factory=list)
+    confidence: float = 0.0
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class RegimeSimilaritySnapshot(BaseModel):
+    """Nearest-neighbor regime retrieval diagnostics."""
+
+    similarity_score: float = 0.0
+    neighbors: List[Dict[str, Any]] = Field(default_factory=list)
+    feature_vector: List[float] = Field(default_factory=list)
+
+
+class AnomalySnapshot(BaseModel):
+    """Anomaly detector output based on isolation forests."""
+
+    score: float = 0.0
+    flagged: bool = False
+    feature_vector: List[float] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PolicyRecommendation(BaseModel):
+    """Curriculum-style policy suggestion for execution/hedging."""
+
+    action: str = "hold"
+    risk_multiplier: float = 1.0
+    rationale: str = ""
+    curriculum_stage: str = "warmup"
+
+
+class MLEnhancementSnapshot(BaseModel):
+    """Aggregate ML augmentations across forecasting, similarity, and RL."""
+
+    timestamp: datetime
+    symbol: str
+    forecast: Optional[ForecastSnapshot] = None
+    regime_similarity: Optional[RegimeSimilaritySnapshot] = None
+    anomaly: Optional[AnomalySnapshot] = None
+    policy_recommendation: Optional[PolicyRecommendation] = None
+
+
 class DirectionEnum(str, Enum):
     """Trade direction enum."""
     LONG = "long"
@@ -201,3 +248,4 @@ class PipelineResult(BaseModel):
     watchlist_snapshot: List[WatchlistEntry] = Field(default_factory=list)
     tracking_snapshot: Optional[TrackingSnapshot] = None
     adaptation_update: Optional[AdaptationUpdate] = None
+    ml_snapshot: Optional[MLEnhancementSnapshot] = None
