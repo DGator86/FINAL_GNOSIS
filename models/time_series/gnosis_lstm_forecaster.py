@@ -5,7 +5,6 @@ Multi-horizon time series prediction with uncertainty quantification.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -127,7 +126,9 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
         self.logger.info("Starting LSTM training for multiple horizons")
 
-        X_scaled = self.scaler.fit_transform(X.reshape(-1, X.shape[-1])).reshape(X.shape)
+        # Defensive shape handling: ensure X is at least 2D
+        X_input = np.atleast_2d(X)
+        X_scaled = self.scaler.fit_transform(X_input.reshape(-1, X_input.shape[-1])).reshape(X_input.shape)
 
         split_idx = int(len(X_scaled) * (1 - validation_split))
         X_train, X_val = X_scaled[:split_idx], X_scaled[split_idx:]
@@ -171,6 +172,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
             for epoch in range(epochs):
                 model.train()
                 train_loss = 0.0
+                num_train_batches = 0
 
                 for i in range(0, len(X_seq_train), batch_size):
                     batch_X = torch.FloatTensor(X_seq_train[i : i + batch_size]).to(self.device)
@@ -188,9 +190,12 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                     optimizer.step()
 
                     train_loss += loss.item()
+                    num_train_batches += 1
 
                 model.eval()
                 val_loss = 0.0
+                num_val_batches = 0
+                
                 with torch.no_grad():
                     for i in range(0, len(X_seq_val), batch_size):
                         batch_X = torch.FloatTensor(X_seq_val[i : i + batch_size]).to(
@@ -203,11 +208,10 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                         predictions, _, _ = model(batch_X)
                         loss = criterion(predictions.squeeze(), batch_y)
                         val_loss += loss.item()
+                        num_val_batches += 1
 
-                denom_train = max(1, len(X_seq_train) // batch_size)
-                denom_val = max(1, len(X_seq_val) // batch_size)
-                train_loss /= denom_train
-                val_loss /= denom_val
+                train_loss /= num_train_batches
+                val_loss /= num_val_batches
 
                 train_losses.append(train_loss)
                 val_losses.append(val_loss)
@@ -224,6 +228,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                             "input_dim": input_dim,
                             "hidden_dim": self.hidden_dim,
                             "num_layers": self.num_layers,
+                            "output_dim": 1,
                             "dropout": self.dropout,
                             "use_attention": self.use_attention,
                         },
