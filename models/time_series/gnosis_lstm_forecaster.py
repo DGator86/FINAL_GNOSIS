@@ -101,6 +101,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
         self.num_layers = config.get("num_layers", 2)
         self.dropout = config.get("dropout", 0.2)
         self.learning_rate = config.get("learning_rate", 0.001)
+        self.uncertainty_weight = config.get("uncertainty_weight", 0.1)
         self.horizons: List[int] = config.get("horizons", [1, 5, 15, 30])
         self.use_attention = config.get("use_attention", True)
         self.uncertainty_loss_weight = config.get("uncertainty_loss_weight", 0.1)
@@ -134,6 +135,13 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
         self.logger.info("Starting LSTM training for multiple horizons")
 
+        # Ensure X is at least 3D: [samples, sequence_length, features]
+        X_input = np.atleast_2d(X)
+        if X_input.ndim == 2:
+            # If 2D [samples, features], reshape to [samples, 1, features]
+            X_input = X_input.reshape(X_input.shape[0], 1, X_input.shape[1])
+        
+        X_scaled = self.scaler.fit_transform(X_input.reshape(-1, X_input.shape[-1])).reshape(X_input.shape)
         # Validate and handle input shape
         if X.ndim == 1:
             raise ValueError(
@@ -204,6 +212,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
             for epoch in range(epochs):
                 model.train()
                 train_loss = 0.0
+                train_batches = 0
 
 
                 for i in range(0, len(X_seq_train), batch_size):
@@ -215,6 +224,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
                     mse_loss = criterion(predictions.squeeze(), batch_y)
                     uncertainty_loss = torch.mean(uncertainty)
+                    loss = mse_loss + self.uncertainty_weight * uncertainty_loss
                     loss = mse_loss + self.uncertainty_loss_weight * uncertainty_loss
                     loss = mse_loss + 0.1 * uncertainty_loss
 
@@ -223,9 +233,11 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                     optimizer.step()
 
                     train_loss += loss.item()
+                    train_batches += 1
 
                 model.eval()
                 val_loss = 0.0
+                val_batches = 0
                 with torch.no_grad():
                     for i in range(0, len(X_seq_val), batch_size):
                         batch_X = torch.FloatTensor(X_seq_val[i : i + batch_size]).to(
@@ -238,11 +250,10 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                         predictions, _, _ = model(batch_X)
                         loss = criterion(predictions.squeeze(), batch_y)
                         val_loss += loss.item()
+                        val_batches += 1
 
-                denom_train = max(1, len(X_seq_train) // batch_size)
-                denom_val = max(1, len(X_seq_val) // batch_size)
-                train_loss /= denom_train
-                val_loss /= denom_val
+                train_loss /= max(1, train_batches)
+                val_loss /= max(1, val_batches)
 
                 train_losses.append(train_loss)
                 val_losses.append(val_loss)
@@ -309,6 +320,13 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
         return_uncertainty = kwargs.get("return_uncertainty", True)
 
+        # Ensure X is at least 3D: [samples, sequence_length, features]
+        X_input = np.atleast_2d(X)
+        if X_input.ndim == 2:
+            # If 2D [samples, features], reshape to [samples, 1, features]
+            X_input = X_input.reshape(X_input.shape[0], 1, X_input.shape[1])
+        
+        X_scaled = self.scaler.transform(X_input.reshape(-1, X_input.shape[-1])).reshape(X_input.shape)
         # Defensive shape handling: ensure X is at least 2D
         X_input = np.atleast_2d(X)
         X_reshaped = X_input.reshape(-1, X_input.shape[-1])
