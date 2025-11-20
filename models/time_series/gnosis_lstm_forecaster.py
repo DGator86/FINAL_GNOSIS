@@ -18,7 +18,6 @@ from .attention_mechanism import AttentionLayer
 from .base_model import BaseGnosisModel
 
 
-
 class LSTMForecaster(nn.Module):
     """LSTM with attention for multi-horizon forecasting."""
 
@@ -128,7 +127,8 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
         # Defensive shape handling: ensure X is at least 2D
         X_input = np.atleast_2d(X)
-        X_scaled = self.scaler.fit_transform(X_input.reshape(-1, X_input.shape[-1])).reshape(X_input.shape)
+        X_reshaped = X_input.reshape(-1, X_input.shape[-1])
+        X_scaled = self.scaler.fit_transform(X_reshaped).reshape(X_input.shape)
 
         split_idx = int(len(X_scaled) * (1 - validation_split))
         X_train, X_val = X_scaled[:split_idx], X_scaled[split_idx:]
@@ -280,7 +280,8 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
         # Defensive shape handling: ensure X is at least 2D
         X_input = np.atleast_2d(X)
-        X_scaled = self.scaler.transform(X_input.reshape(-1, X_input.shape[-1])).reshape(X_input.shape)
+        X_reshaped = X_input.reshape(-1, X_input.shape[-1])
+        X_scaled = self.scaler.transform(X_reshaped).reshape(X_input.shape)
 
         predictions: Dict[str, np.ndarray] = {}
         uncertainties: Dict[str, np.ndarray] = {}
