@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 
 class BaseGnosisModel:
-    """Minimal base class to standardise GNOSIS model behaviour."""
+
 
     def __init__(self, config: Dict[str, Any], model_name: str):
         self.config = config
