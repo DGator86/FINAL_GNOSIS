@@ -32,6 +32,8 @@ class FaissRegimeRetriever:
             import faiss
 
             self._faiss_available = True
+            # Index dimension will be set on the first reference added.
+            self._faiss_index = None
             self._faiss_index = faiss.IndexFlatL2(0)  # placeholder; dimension set on add
             logger.info("Faiss detected; regime retrieval will use Faiss indexes")
         except Exception:
@@ -50,6 +52,24 @@ class FaissRegimeRetriever:
         if len(self._history) > self.max_history:
             self._history.pop(0)
 
+        if self._faiss_available:
+            try:  # pragma: no cover - optional dependency path
+                import faiss
+
+                dimension = arr.shape[0]
+                if self._faiss_index is None:
+                    self._faiss_index = faiss.IndexFlatL2(dimension)
+                elif self._faiss_index.d != dimension:
+                    # Rebuild index when dimension changes to avoid invalid state.
+                    self._faiss_index = faiss.IndexFlatL2(dimension)
+                    for existing in self._history:
+                        self._faiss_index.add(existing.vector.reshape(1, -1))
+                self._faiss_index.add(arr.reshape(1, -1))
+            except Exception as exc:
+                logger.error(f"Faiss add_reference failed: {exc}; disabling Faiss path")
+                self._faiss_available = False
+                self._faiss_index = None
+
     def query(self, vector: List[float]) -> Dict[str, Any]:
         """Return nearest regimes and similarity scores."""
 
@@ -65,6 +85,14 @@ class FaissRegimeRetriever:
             try:  # pragma: no cover - optional dependency path
                 import faiss
 
+                if self._faiss_index.d != query_vec.shape[0]:
+                    raise ValueError(
+                        f"Query dimension {query_vec.shape[0]} does not match index {self._faiss_index.d}"
+                    )
+
+                dists, idx = self._faiss_index.search(
+                    query_vec.reshape(1, -1), min(self.k, len(self._history))
+                )
                 dimension = query_vec.shape[0]
                 index = faiss.IndexFlatL2(dimension)
                 for obs in self._history:
@@ -76,6 +104,7 @@ class FaissRegimeRetriever:
             except Exception as exc:
                 logger.error(f"Faiss search failed: {exc}; falling back to numpy")
                 self._faiss_available = False
+                self._faiss_index = None
 
         if not neighbors:
             for obs in self._history:
