@@ -198,7 +198,7 @@ class AlpacaBrokerAdapter:
             
             logger.info(f"Order submitted: {side.upper()} {quantity} {symbol} - Order ID: {order.id}")
             
-            return order.id
+            return str(order.id)
             
         except APIError as e:
             logger.error(f"Error placing order: {e}")

@@ -1,7 +1,7 @@
+from __future__ import annotations
+
 """Lightweight base classes for agent implementations."""
 """Shared agent utilities for advanced trading agents."""
-
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
