@@ -20,6 +20,11 @@ from .base_model import BaseGnosisModel
 
 class LSTMForecaster(nn.Module):
     """LSTM with attention for multi-horizon forecasting."""
+warnings.filterwarnings("ignore")
+
+
+class AttentionLSTMBackbone(nn.Module):
+    """Backbone LSTM with optional attention for multi-horizon forecasting."""
 
     def __init__(
         self,
@@ -65,6 +70,10 @@ class LSTMForecaster(nn.Module):
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         """Forward pass through the LSTM forecaster."""
+    def forward(
+        self, x: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        """Forward pass through the backbone forecaster."""
 
         lstm_out, _ = self.lstm(x)
 
@@ -129,6 +138,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
         X_input = np.atleast_2d(X)
         X_reshaped = X_input.reshape(-1, X_input.shape[-1])
         X_scaled = self.scaler.fit_transform(X_reshaped).reshape(X_input.shape)
+        X_scaled = self.scaler.fit_transform(X.reshape(-1, X.shape[-1])).reshape(X.shape)
 
         split_idx = int(len(X_scaled) * (1 - validation_split))
         X_train, X_val = X_scaled[:split_idx], X_scaled[split_idx:]
@@ -150,6 +160,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
             input_dim = X_seq_train.shape[-1]
             model = LSTMForecaster(
+            model = AttentionLSTMBackbone(
                 input_dim=input_dim,
                 hidden_dim=self.hidden_dim,
                 num_layers=self.num_layers,
@@ -184,6 +195,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                     mse_loss = criterion(predictions.squeeze(), batch_y)
                     uncertainty_loss = torch.mean(uncertainty)
                     loss = mse_loss + self.uncertainty_loss_weight * uncertainty_loss
+                    loss = mse_loss + 0.1 * uncertainty_loss
 
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -191,6 +203,8 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
                     train_loss += loss.item()
 
+                model.eval()
+                val_loss = 0.0
                 with torch.no_grad():
                     for i in range(0, len(X_seq_val), batch_size):
                         batch_X = torch.FloatTensor(X_seq_val[i : i + batch_size]).to(
@@ -204,6 +218,10 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                         loss = criterion(predictions.squeeze(), batch_y)
                         val_loss += loss.item()
 
+                denom_train = max(1, len(X_seq_train) // batch_size)
+                denom_val = max(1, len(X_seq_val) // batch_size)
+                train_loss /= denom_train
+                val_loss /= denom_val
 
                 train_losses.append(train_loss)
                 val_losses.append(val_loss)
@@ -274,6 +292,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
         X_input = np.atleast_2d(X)
         X_reshaped = X_input.reshape(-1, X_input.shape[-1])
         X_scaled = self.scaler.transform(X_reshaped).reshape(X_input.shape)
+        X_scaled = self.scaler.transform(X.reshape(-1, X.shape[-1])).reshape(X.shape)
 
         predictions: Dict[str, np.ndarray] = {}
         uncertainties: Dict[str, np.ndarray] = {}
@@ -285,6 +304,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
             model_config = self.models[horizon]["config"]
             model = LSTMForecaster(**model_config).to(self.device)
+            model = AttentionLSTMBackbone(**model_config).to(self.device)
             model.load_state_dict(self.models[horizon]["model"])
             model.eval()
 
