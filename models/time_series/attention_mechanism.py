@@ -23,7 +23,7 @@ class AttentionLayer(nn.Module):
 
 
 class TemporalAttention(nn.Module):
-    """Single-head temporal attention for sequence summarisation."""
+
 
     def __init__(self, hidden_dim: int):
         super().__init__()
