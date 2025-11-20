@@ -97,6 +97,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
         self.learning_rate = config.get("learning_rate", 0.001)
         self.horizons: List[int] = config.get("horizons", [1, 5, 15, 30])
         self.use_attention = config.get("use_attention", True)
+        self.uncertainty_loss_weight = config.get("uncertainty_loss_weight", 0.1)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.logger.info(f"Using device: {self.device}")
@@ -181,7 +182,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
                     mse_loss = criterion(predictions.squeeze(), batch_y)
                     uncertainty_loss = torch.mean(uncertainty)
-                    loss = mse_loss + 0.1 * uncertainty_loss
+                    loss = mse_loss + self.uncertainty_loss_weight * uncertainty_loss
 
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
