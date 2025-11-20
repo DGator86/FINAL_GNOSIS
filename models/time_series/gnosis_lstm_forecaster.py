@@ -172,7 +172,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
             for epoch in range(epochs):
                 model.train()
                 train_loss = 0.0
-                num_train_batches = 0
+
 
                 for i in range(0, len(X_seq_train), batch_size):
                     batch_X = torch.FloatTensor(X_seq_train[i : i + batch_size]).to(self.device)
@@ -190,12 +190,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                     optimizer.step()
 
                     train_loss += loss.item()
-                    num_train_batches += 1
 
-                model.eval()
-                val_loss = 0.0
-                num_val_batches = 0
-                
                 with torch.no_grad():
                     for i in range(0, len(X_seq_val), batch_size):
                         batch_X = torch.FloatTensor(X_seq_val[i : i + batch_size]).to(
@@ -208,10 +203,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                         predictions, _, _ = model(batch_X)
                         loss = criterion(predictions.squeeze(), batch_y)
                         val_loss += loss.item()
-                        num_val_batches += 1
 
-                train_loss /= num_train_batches
-                val_loss /= num_val_batches
 
                 train_losses.append(train_loss)
                 val_losses.append(val_loss)
