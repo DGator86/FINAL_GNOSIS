@@ -273,7 +273,9 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
         return_uncertainty = kwargs.get("return_uncertainty", True)
 
-        X_scaled = self.scaler.transform(X.reshape(-1, X.shape[-1])).reshape(X.shape)
+        # Defensive shape handling: ensure X is at least 2D
+        X_input = np.atleast_2d(X)
+        X_scaled = self.scaler.transform(X_input.reshape(-1, X_input.shape[-1])).reshape(X_input.shape)
 
         predictions: Dict[str, np.ndarray] = {}
         uncertainties: Dict[str, np.ndarray] = {}
