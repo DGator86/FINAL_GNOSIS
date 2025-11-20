@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from loguru import logger
 
@@ -73,7 +73,7 @@ def create_news_adapter(prefer_real: bool = True) -> Any:
     return StaticNewsAdapter()
 
 
-def create_broker_adapter(paper: bool = True, prefer_real: bool = True) -> Any:
+def create_broker_adapter(paper: Optional[bool] = None, prefer_real: bool = True) -> Any:
     """
     Create broker adapter with fallback.
     
@@ -84,6 +84,11 @@ def create_broker_adapter(paper: bool = True, prefer_real: bool = True) -> Any:
     Returns:
         Broker adapter instance
     """
+    if paper is None:
+        from execution.broker_adapters.settings import get_alpaca_paper_setting
+
+        paper = get_alpaca_paper_setting()
+
     if prefer_real:
         try:
             from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter

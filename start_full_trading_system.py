@@ -21,6 +21,7 @@ from gnosis.scanner import MultiTimeframeScanner
 from gnosis.trading.live_bot import LiveTradingBot
 from loguru import logger
 import yaml
+from execution.broker_adapters.settings import get_alpaca_paper_setting
 
 # Configure logging
 logger.remove()
@@ -39,6 +40,7 @@ class FullTradingSystem:
         self.running = False
         self.trades_executed = 0
         self.alerts_triggered = 0
+        self.paper_mode = get_alpaca_paper_setting()
         
         # Load watchlist
         with open("config/watchlist.yaml", 'r') as f:
@@ -61,14 +63,16 @@ class FullTradingSystem:
     async def initialize(self):
         """Initialize all components"""
         
+        mode_label = "PAPER" if self.paper_mode else "LIVE"
+
         print("""
 ╔════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║          🚀 FULL PAPER TRADING SYSTEM ACTIVATED 🚀                    ║
+║            🚀 FULL TRADING SYSTEM ACTIVATED 🚀                        ║
 ║                                                                        ║
-║  Status: LIVE PAPER TRADING ENABLED                                   ║
+║  Status: {mode_label} TRADING ENABLED                                 ║
 ║  Mode: FULL CAPABILITIES                                              ║
-║  Account: Alpaca Paper ($30,000)                                      ║
+║  Account: Alpaca {mode_label}                                         ║
 ║                                                                        ║
 ╚════════════════════════════════════════════════════════════════════════╝
 
@@ -91,7 +95,7 @@ class FullTradingSystem:
                 bar_interval="1Min",
                 enable_memory=True,
                 enable_trading=True,  # TRADING IS ENABLED
-                paper_mode=True
+                paper_mode=self.paper_mode
             )
         
         print(f"""

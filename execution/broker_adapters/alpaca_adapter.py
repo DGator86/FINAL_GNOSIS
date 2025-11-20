@@ -16,6 +16,8 @@ from alpaca.trading.requests import MarketOrderRequest
 from loguru import logger
 from pydantic import BaseModel
 
+from execution.broker_adapters.settings import get_alpaca_base_url, get_alpaca_paper_setting
+
 
 class Account(BaseModel):
     """Account information."""
@@ -46,17 +48,18 @@ class Position(BaseModel):
 class AlpacaBrokerAdapter:
     """Alpaca broker adapter for paper/live trading."""
     
-    def __init__(self, paper: bool = True):
+    def __init__(self, paper: Optional[bool] = None):
         """
         Initialize Alpaca adapter.
         
         Args:
             paper: Whether to use paper trading (default: True)
         """
-        self.paper = paper
+        # Allow explicit override or fall back to environment flag
+        self.paper = get_alpaca_paper_setting() if paper is None else paper
         self.api_key = os.getenv("ALPACA_API_KEY")
         self.secret_key = os.getenv("ALPACA_SECRET_KEY")
-        self.base_url = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+        self.base_url = get_alpaca_base_url(self.paper)
         
         if not self.api_key or not self.secret_key:
             raise ValueError("Alpaca credentials not found in environment. Set ALPACA_API_KEY and ALPACA_SECRET_KEY.")
@@ -65,16 +68,16 @@ class AlpacaBrokerAdapter:
         self.trading_client = TradingClient(
             api_key=self.api_key,
             secret_key=self.secret_key,
-            paper=paper
+            paper=self.paper,
         )
         
         # Initialize data client
         self.data_client = StockHistoricalDataClient(
             api_key=self.api_key,
-            secret_key=self.secret_key
+            secret_key=self.secret_key,
         )
         
-        logger.info(f"AlpacaBrokerAdapter initialized (paper={paper}, base_url={self.base_url})")
+        logger.info(f"AlpacaBrokerAdapter initialized (paper={self.paper}, base_url={self.base_url})")
         
         # Verify connection
         try:

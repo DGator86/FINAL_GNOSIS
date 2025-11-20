@@ -113,6 +113,7 @@ cp .env.example .env
 ALPACA_API_KEY=your_paper_api_key_here
 ALPACA_SECRET_KEY=your_paper_secret_key_here
 ALPACA_BASE_URL=https://paper-api.alpaca.markets  # Paper trading
+ALPACA_PAPER=true  # Switch to false to target live trading
 ```
 
 ### Step 4: Install Dependencies
@@ -143,6 +144,7 @@ python examples/alpaca_quick_test.py
 | `ALPACA_API_KEY` | Your Alpaca API key | `PKELRVPCSCXJOWMMQI...` |
 | `ALPACA_SECRET_KEY` | Your Alpaca secret key | `Ezf2dYZD1M85tYBGUb...` |
 | `ALPACA_BASE_URL` | API endpoint | `https://paper-api.alpaca.markets` |
+| `ALPACA_PAPER` | Toggle paper vs live mode (defaults to paper) | `true` |
 
 ### Paper vs Live Trading
 

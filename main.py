@@ -32,6 +32,7 @@ from engines.sentiment.processors import FlowSentimentProcessor, NewsSentimentPr
 from engines.sentiment.sentiment_engine_v1 import SentimentEngineV1
 from ledger.ledger_store import LedgerStore
 from trade.trade_agent_v1 import TradeAgentV1
+from execution.broker_adapters.settings import get_alpaca_paper_setting
 
 # Load environment variables
 load_dotenv()
@@ -139,15 +140,16 @@ def live_loop(
         python main.py live-loop --symbol SPY --interval 300
     """
     config = load_config()
-    
+    paper_mode = get_alpaca_paper_setting()
+
     # Initialize broker (Alpaca Paper)
     broker = None
     if not dry_run:
         try:
-            typer.echo("🔌 Connecting to Alpaca Paper Trading...")
-            broker = create_broker_adapter(paper=True, prefer_real=True)
+            typer.echo(f"🔌 Connecting to Alpaca {'Paper' if paper_mode else 'Live'} Trading...")
+            broker = create_broker_adapter(paper=paper_mode, prefer_real=True)
             account = broker.get_account()
-            typer.echo(f"✅ Connected to Alpaca Paper Trading")
+            typer.echo(f"✅ Connected to Alpaca {'Paper' if paper_mode else 'Live'} Trading")
             typer.echo(f"   Account: {account.account_id}")
             typer.echo(f"   Cash: ${account.cash:,.2f}")
             typer.echo(f"   Buying Power: ${account.buying_power:,.2f}")
@@ -170,7 +172,8 @@ def live_loop(
     typer.echo("🚀 AUTONOMOUS TRADING LOOP STARTED")
     typer.echo("="*80)
     typer.echo(f"   Symbol: {symbol}")
-    typer.echo(f"   Mode: {'DRY-RUN' if dry_run else 'LIVE PAPER TRADING'}")
+    mode_label = "DRY-RUN" if dry_run else ("PAPER TRADING" if paper_mode else "LIVE TRADING")
+    typer.echo(f"   Mode: {mode_label}")
     typer.echo(f"   Interval: {interval} seconds")
     typer.echo(f"   Press Ctrl+C to stop")
     typer.echo("="*80 + "\n")
@@ -271,7 +274,8 @@ def scan_opportunities(
     import json
     
     config = load_config()
-    
+    paper_mode = get_alpaca_paper_setting()
+
     # Determine universe
     if universe == "default":
         # Use dynamic top-N ranking system
@@ -432,7 +436,8 @@ def multi_symbol_loop(
     from engines.scanner import OpportunityScanner, DEFAULT_UNIVERSE, get_dynamic_universe
     
     config = load_config()
-    
+    paper_mode = get_alpaca_paper_setting()
+
     # Determine universe
     if universe == "default":
         # Use dynamic top-N ranking system
@@ -446,10 +451,10 @@ def multi_symbol_loop(
     broker = None
     if not dry_run:
         try:
-            typer.echo("🔌 Connecting to Alpaca Paper Trading...")
-            broker = create_broker_adapter(paper=True, prefer_real=True)
+            typer.echo(f"🔌 Connecting to Alpaca {'Paper' if paper_mode else 'Live'} Trading...")
+            broker = create_broker_adapter(paper=paper_mode, prefer_real=True)
             account = broker.get_account()
-            typer.echo(f"✅ Connected to Alpaca Paper Trading")
+            typer.echo(f"✅ Connected to Alpaca {'Paper' if paper_mode else 'Live'} Trading")
             typer.echo(f"   Account: {account.account_id}")
             typer.echo(f"   Portfolio: ${account.portfolio_value:,.2f}")
         except Exception as e:
@@ -463,7 +468,8 @@ def multi_symbol_loop(
     typer.echo(f"   Top N: {top_n}")
     typer.echo(f"   Scan Interval: {scan_interval} seconds")
     typer.echo(f"   Trade Interval: {trade_interval} seconds")
-    typer.echo(f"   Mode: {'DRY-RUN' if dry_run else 'LIVE PAPER TRADING'}")
+    mode_label = "DRY-RUN" if dry_run else ("PAPER TRADING" if paper_mode else "LIVE TRADING")
+    typer.echo(f"   Mode: {mode_label}")
     typer.echo(f"   Press Ctrl+C to stop")
     typer.echo("="*80 + "\n")
     

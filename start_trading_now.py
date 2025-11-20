@@ -15,15 +15,18 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # Load environment
 from dotenv import load_dotenv
+from execution.broker_adapters.settings import get_alpaca_paper_setting
 load_dotenv()
+paper_mode = get_alpaca_paper_setting()
+mode_label = "PAPER" if paper_mode else "LIVE"
 
-print("""
+print(f"""
 ╔════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
 ║              🚀 STARTING PAPER TRADING SYSTEM 🚀                      ║
 ║                                                                        ║
-║  Mode: FULL PAPER TRADING ENABLED                                     ║
-║  Account: Alpaca Paper Trading                                        ║
+║  Mode: {mode_label} TRADING ENABLED                                    ║
+║  Account: Alpaca {mode_label} Trading                                   ║
 ║  Symbols: Multiple stocks configured                                  ║
 ║  Data: Unusual Whales + Alpaca                                        ║
 ║                                                                        ║
@@ -39,8 +42,8 @@ try:
     api_key = os.getenv("ALPACA_API_KEY")
     secret_key = os.getenv("ALPACA_SECRET_KEY")
     
-    print("🔄 Connecting to Alpaca...")
-    client = TradingClient(api_key, secret_key, paper=True)
+    print(f"🔄 Connecting to Alpaca ({mode_label})...")
+    client = TradingClient(api_key, secret_key, paper=paper_mode)
     account = client.get_account()
     
     print(f"""
