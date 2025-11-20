@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 load_dotenv()
 
 from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
+from execution.broker_adapters.settings import get_alpaca_paper_setting
 from main import build_pipeline, load_config
 
 # Page config
@@ -68,7 +69,8 @@ st.markdown("""
 def get_broker():
     """Get broker adapter (cached)."""
     try:
-        return AlpacaBrokerAdapter(paper=True)
+        paper_mode = get_alpaca_paper_setting()
+        return AlpacaBrokerAdapter(paper=paper_mode)
     except Exception as e:
         st.error(f"Failed to connect to Alpaca: {e}")
         return None

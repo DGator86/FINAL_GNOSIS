@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # Load environment
 from dotenv import load_dotenv
+from execution.broker_adapters.settings import get_alpaca_paper_setting
 load_dotenv()
 
 from alpaca.trading.client import TradingClient
@@ -62,8 +63,9 @@ print(f"   {', '.join(symbols[:10])}...")
 # Initialize clients
 api_key = os.getenv("ALPACA_API_KEY")
 secret_key = os.getenv("ALPACA_SECRET_KEY")
+paper_mode = get_alpaca_paper_setting()
 
-trading_client = TradingClient(api_key, secret_key, paper=True)
+trading_client = TradingClient(api_key, secret_key, paper=paper_mode)
 data_client = StockHistoricalDataClient(api_key, secret_key)
 
 if UW_AVAILABLE:
