@@ -20,6 +20,11 @@ from .base_model import BaseGnosisModel
 
 class LSTMForecaster(nn.Module):
     """LSTM with attention for multi-horizon forecasting."""
+warnings.filterwarnings("ignore")
+
+
+class AttentionLSTMBackbone(nn.Module):
+    """Backbone LSTM with optional attention for multi-horizon forecasting."""
 
     def __init__(
         self,
@@ -65,6 +70,10 @@ class LSTMForecaster(nn.Module):
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         """Forward pass through the LSTM forecaster."""
+    def forward(
+        self, x: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        """Forward pass through the backbone forecaster."""
 
         lstm_out, _ = self.lstm(x)
 
@@ -94,6 +103,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
         self.learning_rate = config.get("learning_rate", 0.001)
         self.horizons: List[int] = config.get("horizons", [1, 5, 15, 30])
         self.use_attention = config.get("use_attention", True)
+        self.uncertainty_loss_weight = config.get("uncertainty_loss_weight", 0.1)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.logger.info(f"Using device: {self.device}")
@@ -145,6 +155,11 @@ class GnosisLSTMForecaster(BaseGnosisModel):
             raise ValueError(
                 f"Expected X to be 2D or 3D, but got {X.ndim}D with shape {X.shape}"
             )
+        # Defensive shape handling: ensure X is at least 2D
+        X_input = np.atleast_2d(X)
+        X_reshaped = X_input.reshape(-1, X_input.shape[-1])
+        X_scaled = self.scaler.fit_transform(X_reshaped).reshape(X_input.shape)
+        X_scaled = self.scaler.fit_transform(X.reshape(-1, X.shape[-1])).reshape(X.shape)
 
         split_idx = int(len(X_scaled) * (1 - validation_split))
         X_train, X_val = X_scaled[:split_idx], X_scaled[split_idx:]
@@ -166,6 +181,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
             input_dim = X_seq_train.shape[-1]
             model = LSTMForecaster(
+            model = AttentionLSTMBackbone(
                 input_dim=input_dim,
                 hidden_dim=self.hidden_dim,
                 num_layers=self.num_layers,
@@ -189,6 +205,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                 model.train()
                 train_loss = 0.0
 
+
                 for i in range(0, len(X_seq_train), batch_size):
                     batch_X = torch.FloatTensor(X_seq_train[i : i + batch_size]).to(self.device)
                     batch_y = torch.FloatTensor(y_seq_train[i : i + batch_size]).to(self.device)
@@ -198,6 +215,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
                     mse_loss = criterion(predictions.squeeze(), batch_y)
                     uncertainty_loss = torch.mean(uncertainty)
+                    loss = mse_loss + self.uncertainty_loss_weight * uncertainty_loss
                     loss = mse_loss + 0.1 * uncertainty_loss
 
                     loss.backward()
@@ -241,6 +259,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                             "input_dim": input_dim,
                             "hidden_dim": self.hidden_dim,
                             "num_layers": self.num_layers,
+                            "output_dim": 1,
                             "dropout": self.dropout,
                             "use_attention": self.use_attention,
                         },
@@ -294,6 +313,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
         X_input = np.atleast_2d(X)
         X_reshaped = X_input.reshape(-1, X_input.shape[-1])
         X_scaled = self.scaler.transform(X_reshaped).reshape(X_input.shape)
+        X_scaled = self.scaler.transform(X.reshape(-1, X.shape[-1])).reshape(X.shape)
 
         predictions: Dict[str, np.ndarray] = {}
         uncertainties: Dict[str, np.ndarray] = {}
@@ -305,6 +325,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
             model_config = self.models[horizon]["config"]
             model = LSTMForecaster(**model_config).to(self.device)
+            model = AttentionLSTMBackbone(**model_config).to(self.device)
             model.load_state_dict(self.models[horizon]["model"])
             model.eval()
 
