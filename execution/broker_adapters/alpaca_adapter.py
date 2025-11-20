@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from typing import List, Optional
 
 from alpaca.common.exceptions import APIError
@@ -29,6 +30,7 @@ class Account(BaseModel):
     equity: float
     last_equity: float
     pattern_day_trader: bool = False
+    trading_blocked: bool = False
 
 
 class Position(BaseModel):
@@ -100,6 +102,7 @@ class AlpacaBrokerAdapter:
                 equity=float(account.equity),
                 last_equity=float(account.last_equity),
                 pattern_day_trader=account.pattern_day_trader,
+                trading_blocked=account.trading_blocked,
             )
         except APIError as e:
             logger.error(f"Error getting account info: {e}")
@@ -275,3 +278,26 @@ class AlpacaBrokerAdapter:
         except APIError as e:
             logger.error(f"Error getting quote for {symbol}: {e}")
             return None
+
+    def get_market_clock(self) -> Optional[dict]:
+        """Return the current market clock status."""
+        try:
+            clock = self.trading_client.get_clock()
+            return {
+                "is_open": bool(clock.is_open),
+                "next_open": clock.next_open,
+                "next_close": clock.next_close,
+            }
+        except APIError as e:
+            logger.error(f"Error retrieving market clock: {e}")
+            return None
+
+    def is_market_open(self) -> bool:
+        """Check if the market is currently open."""
+        clock = self.get_market_clock()
+        return bool(clock and clock.get("is_open"))
+
+    def get_next_market_open(self) -> Optional[datetime]:
+        """Get the next market open timestamp."""
+        clock = self.get_market_clock()
+        return clock.get("next_open") if clock else None
