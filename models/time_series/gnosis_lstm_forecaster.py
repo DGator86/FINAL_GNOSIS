@@ -5,7 +5,6 @@ Multi-horizon time series prediction with uncertainty quantification.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -15,9 +14,8 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.preprocessing import StandardScaler
 
-from .attention_mechanism import AttentionLayer, TemporalAttention
+from .attention_mechanism import AttentionLayer
 from .base_model import BaseGnosisModel
-
 
 
 class LSTMForecaster(nn.Module):
@@ -96,6 +94,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
         self.learning_rate = config.get("learning_rate", 0.001)
         self.horizons: List[int] = config.get("horizons", [1, 5, 15, 30])
         self.use_attention = config.get("use_attention", True)
+        self.uncertainty_loss_weight = config.get("uncertainty_loss_weight", 0.1)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.logger.info(f"Using device: {self.device}")
@@ -126,7 +125,10 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
         self.logger.info("Starting LSTM training for multiple horizons")
 
-        X_scaled = self.scaler.fit_transform(X.reshape(-1, X.shape[-1])).reshape(X.shape)
+        # Defensive shape handling: ensure X is at least 2D
+        X_input = np.atleast_2d(X)
+        X_reshaped = X_input.reshape(-1, X_input.shape[-1])
+        X_scaled = self.scaler.fit_transform(X_reshaped).reshape(X_input.shape)
 
         split_idx = int(len(X_scaled) * (1 - validation_split))
         X_train, X_val = X_scaled[:split_idx], X_scaled[split_idx:]
@@ -170,7 +172,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
             for epoch in range(epochs):
                 model.train()
                 train_loss = 0.0
-                train_batches = 0
+
 
                 for i in range(0, len(X_seq_train), batch_size):
                     batch_X = torch.FloatTensor(X_seq_train[i : i + batch_size]).to(self.device)
@@ -181,18 +183,14 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
                     mse_loss = criterion(predictions.squeeze(), batch_y)
                     uncertainty_loss = torch.mean(uncertainty)
-                    loss = mse_loss + 0.1 * uncertainty_loss
+                    loss = mse_loss + self.uncertainty_loss_weight * uncertainty_loss
 
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                     optimizer.step()
 
                     train_loss += loss.item()
-                    train_batches += 1
 
-                model.eval()
-                val_loss = 0.0
-                val_batches = 0
                 with torch.no_grad():
                     for i in range(0, len(X_seq_val), batch_size):
                         batch_X = torch.FloatTensor(X_seq_val[i : i + batch_size]).to(
@@ -205,10 +203,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                         predictions, _, _ = model(batch_X)
                         loss = criterion(predictions.squeeze(), batch_y)
                         val_loss += loss.item()
-                        val_batches += 1
 
-                train_loss /= max(1, train_batches)
-                val_loss /= max(1, val_batches)
 
                 train_losses.append(train_loss)
                 val_losses.append(val_loss)
@@ -225,6 +220,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                             "input_dim": input_dim,
                             "hidden_dim": self.hidden_dim,
                             "num_layers": self.num_layers,
+                            "output_dim": 1,
                             "dropout": self.dropout,
                             "use_attention": self.use_attention,
                         },
@@ -276,7 +272,8 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
         # Defensive shape handling: ensure X is at least 2D
         X_input = np.atleast_2d(X)
-        X_scaled = self.scaler.transform(X_input.reshape(-1, X_input.shape[-1])).reshape(X_input.shape)
+        X_reshaped = X_input.reshape(-1, X_input.shape[-1])
+        X_scaled = self.scaler.transform(X_reshaped).reshape(X_input.shape)
 
         predictions: Dict[str, np.ndarray] = {}
         uncertainties: Dict[str, np.ndarray] = {}
