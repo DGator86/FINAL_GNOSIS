@@ -146,6 +146,35 @@ class OrderResult(BaseModel):
     message: str = ""
 
 
+class PositionState(BaseModel):
+    """Snapshot of a single open position used for tracking."""
+
+    symbol: str
+    quantity: float
+    avg_entry_price: float
+    current_price: float
+    market_value: float
+    unrealized_pnl: float
+    unrealized_pnl_pct: float
+    side: str
+
+
+class TrackingSnapshot(BaseModel):
+    """Aggregate tracking data for the current pipeline iteration."""
+
+    timestamp: datetime
+    positions: List[PositionState] = Field(default_factory=list)
+    notes: List[str] = Field(default_factory=list)
+
+
+class AdaptationUpdate(BaseModel):
+    """Record of adaptive parameter changes applied after feedback."""
+
+    timestamp: datetime
+    changes: Dict[str, float] = Field(default_factory=dict)
+    rationale: str = ""
+
+
 class LedgerEntry(BaseModel):
     """Entry in the ledger store."""
     
@@ -170,3 +199,5 @@ class PipelineResult(BaseModel):
     consensus: Optional[Dict[str, Any]] = None
     watchlist_entry: Optional[WatchlistEntry] = None
     watchlist_snapshot: List[WatchlistEntry] = Field(default_factory=list)
+    tracking_snapshot: Optional[TrackingSnapshot] = None
+    adaptation_update: Optional[AdaptationUpdate] = None

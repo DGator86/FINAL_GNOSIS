@@ -73,3 +73,12 @@ trading:
 tracking:
   ledger_path: "data/ledger.jsonl"
   log_level: "INFO"
+  enable_position_tracking: true
+
+adaptation:
+  enabled: true
+  state_path: "data/adaptation_state.json"
+  min_trades_for_update: 5
+  performance_lookback: 20
+  min_risk_per_trade: 0.005
+  max_risk_per_trade: 0.05
