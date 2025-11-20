@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GNOSIS Trading Dashboard</title>
+    
+    <!-- CSS Libraries -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.css">
+    
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --success-color: #27ae60;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --dark-bg: #1a1a1a;
+            --card-bg: #2d2d2d;
+            --text-light: #ecf0f1;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: var(--text-light);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: rgba(44, 62, 80, 0.95) !important;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.5rem;
+            color: var(--secondary-color) !important;
+        }
+
+        .status-badge {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: bold;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid rgba(52, 152, 219, 0.3);
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+            margin-bottom: 1.5rem;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 24px rgba(52, 152, 219, 0.4);
+        }
+
+        .card-header {
+            background: rgba(52, 152, 219, 0.2);
+            border-bottom: 2px solid var(--secondary-color);
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .metric-card {
+            text-align: center;
+            padding: 1.5rem;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 0.5rem 0;
+        }
+
+        .metric-label {
+            color: #95a5a6;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+
+        .positive {
+            color: var(--success-color);
+        }
+
+        .negative {
+            color: var(--danger-color);
+        }
+
+        .btn-control {
+            padding: 0.75rem 2rem;
+            font-weight: bold;
+            border-radius: 25px;
+            transition: all 0.3s;
+        }
+
+        .btn-control:hover {
+            transform: scale(1.05);
+        }
+
+        .position-row {
+            background: rgba(52, 152, 219, 0.1);
+            border-left: 4px solid var(--secondary-color);
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 8px;
+            transition: background 0.3s;
+        }
+
+        .position-row:hover {
+            background: rgba(52, 152, 219, 0.2);
+        }
+
+        .agent-status {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            background: rgba(39, 174, 96, 0.1);
+            border-left: 4px solid var(--success-color);
+        }
+
+        .signal-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+
+        .signal-buy {
+            background: rgba(39, 174, 96, 0.3);
+            color: var(--success-color);
+            border: 1px solid var(--success-color);
+        }
+
+        .signal-sell {
+            background: rgba(231, 76, 60, 0.3);
+            color: var(--danger-color);
+            border: 1px solid var(--danger-color);
+        }
+
+        .signal-hold {
+            background: rgba(243, 156, 18, 0.3);
+            color: var(--warning-color);
+            border: 1px solid var(--warning-color);
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--secondary-color);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 1rem 0;
+        }
+
+        #live-log {
+            background: #1a1a1a;
+            border: 1px solid rgba(52, 152, 219, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+
+        .log-entry {
+            margin-bottom: 0.5rem;
+            padding: 0.25rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .log-timestamp {
+            color: #95a5a6;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: blink 2s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .status-connected .status-dot {
+            background: var(--success-color);
+        }
+
+        .status-disconnected .status-dot {
+            background: var(--danger-color);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-brain"></i> GNOSIS
+            </a>
+            <div class="d-flex align-items-center">
+                <span id="market-status" class="status-badge bg-secondary me-3">
+                    <i class="fas fa-circle"></i> Market Closed
+                </span>
+                <span id="system-status" class="status-badge bg-secondary">
+                    <i class="fas fa-circle"></i> System Idle
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Connection Status -->
+    <div id="connection-status" class="connection-status status-disconnected">
+        <div class="status-dot"></div>
+        <span>Connecting...</span>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container-fluid mt-4">
+        <!-- Control Panel -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-sliders-h"></i> Control Panel
+                    </div>
+                    <div class="card-body text-center">
+                        <button id="btn-start" class="btn btn-success btn-control me-2">
+                            <i class="fas fa-play"></i> Start Trading
+                        </button>
+                        <button id="btn-stop" class="btn btn-warning btn-control me-2">
+                            <i class="fas fa-pause"></i> Stop Trading
+                        </button>
+                        <button id="btn-emergency" class="btn btn-danger btn-control">
+                            <i class="fas fa-exclamation-triangle"></i> Emergency Stop
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Account Metrics -->
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card metric-card">
+                    <div class="metric-label">Portfolio Value</div>
+                    <div id="portfolio-value" class="metric-value">$0.00</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card metric-card">
+                    <div class="metric-label">Cash Available</div>
+                    <div id="cash-value" class="metric-value">$0.00</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card metric-card">
+                    <div class="metric-label">Unrealized P&L</div>
+                    <div id="unrealized-pl" class="metric-value">$0.00</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card metric-card">
+                    <div class="metric-label">Total Trades</div>
+                    <div id="total-trades" class="metric-value">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Positions -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-briefcase"></i> Active Positions
+                    </div>
+                    <div class="card-body" id="positions-container">
+                        <p class="text-center text-muted">No active positions</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Watchlist -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-eye"></i> Watchlist
+                    </div>
+                    <div class="card-body" id="watchlist-container">
+                        <p class="text-center text-muted">Loading watchlist...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Agents Status -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-robot"></i> Agent Status
+                    </div>
+                    <div class="card-body" id="agents-container">
+                        <p class="text-center text-muted">Loading agents...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Log -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-terminal"></i> Live Activity Log
+                    </div>
+                    <div class="card-body">
+                        <div id="live-log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Chart -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-chart-line"></i> Portfolio Performance
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="performance-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <script>
+        // Initialize Socket.IO
+        const socket = io();
+        
+        // Chart setup
+        let performanceChart;
+        const performanceData = {
+            labels: [],
+            datasets: [{
+                label: 'Portfolio Value',
+                data: [],
+                borderColor: 'rgb(52, 152, 219)',
+                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                tension: 0.4
+            }]
+        };
+
+        function initChart() {
+            const ctx = document.getElementById('performance-chart').getContext('2d');
+            performanceChart = new Chart(ctx, {
+                type: 'line',
+                data: performanceData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#ecf0f1' }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            ticks: { color: '#ecf0f1' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        x: {
+                            ticks: { color: '#ecf0f1' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Socket.IO event handlers
+        socket.on('connect', () => {
+            updateConnectionStatus(true);
+            addLog('Connected to GNOSIS server');
+        });
+
+        socket.on('disconnect', () => {
+            updateConnectionStatus(false);
+            addLog('Disconnected from server');
+        });
+
+        socket.on('account_update', (data) => {
+            updateAccountMetrics(data);
+        });
+
+        socket.on('positions_update', (data) => {
+            updatePositions(data);
+        });
+
+        socket.on('performance_update', (data) => {
+            updatePerformance(data);
+        });
+
+        // Update functions
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('connection-status');
+            const statusText = statusEl.querySelector('span');
+            
+            if (connected) {
+                statusEl.classList.remove('status-disconnected');
+                statusEl.classList.add('status-connected');
+                statusText.textContent = 'Connected';
+            } else {
+                statusEl.classList.remove('status-connected');
+                statusEl.classList.add('status-disconnected');
+                statusText.textContent = 'Disconnected';
+            }
+        }
+
+        function updateAccountMetrics(account) {
+            if (!account || !account.portfolio_value) return;
+            document.getElementById('portfolio-value').textContent = 
+                '$' + parseFloat(account.portfolio_value).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            
+            document.getElementById('cash-value').textContent = 
+                '$' + parseFloat(account.cash).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            
+            // Update chart
+            const now = new Date().toLocaleTimeString();
+            if (performanceData.labels.length > 50) {
+                performanceData.labels.shift();
+                performanceData.datasets[0].data.shift();
+            }
+            performanceData.labels.push(now);
+            performanceData.datasets[0].data.push(parseFloat(account.portfolio_value));
+            performanceChart.update();
+        }
+
+        function updatePositions(positions) {
+            const container = document.getElementById('positions-container');
+            
+            if (!positions || positions.length === 0) {
+                container.innerHTML = '<p class="text-center text-muted">No active positions</p>';
+                return;
+            }
+            
+            let html = '';
+            positions.forEach(pos => {
+                const plClass = parseFloat(pos.unrealized_pl) >= 0 ? 'positive' : 'negative';
+                html += `
+                    <div class="position-row">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${pos.symbol}</strong>
+                                <div class="small text-muted">${pos.qty} shares @ $${parseFloat(pos.avg_entry_price).toFixed(2)}</div>
+                            </div>
+                            <div class="text-end">
+                                <div><strong>$${parseFloat(pos.current_price).toFixed(2)}</strong></div>
+                                <div class="${plClass}">
+                                    ${parseFloat(pos.unrealized_pl) >= 0 ? '+' : ''}$${parseFloat(pos.unrealized_pl).toFixed(2)}
+                                    (${(parseFloat(pos.unrealized_plpc) * 100).toFixed(2)}%)
+                                </div>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-danger" onclick="closePosition('${pos.symbol}')">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+            
+            // Update unrealized P&L total
+            const totalPL = positions.reduce((sum, pos) => sum + parseFloat(pos.unrealized_pl), 0);
+            const plEl = document.getElementById('unrealized-pl');
+            plEl.textContent = '$' + totalPL.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            plEl.className = 'metric-value ' + (totalPL >= 0 ? 'positive' : 'negative');
+        }
+
+        function updatePerformance(data) {
+            if (data && data.total_trades !== undefined) {
+                document.getElementById('total-trades').textContent = data.total_trades;
+            }
+        }
+
+        function addLog(message) {
+            const logContainer = document.getElementById('live-log');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> ${message}`;
+            logContainer.insertBefore(entry, logContainer.firstChild);
+            
+            // Keep only last 50 entries
+            while (logContainer.children.length > 50) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+
+        // API calls
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Update market status
+                    const marketStatus = document.getElementById('market-status');
+                    if (data.market_open) {
+                        marketStatus.innerHTML = '<i class="fas fa-circle"></i> Market Open';
+                        marketStatus.className = 'status-badge bg-success';
+                    } else {
+                        marketStatus.innerHTML = '<i class="fas fa-circle"></i> Market Closed';
+                        marketStatus.className = 'status-badge bg-danger';
+                    }
+                    
+                    // Update system status
+                    const systemStatus = document.getElementById('system-status');
+                    if (data.system_running) {
+                        systemStatus.innerHTML = '<i class="fas fa-circle"></i> System Running';
+                        systemStatus.className = 'status-badge bg-success';
+                    } else {
+                        systemStatus.innerHTML = '<i class="fas fa-circle"></i> System Idle';
+                        systemStatus.className = 'status-badge bg-secondary';
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        }
+
+        async function fetchWatchlist() {
+            try {
+                const response = await fetch('/api/watchlist');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const container = document.getElementById('watchlist-container');
+                    let html = '';
+                    
+                    data.data.forEach(item => {
+                        let signalBadge = '';
+                        if (item.last_signal === 'buy') {
+                            signalBadge = '<span class="signal-badge signal-buy">BUY</span>';
+                        } else if (item.last_signal === 'sell') {
+                            signalBadge = '<span class="signal-badge signal-sell">SELL</span>';
+                        } else if (item.last_signal === 'hold') {
+                            signalBadge = '<span class="signal-badge signal-hold">HOLD</span>';
+                        }
+                        
+                        html += `
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div>
+                                    <strong>${item.symbol}</strong>
+                                    <div class="small text-muted">$${item.price.toFixed(2)}</div>
+                                </div>
+                                <div>
+                                    ${signalBadge}
+                                    ${item.confidence > 0 ? `<div class="small text-muted">${(item.confidence * 100).toFixed(0)}% conf</div>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    container.innerHTML = html;
+                }
+            } catch (error) {
+                console.error('Error fetching watchlist:', error);
+            }
+        }
+
+        async function fetchAgents() {
+            try {
+                const response = await fetch('/api/agents');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const container = document.getElementById('agents-container');
+                    let html = '';
+                    
+                    for (const [agentId, summary] of Object.entries(data.data)) {
+                        const totalSignals = summary.total_signals || 0;
+                        const avgConfidence = summary.avg_confidence || 0;
+                        
+                        html += `
+                            <div class="agent-status">
+                                <div class="d-flex justify-content-between">
+                                    <strong>${agentId.replace('_', ' ').toUpperCase()}</strong>
+                                    <span class="badge bg-success">Active</span>
+                                </div>
+                                <div class="small text-muted mt-2">
+                                    Signals: ${totalSignals} | Avg Confidence: ${(avgConfidence * 100).toFixed(0)}%
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    container.innerHTML = html;
+                }
+            } catch (error) {
+                console.error('Error fetching agents:', error);
+            }
+        }
+
+        // Control functions
+        document.getElementById('btn-start').addEventListener('click', async () => {
+            if (confirm('Start live trading?')) {
+                try {
+                    const response = await fetch('/api/start', { method: 'POST' });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        addLog('✅ Trading started');
+                        alert('Trading started successfully!');
+                    } else {
+                        addLog('❌ Failed to start trading: ' + data.error);
+                        alert('Failed to start: ' + data.error);
+                    }
+                } catch (error) {
+                    addLog('❌ Error starting trading: ' + error);
+                    alert('Error: ' + error);
+                }
+            }
+        });
+
+        document.getElementById('btn-stop').addEventListener('click', async () => {
+            if (confirm('Stop trading?')) {
+                try {
+                    const response = await fetch('/api/stop', { method: 'POST' });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        addLog('⏸️ Trading stopped');
+                        alert('Trading stopped successfully!');
+                    } else {
+                        addLog('❌ Failed to stop trading: ' + data.error);
+                        alert('Failed to stop: ' + data.error);
+                    }
+                } catch (error) {
+                    addLog('❌ Error stopping trading: ' + error);
+                    alert('Error: ' + error);
+                }
+            }
+        });
+
+        document.getElementById('btn-emergency').addEventListener('click', async () => {
+            if (confirm('⚠️ EMERGENCY STOP: This will close all positions and stop trading. Continue?')) {
+                try {
+                    const response = await fetch('/api/emergency_stop', { method: 'POST' });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        addLog('🚨 EMERGENCY STOP executed');
+                        alert('Emergency stop executed successfully!');
+                    } else {
+                        addLog('❌ Emergency stop failed: ' + data.error);
+                        alert('Emergency stop failed: ' + data.error);
+                    }
+                } catch (error) {
+                    addLog('❌ Error during emergency stop: ' + error);
+                    alert('Error: ' + error);
+                }
+            }
+        });
+
+        async function closePosition(symbol) {
+            if (confirm(`Close position in ${symbol}?`)) {
+                try {
+                    const response = await fetch(`/api/close_position/${symbol}`, { method: 'POST' });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        addLog(`✅ Closed position: ${symbol}`);
+                        alert(`Position closed: ${symbol}`);
+                    } else {
+                        addLog(`❌ Failed to close ${symbol}: ${data.error}`);
+                        alert('Failed to close position: ' + data.error);
+                    }
+                } catch (error) {
+                    addLog(`❌ Error closing ${symbol}: ${error}`);
+                    alert('Error: ' + error);
+                }
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            fetchStatus();
+            fetchWatchlist();
+            fetchAgents();
+            
+            // Refresh status every 10 seconds
+            setInterval(fetchStatus, 10000);
+            
+            // Refresh watchlist and agents every 30 seconds
+            setInterval(() => {
+                fetchWatchlist();
+                fetchAgents();
+            }, 30000);
+            
+            addLog('🚀 GNOSIS Dashboard initialized');
+        });
+    </script>
+</body>
+</html>
