@@ -2,21 +2,37 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from schemas.core_schemas import DirectionEnum, PipelineResult, StrategyType, TradeIdea
+from schemas.core_schemas import (
+    DirectionEnum,
+    OrderResult,
+    OrderStatus,
+    PipelineResult,
+    StrategyType,
+    TradeIdea,
+)
 
 
 class TradeAgentV1:
     """Trade Agent v1 for generating trade ideas from consensus."""
-    
-    def __init__(self, options_adapter: Any, config: Dict[str, Any]):
+
+    def __init__(
+        self,
+        options_adapter: Any,
+        market_adapter: Any,
+        config: Dict[str, Any],
+        broker: Optional[Any] = None,
+    ):
         self.options_adapter = options_adapter
+        self.market_adapter = market_adapter
         self.config = config
-        logger.info("TradeAgentV1 initialized")
+        self.broker = broker
+        mode = "enabled" if self.broker else "disabled"
+        logger.info(f"TradeAgentV1 initialized (execution {mode})")
     
     def generate_ideas(
         self, 
@@ -65,8 +81,85 @@ class TradeAgentV1:
             size=size,
             reasoning=reasoning,
         )
-        
+
         return [trade_idea]
+
+    def execute_trades(
+        self, trade_ideas: List[TradeIdea], timestamp: datetime
+    ) -> List[OrderResult]:
+        """Place orders for generated trade ideas using the broker adapter."""
+
+        if not self.broker:
+            logger.info("No broker configured - execution skipped")
+            return []
+
+        order_results: List[OrderResult] = []
+
+        for idea in trade_ideas:
+            try:
+                side = "buy" if idea.direction == DirectionEnum.LONG else "sell"
+
+                quote = self.broker.get_latest_quote(idea.symbol)
+                price = None
+                if quote:
+                    bid = quote.get("bid") or 0
+                    ask = quote.get("ask") or 0
+                    if bid and ask:
+                        price = (bid + ask) / 2
+                if price is None:
+                    price = self._fallback_price(idea.symbol)
+
+                dollars = idea.size or self.config.get("max_position_size", 10_000.0)
+                quantity = max(1, round(dollars / max(price, 1e-6), 2))
+
+                order_id = self.broker.place_order(
+                    idea.symbol,
+                    quantity=quantity,
+                    side=side,
+                )
+
+                status = OrderStatus.SUBMITTED if order_id else OrderStatus.REJECTED
+                order_results.append(
+                    OrderResult(
+                        timestamp=timestamp,
+                        symbol=idea.symbol,
+                        status=status,
+                        order_id=order_id,
+                        filled_qty=0.0,
+                        message=f"{side} {quantity} at ~{price:.2f}" if price else "market order submitted",
+                    )
+                )
+            except Exception as error:  # pragma: no cover - defensive
+                logger.error(f"Failed to execute trade for {idea.symbol}: {error}")
+                order_results.append(
+                    OrderResult(
+                        timestamp=timestamp,
+                        symbol=idea.symbol,
+                        status=OrderStatus.REJECTED,
+                        message=str(error),
+                    )
+                )
+
+        return order_results
+
+    def update_risk_per_trade(self, risk_per_trade: float) -> None:
+        """Update risk_per_trade in-place when adaptation is active."""
+
+        self.config["risk_per_trade"] = risk_per_trade
+        logger.info(f"TradeAgent risk_per_trade updated to {risk_per_trade:.3f}")
+
+    def _fallback_price(self, symbol: str) -> float:
+        """Use market adapter to obtain a last known price as sizing fallback."""
+
+        try:
+            end = datetime.utcnow()
+            start = end - timedelta(days=2)
+            bars = self.market_adapter.get_bars(symbol, start=start, end=end, timeframe="1Day")
+            if bars:
+                return float(bars[-1].close)
+        except Exception:
+            logger.debug("Fallback price lookup failed", exc_info=True)
+        return 1.0
     
     def _select_strategy(self, pipeline_result: PipelineResult) -> StrategyType:
         """Select appropriate strategy based on pipeline results."""

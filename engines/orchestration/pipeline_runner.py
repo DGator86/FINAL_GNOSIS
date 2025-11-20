@@ -25,6 +25,9 @@ class PipelineRunner:
         config: Dict[str, Any],
         watchlist: Optional[AdaptiveWatchlist] = None,
         active_positions: Optional[Set[str]] = None,
+        tracking_agent: Optional[Any] = None,
+        adaptation_agent: Optional[Any] = None,
+        auto_execute: bool = False,
     ):
         """
         Initialize Pipeline Runner.
@@ -49,6 +52,9 @@ class PipelineRunner:
         self.config = config
         self.watchlist = watchlist
         self.active_positions = active_positions or set()
+        self.tracking_agent = tracking_agent
+        self.adaptation_agent = adaptation_agent
+        self.auto_execute = auto_execute
         logger.info(f"PipelineRunner initialized for {symbol}")
     
     def run_once(self, timestamp: datetime) -> PipelineResult:
@@ -123,6 +129,36 @@ class PipelineRunner:
                         result.trade_ideas = trade_ideas if trade_ideas else []
                 except Exception as e:
                     logger.error(f"Error in trade agent: {e}")
+
+            # Execute trades when enabled
+            if self.auto_execute and result.trade_ideas:
+                try:
+                    result.order_results = self.trade_agent.execute_trades(
+                        result.trade_ideas, timestamp
+                    )
+                except Exception as e:
+                    logger.error(f"Error executing trades: {e}")
+
+            # Capture broker position tracking
+            if self.tracking_agent:
+                try:
+                    result.tracking_snapshot = self.tracking_agent.snapshot_positions()
+                except Exception as e:
+                    logger.error(f"Error collecting tracking snapshot: {e}")
+
+            # Run adaptation feedback loop
+            if self.adaptation_agent:
+                try:
+                    update = self.adaptation_agent.update_from_feedback(
+                        result, result.tracking_snapshot
+                    )
+                    result.adaptation_update = update
+                    if update and self.trade_agent and "risk_per_trade" in update.changes:
+                        self.trade_agent.update_risk_per_trade(
+                            update.changes["risk_per_trade"]
+                        )
+                except Exception as e:
+                    logger.error(f"Error in adaptation agent: {e}")
             
             # Store in ledger
             if self.ledger_store:

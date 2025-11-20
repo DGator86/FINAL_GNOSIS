@@ -31,6 +31,8 @@ from engines.orchestration.pipeline_runner import PipelineRunner
 from engines.sentiment.processors import FlowSentimentProcessor, NewsSentimentProcessor, TechnicalSentimentProcessor
 from engines.sentiment.sentiment_engine_v1 import SentimentEngineV1
 from ledger.ledger_store import LedgerStore
+from feedback.adaptation_agent import AdaptationAgent
+from feedback.tracking_agent import TrackingAgent
 from trade.trade_agent_v1 import TradeAgentV1
 from execution.broker_adapters.settings import get_alpaca_paper_setting
 from watchlist import AdaptiveWatchlist
@@ -101,7 +103,12 @@ def build_pipeline(
         config.agents.composer.weights,
         config.agents.composer.model_dump(),
     )
-    trade_agent = TradeAgentV1(options_adapter, config.agents.trade.model_dump())
+    trade_agent = TradeAgentV1(
+        options_adapter,
+        market_adapter,
+        config.agents.trade.model_dump(),
+        broker=adapters.get("broker"),
+    )
     watchlist = watchlist or AdaptiveWatchlist(
         universe=list({*DEFAULT_WATCHLIST_UNIVERSE, symbol}),
         min_candidates=3,
@@ -112,6 +119,20 @@ def build_pipeline(
     ledger_path = Path(config.tracking.ledger_path)
     ledger_store = LedgerStore(ledger_path)
 
+    tracking_agent = None
+    if config.tracking.enable_position_tracking:
+        tracking_agent = TrackingAgent(adapters.get("broker"), enable=True)
+
+    adaptation_agent = None
+    if config.adaptation.enabled:
+        adaptation_agent = AdaptationAgent(
+            state_path=Path(config.adaptation.state_path),
+            min_trades=config.adaptation.min_trades_for_update,
+            performance_lookback=config.adaptation.performance_lookback,
+            min_risk_per_trade=config.adaptation.min_risk_per_trade,
+            max_risk_per_trade=config.adaptation.max_risk_per_trade,
+        )
+
     return PipelineRunner(
         symbol=symbol,
         engines=engines,
@@ -121,6 +142,9 @@ def build_pipeline(
         ledger_store=ledger_store,
         config=config.model_dump(),
         watchlist=watchlist,
+        tracking_agent=tracking_agent,
+        adaptation_agent=adaptation_agent,
+        auto_execute=adapters.get("broker") is not None,
     )
 
 

@@ -137,16 +137,29 @@ class TradingConfig(BaseModel):
 
 class TrackingConfig(BaseModel):
     """Configuration for tracking and logging."""
-    
+
     ledger_path: str = "data/ledger.jsonl"
     log_level: str = "INFO"
+    enable_position_tracking: bool = True
+
+
+class AdaptationConfig(BaseModel):
+    """Configuration for adaptive feedback loops."""
+
+    enabled: bool = False
+    state_path: str = "data/adaptation_state.json"
+    min_trades_for_update: int = 5
+    performance_lookback: int = 20
+    min_risk_per_trade: float = 0.005
+    max_risk_per_trade: float = 0.05
 
 
 class AppConfig(BaseModel):
     """Main application configuration."""
-    
+
     engines: EnginesConfig = Field(default_factory=EnginesConfig)
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     scanner: ScannerConfig = Field(default_factory=ScannerConfig)
     trading: TradingConfig = Field(default_factory=TradingConfig)
     tracking: TrackingConfig = Field(default_factory=TrackingConfig)
+    adaptation: AdaptationConfig = Field(default_factory=AdaptationConfig)
