@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -28,6 +28,7 @@ from alpaca.trading.requests import (
     StopLossRequest,
     TakeProfitRequest,
 )
+from execution.broker_adapters.settings import get_alpaca_paper_setting
 
 
 @dataclass
@@ -36,7 +37,7 @@ class AlpacaConfig:
 
     api_key: Optional[str] = None
     api_secret: Optional[str] = None
-    paper: bool = True
+    paper: bool = field(default_factory=lambda: get_alpaca_paper_setting(True))
 
     def __post_init__(self) -> None:
         if self.api_key is None:
