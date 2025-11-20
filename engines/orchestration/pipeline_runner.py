@@ -28,6 +28,7 @@ class PipelineRunner:
         tracking_agent: Optional[Any] = None,
         adaptation_agent: Optional[Any] = None,
         auto_execute: bool = False,
+        ml_engine: Optional[Any] = None,
     ):
         """
         Initialize Pipeline Runner.
@@ -55,6 +56,7 @@ class PipelineRunner:
         self.tracking_agent = tracking_agent
         self.adaptation_agent = adaptation_agent
         self.auto_execute = auto_execute
+        self.ml_engine = ml_engine
         logger.info(f"PipelineRunner initialized for {symbol}")
     
     def run_once(self, timestamp: datetime) -> PipelineResult:
@@ -84,9 +86,15 @@ class PipelineRunner:
             
             if "sentiment" in self.engines:
                 result.sentiment_snapshot = self.engines["sentiment"].run(self.symbol, timestamp)
-            
+
             if "elasticity" in self.engines:
                 result.elasticity_snapshot = self.engines["elasticity"].run(self.symbol, timestamp)
+
+            if self.ml_engine:
+                try:
+                    result.ml_snapshot = self.ml_engine.enhance(result, timestamp)
+                except Exception as e:
+                    logger.error(f"Error in ML enhancement engine: {e}")
             
             # Run primary agents
             for agent_name, agent in self.primary_agents.items():

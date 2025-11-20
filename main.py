@@ -27,6 +27,13 @@ from engines.inputs.market_data_adapter import MarketDataAdapter
 from engines.inputs.news_adapter import NewsAdapter
 from engines.inputs.options_chain_adapter import OptionsChainAdapter
 from engines.liquidity.liquidity_engine_v1 import LiquidityEngineV1
+from engines.ml import (
+    AnomalyDetector,
+    CurriculumRLEvaluator,
+    FaissRegimeRetriever,
+    KatsForecasterAdapter,
+    MLEnhancementEngine,
+)
 from engines.orchestration.pipeline_runner import PipelineRunner
 from engines.sentiment.processors import FlowSentimentProcessor, NewsSentimentProcessor, TechnicalSentimentProcessor
 from engines.sentiment.sentiment_engine_v1 import SentimentEngineV1
@@ -133,6 +140,19 @@ def build_pipeline(
             max_risk_per_trade=config.adaptation.max_risk_per_trade,
         )
 
+    # ML enhancement stack inspired by external repos (Kats, Faiss, RL curriculum)
+    forecaster = KatsForecasterAdapter(market_adapter, forecast_horizon=5, min_history=30)
+    similarity_retriever = FaissRegimeRetriever(max_history=500, k=5)
+    anomaly_detector = AnomalyDetector(contamination=0.05, warmup=25)
+    rl_evaluator = CurriculumRLEvaluator()
+    ml_engine = MLEnhancementEngine(
+        market_adapter=market_adapter,
+        forecaster=forecaster,
+        similarity_retriever=similarity_retriever,
+        anomaly_detector=anomaly_detector,
+        rl_evaluator=rl_evaluator,
+    )
+
     return PipelineRunner(
         symbol=symbol,
         engines=engines,
@@ -145,6 +165,7 @@ def build_pipeline(
         tracking_agent=tracking_agent,
         adaptation_agent=adaptation_agent,
         auto_execute=adapters.get("broker") is not None,
+        ml_engine=ml_engine,
     )
 
 
