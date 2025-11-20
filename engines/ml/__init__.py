@@ -5,6 +5,7 @@ from .similarity import FaissRegimeRetriever
 from .anomaly import AnomalyDetector
 from .curriculum import CurriculumRLEvaluator
 from .enhancement_engine import MLEnhancementEngine
+from .validation import BacktestEngine, ModelValidator, ValidationMetrics
 
 __all__ = [
     "KatsForecasterAdapter",
@@ -12,4 +13,7 @@ __all__ = [
     "AnomalyDetector",
     "CurriculumRLEvaluator",
     "MLEnhancementEngine",
+    "BacktestEngine",
+    "ModelValidator",
+    "ValidationMetrics",
 ]

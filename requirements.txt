@@ -31,6 +31,7 @@ xgboost>=2.0.0
 scikit-learn>=1.3.0
 optuna>=3.0.0
 numpy>=1.24.0
+statsmodels>=0.14.0
 
 # Market data sources
 # Public.com API (primary market data source) - uses httpx from API dependencies
