@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.preprocessing import StandardScaler
 
-from .attention_mechanism import AttentionLayer, TemporalAttention
+from .attention_mechanism import AttentionLayer
 from .base_model import BaseGnosisModel
 
 
