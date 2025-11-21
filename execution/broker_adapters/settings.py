@@ -49,3 +49,26 @@ def get_alpaca_base_url(paper: bool) -> str:
 
     return "https://paper-api.alpaca.markets" if paper else "https://api.alpaca.markets"
 
+
+def get_required_options_level(default: int = 3) -> int:
+    """Return the minimum options trading level required for the account.
+
+    Alpaca exposes multiple options permission tiers. Gnosis expects the
+    highest level (3) so we can enter multi-leg strategies and sell to open
+    when permitted. The requirement can be relaxed by setting
+    ``ALPACA_REQUIRED_OPTIONS_LEVEL``.
+    """
+
+    override = os.getenv("ALPACA_REQUIRED_OPTIONS_LEVEL")
+    if override is None:
+        return default
+
+    try:
+        value = int(override)
+    except ValueError:
+        raise ValueError(
+            "ALPACA_REQUIRED_OPTIONS_LEVEL must be an integer (e.g., 3 for the highest tier)"
+        )
+
+    return value
+
