@@ -21,6 +21,8 @@ import httpx
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from universe.watchlist_loader import save_active_watchlist
+
 # Comprehensive universe of potential options underlyings
 # Includes: major indices, mega-caps, popular growth/tech, meme stocks, sector ETFs
 FULL_UNIVERSE = [
@@ -154,9 +156,12 @@ class DynamicUniverseRanker:
             metrics.rank = i
         
         top_symbols = [m.symbol for m in scored_symbols[:n]]
-        
+
         logger.info(f"Top {n} options underlyings: {', '.join(top_symbols)}")
-        
+
+        # Persist current ranking for downstream consumers
+        save_active_watchlist(top_symbols)
+
         return top_symbols
     
     def get_ranked_metrics(self, n: int = 25) -> List[UnderlyingMetrics]:
