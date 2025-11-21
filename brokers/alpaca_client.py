@@ -12,6 +12,27 @@ class AlpacaClient:
     """Lightweight Alpaca client that submits orders from trade objects."""
 
     def __init__(self, key_id: str, secret_key: str, base_url: str):
+        self.base_url = base_url
+        self.api = REST(key_id, secret_key, base_url)
+
+    @classmethod
+    def from_env(cls, mode: str = "paper") -> "AlpacaClient":
+        """Instantiate using environment variables.
+
+        Args:
+            mode: "paper" (default) or "live". If ALPACA_BASE_URL is set it
+                takes precedence over the mode default.
+        """
+
+        base_url = os.environ.get(
+            "ALPACA_BASE_URL",
+            "https://paper-api.alpaca.markets" if mode == "paper" else "https://api.alpaca.markets",
+        )
+
+        return cls(
+            key_id=os.environ["ALPACA_API_KEY"],
+            secret_key=os.environ["ALPACA_SECRET_KEY"],
+            base_url=base_url,
         self.api = REST(key_id, secret_key, base_url)
 
     @classmethod

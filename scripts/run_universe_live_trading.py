@@ -59,6 +59,13 @@ def main(args: argparse.Namespace) -> None:
     print(f"[INFO] Active watchlist ({len(symbols)}): {', '.join(symbols)}")
 
     trade_agent = TradeAgent.from_config(args.config)
+    alpaca = AlpacaClient.from_env(mode=args.mode)
+
+    print(
+        f"[INFO] Submitting orders to {'paper' if args.mode == 'paper' else 'live'} endpoint: {alpaca.base_url}"
+    )
+    if args.dry_run:
+        print("[INFO] DRY RUN enabled - Alpaca orders will NOT be sent.")
     alpaca = AlpacaClient.from_env()
 
     for symbol in symbols:
@@ -80,6 +87,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="config/config.yaml")
     parser.add_argument("--max-names", type=int, default=25)
+    parser.add_argument("--mode", choices=["paper", "live"], default="paper")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
