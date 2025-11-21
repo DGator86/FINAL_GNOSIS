@@ -33,6 +33,15 @@ class AlpacaClient:
             key_id=os.environ["ALPACA_API_KEY"],
             secret_key=os.environ["ALPACA_SECRET_KEY"],
             base_url=base_url,
+        self.api = REST(key_id, secret_key, base_url)
+
+    @classmethod
+    def from_env(cls) -> "AlpacaClient":
+        """Instantiate using environment variables."""
+        return cls(
+            key_id=os.environ["ALPACA_API_KEY"],
+            secret_key=os.environ["ALPACA_SECRET_KEY"],
+            base_url=os.environ.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets"),
         )
 
     def submit_order_from_trade(self, trade: Any) -> None:

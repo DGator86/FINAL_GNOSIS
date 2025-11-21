@@ -66,6 +66,7 @@ def main(args: argparse.Namespace) -> None:
     )
     if args.dry_run:
         print("[INFO] DRY RUN enabled - Alpaca orders will NOT be sent.")
+    alpaca = AlpacaClient.from_env()
 
     for symbol in symbols:
         print(f"\n=== Running pipeline for {symbol} ===")
