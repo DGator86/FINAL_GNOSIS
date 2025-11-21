@@ -17,7 +17,11 @@ from alpaca.trading.requests import MarketOrderRequest
 from loguru import logger
 from pydantic import BaseModel
 
-from execution.broker_adapters.settings import get_alpaca_base_url, get_alpaca_paper_setting
+from execution.broker_adapters.settings import (
+    get_alpaca_base_url,
+    get_alpaca_paper_setting,
+    get_required_options_level,
+)
 
 
 class Account(BaseModel):
@@ -31,6 +35,9 @@ class Account(BaseModel):
     last_equity: float
     pattern_day_trader: bool = False
     trading_blocked: bool = False
+    options_trading_level: Optional[int] = None
+    options_approved_level: Optional[int] = None
+    options_buying_power: Optional[float] = None
 
 
 class Position(BaseModel):
@@ -85,6 +92,7 @@ class AlpacaBrokerAdapter:
         try:
             account = self.trading_client.get_account()
             logger.info(f"Connected to Alpaca - Account ID: {account.id}, Balance: ${float(account.cash):,.2f}")
+            self._verify_options_permissions(account)
         except APIError as e:
             logger.error(f"Failed to connect to Alpaca: {e}")
             raise
@@ -103,10 +111,44 @@ class AlpacaBrokerAdapter:
                 last_equity=float(account.last_equity),
                 pattern_day_trader=account.pattern_day_trader,
                 trading_blocked=account.trading_blocked,
+                options_trading_level=getattr(account, "options_trading_level", None),
+                options_approved_level=getattr(account, "options_approved_level", None),
+                options_buying_power=(
+                    float(account.options_buying_power)
+                    if getattr(account, "options_buying_power", None) is not None
+                    else None
+                ),
             )
         except APIError as e:
             logger.error(f"Error getting account info: {e}")
             raise
+
+    def _verify_options_permissions(self, account: object) -> None:
+        """Ensure the account has the required options trading level."""
+
+        required_level = get_required_options_level()
+        approved_level = getattr(account, "options_approved_level", None)
+        active_level = getattr(account, "options_trading_level", None)
+
+        if active_level is None:
+            logger.warning(
+                "Alpaca account does not report an options trading level; cannot validate permissions"
+            )
+            return
+
+        logger.info(
+            "Options trading level detected: %s (approved: %s, required: %s)",
+            active_level,
+            approved_level,
+            required_level,
+        )
+
+        if active_level < required_level:
+            raise ValueError(
+                "Alpaca options trading level is insufficient. "
+                f"Detected level {active_level} but level {required_level} is required for multi-leg strategies. "
+                "Visit the Alpaca dashboard to request the highest options tier."
+            )
     
     def get_positions(self) -> List[Position]:
         """Get current positions."""

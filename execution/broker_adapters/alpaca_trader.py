@@ -28,7 +28,10 @@ from alpaca.trading.requests import (
     StopLossRequest,
     TakeProfitRequest,
 )
-from execution.broker_adapters.settings import get_alpaca_paper_setting
+from execution.broker_adapters.settings import (
+    get_alpaca_paper_setting,
+    get_required_options_level,
+)
 
 
 @dataclass
@@ -91,6 +94,7 @@ class AlpacaTrader:
                 account.id,
                 account.status,
             )
+            self._enforce_options_permissions(account)
         except APIError as exc:
             self.logger.error("Failed to connect to Alpaca: %s", exc)
             raise
@@ -120,6 +124,11 @@ class AlpacaTrader:
                 "trading_blocked": account.trading_blocked,
                 "transfers_blocked": account.transfers_blocked,
                 "account_blocked": account.account_blocked,
+                "options_trading_level": getattr(account, "options_trading_level", None),
+                "options_approved_level": getattr(account, "options_approved_level", None),
+                "options_buying_power": float(account.options_buying_power)
+                if getattr(account, "options_buying_power", None) is not None
+                else None,
             }
         except APIError as exc:
             self.logger.error("Failed to get account info: %s", exc)
@@ -311,6 +320,33 @@ class AlpacaTrader:
         except APIError as exc:
             self.logger.error("Failed to get next market open: %s", exc)
             return None
+
+    def _enforce_options_permissions(self, account: object) -> None:
+        """Ensure the account exposes the required options trading tier."""
+
+        required_level = get_required_options_level()
+        active_level = getattr(account, "options_trading_level", None)
+        approved_level = getattr(account, "options_approved_level", None)
+
+        if active_level is None:
+            self.logger.warning(
+                "Alpaca account does not report an options trading level; cannot validate permissions"
+            )
+            return
+
+        self.logger.info(
+            "Options trading level detected: %s (approved: %s, required: %s)",
+            active_level,
+            approved_level,
+            required_level,
+        )
+
+        if active_level < required_level:
+            raise ValueError(
+                "Alpaca options trading level is insufficient for configured strategies. "
+                f"Detected level {active_level} but require {required_level}. "
+                "Upgrade to level 3 in the Alpaca dashboard to enable advanced options execution."
+            )
 
     def _format_order(self, order: Any) -> Dict[str, Any]:
         return {
