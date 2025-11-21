@@ -43,32 +43,12 @@ from feedback.tracking_agent import TrackingAgent
 from trade.trade_agent_v1 import TradeAgentV1
 from execution.broker_adapters.settings import get_alpaca_paper_setting
 from watchlist import AdaptiveWatchlist
+from universe.watchlist_loader import load_active_watchlist
 
 # Load environment variables
 load_dotenv()
 
 app = typer.Typer(help="Super Gnosis / DHPE Pipeline CLI")
-
-DEFAULT_WATCHLIST_UNIVERSE = [
-    "SPY",
-    "QQQ",
-    "IWM",
-    "DIA",
-    "NVDA",
-    "TSLA",
-    "AAPL",
-    "MSFT",
-    "AMZN",
-    "META",
-    "GOOGL",
-    "AMD",
-    "NFLX",
-    "SMH",
-    "XLK",
-    "XLE",
-    "XLF",
-]
-
 
 def build_pipeline(
     symbol: str,
@@ -116,8 +96,11 @@ def build_pipeline(
         config.agents.trade.model_dump(),
         broker=adapters.get("broker"),
     )
+    active_universe = load_active_watchlist()
+    watchlist_universe = list({*active_universe, symbol})
+
     watchlist = watchlist or AdaptiveWatchlist(
-        universe=list({*DEFAULT_WATCHLIST_UNIVERSE, symbol}),
+        universe=watchlist_universe,
         min_candidates=3,
         max_candidates=8,
         volume_threshold=10_000_000,
