@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 
+pytest.importorskip("optuna")
+
 from models.hyperparameter_optimization import BayesianOptimizer, HyperparameterSpace
 
 
