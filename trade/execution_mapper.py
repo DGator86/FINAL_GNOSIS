@@ -355,8 +355,17 @@ def build_iron_butterfly(
     upper_wing_target = spot * (1.0 + width_pct)
     lower_wing_target = spot * (1.0 - width_pct)
 
-    body_call = select_strike_near_price(calls, body_target)
-    body_put = select_strike_near_price(puts, body_target)
+    # Ensure body legs are at the same strike
+    call_strikes = set([c.strike for c in calls])
+    put_strikes = set([p.strike for p in puts])
+    common_strikes = call_strikes & put_strikes
+    if not common_strikes:
+        return None
+    # Select the common strike closest to body_target
+    body_strike = min(common_strikes, key=lambda s: abs(s - body_target))
+    # Select contracts at this strike
+    body_call = next((c for c in calls if c.strike == body_strike), None)
+    body_put = next((p for p in puts if p.strike == body_strike), None)
     wing_call = select_strike_near_price(calls, upper_wing_target)
     wing_put = select_strike_near_price(puts, lower_wing_target)
 
