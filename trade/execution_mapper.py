@@ -139,7 +139,7 @@ def select_strike_near_price(
     best_diff = None
     for c in chain:
         diff = abs(c.strike - target_price)
-        if best is None or diff < best_diff:
+        if best_diff is None or diff < best_diff:
             best = c
             best_diff = diff
     return best
