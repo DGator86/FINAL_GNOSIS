@@ -431,11 +431,25 @@ def build_long_strangle(
     )
 
 
+def build_call_debit_spread(
+    spec: StructureSpec,
+    chain: Sequence[OptionContract],
+    spot: float,
+) -> Optional[ProposedTrade]:
+    return build_debit_spread(spec, chain, spot, "call")
+
+def build_put_debit_spread(
+    spec: StructureSpec,
+    chain: Sequence[OptionContract],
+    spot: float,
+) -> Optional[ProposedTrade]:
+    return build_debit_spread(spec, chain, spot, "put")
+
 STRUCTURE_BUILDERS = {
     "long_call": lambda spec, chain, spot: build_long_call(spec, chain, spot),
     "long_put": lambda spec, chain, spot: build_long_put(spec, chain, spot),
-    "call_debit_spread": lambda spec, chain, spot: build_debit_spread(spec, chain, spot, "call"),
-    "put_debit_spread": lambda spec, chain, spot: build_debit_spread(spec, chain, spot, "put"),
+    "call_debit_spread": build_call_debit_spread,
+    "put_debit_spread": build_put_debit_spread,
     "iron_condor": lambda spec, chain, spot: build_iron_condor(spec, chain, spot),
     "iron_butterfly": lambda spec, chain, spot: build_iron_butterfly(spec, chain, spot),
     "long_strangle": lambda spec, chain, spot: build_long_strangle(spec, chain, spot),
