@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Raw API test to see exact response."""
 
+import pytest
+
+pytest.skip(
+    "Raw Unusual Whales API test requires network access and credentials.",
+    allow_module_level=True,
+)
+
 import os
 import httpx
 from dotenv import load_dotenv

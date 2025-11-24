@@ -4,6 +4,13 @@ Comprehensive Unusual Whales API endpoint tester.
 Tests multiple authentication methods and endpoint variations.
 """
 
+import pytest
+
+pytest.skip(
+    "Comprehensive Unusual Whales tests require network access and credentials.",
+    allow_module_level=True,
+)
+
 import os
 import httpx
 from dotenv import load_dotenv
