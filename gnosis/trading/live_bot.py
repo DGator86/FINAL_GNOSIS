@@ -11,8 +11,10 @@ previously missing ``gnosis`` package.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime
+import inspect
 from typing import Callable, Dict, List, Optional
 
 from alpaca.data.live import StockDataStream
@@ -126,13 +128,8 @@ class LiveTradingBot:
         self.adapter = AlpacaBrokerAdapter(paper=self.paper_mode)
         self.position_mgr = PositionManager()
         self.bars: List[Dict[str, object]] = []
-
-        # Live websocket client
-        self.stream = StockDataStream(
-            api_key=self.adapter.api_key,
-            secret_key=self.adapter.secret_key,
-            feed="iex",  # free plan feed
-        )
+        self.stream: Optional[StockDataStream] = None
+        self.running: bool = False
 
         logger.info(
             f"LiveTradingBot initialized for {self.symbol} | interval={self.bar_interval} | "
@@ -145,9 +142,38 @@ class LiveTradingBot:
         async def on_bar(bar):
             await self.process_bar(bar)
 
-        logger.info("Starting Alpaca data stream... press Ctrl+C to stop.")
-        self.stream.subscribe_bars(on_bar, self.symbol)
-        await self.stream.run()
+        self.running = True
+        retry_delay = 5
+
+        while self.running:
+            try:
+                self.stream = StockDataStream(
+                    api_key=self.adapter.api_key,
+                    secret_key=self.adapter.secret_key,
+                    feed="iex",  # free plan feed
+                )
+
+                logger.info("Starting Alpaca data stream... press Ctrl+C to stop.")
+                self.stream.subscribe_bars(on_bar, self.symbol)
+                await self.stream.run()
+
+                if self.running:
+                    logger.warning(
+                        "Alpaca stream stopped unexpectedly; restarting in %ss", retry_delay
+                    )
+                    await asyncio.sleep(retry_delay)
+
+            except asyncio.CancelledError:
+                logger.info("LiveTradingBot task cancelled; stopping stream")
+                self.running = False
+                break
+            except Exception as exc:  # pragma: no cover - defensive reconnect
+                logger.error("Stream error for %s: %s", self.symbol, exc)
+                await asyncio.sleep(retry_delay)
+            finally:
+                await self._stop_stream()
+
+        logger.info("LiveTradingBot stopped for %s", self.symbol)
 
     async def process_bar(self, bar) -> None:
         """Handle an incoming bar event."""
@@ -226,6 +252,22 @@ class LiveTradingBot:
             logger.info("DRY RUN: not sending sell order")
 
         self.position_mgr.close_position(symbol, price, reason)
+
+    async def _stop_stream(self) -> None:
+        """Gracefully stop the websocket stream if it is running."""
+        if not self.stream:
+            return
+
+        stop_fn = getattr(self.stream, "stop", None)
+        if callable(stop_fn):
+            try:
+                result = stop_fn()
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as exc:  # pragma: no cover - best-effort cleanup
+                logger.debug("Error stopping Alpaca stream for %s: %s", self.symbol, exc)
+
+        self.stream = None
 
     def _sma(self, window: int) -> float:
         if len(self.bars) < window:
