@@ -12,6 +12,9 @@ StructureType = Literal[
     "long_put",
     "call_debit_spread",
     "put_debit_spread",
+    "iron_condor",
+    "iron_butterfly",
+    "long_strangle",
     "call_credit_spread",
     "put_credit_spread",
     "iron_condor",
@@ -23,6 +26,13 @@ StructureType = Literal[
 
 @dataclass
 class StructureSpec:
+    """Specification of an options structure selected from cone metrics."""
+
+    structure_type: StructureType
+    size: int
+    target_dte: int
+    strike_offset_pct: Optional[float] = None
+    wing_width_pct: Optional[float] = None
     """
     Abstract options structure specification.
 
