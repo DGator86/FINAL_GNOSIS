@@ -312,6 +312,9 @@ def build_iron_condor(
     if None in (sc, lc, sp, lp):
         return None
 
+    # Validate iron condor strike ordering: long_put < short_put < short_call < long_call
+    if not (lp.strike < sp.strike < sc.strike < lc.strike):
+        return None
     legs = [
         OptionLeg(contract=sc, side="sell", quantity=spec.size, role="body"),
         OptionLeg(contract=lc, side="buy", quantity=spec.size, role="wing"),
