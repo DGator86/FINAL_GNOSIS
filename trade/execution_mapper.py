@@ -121,7 +121,7 @@ def filter_liquid(
         if c.mid <= 0:
             continue
         spread = c.ask - c.bid
-        spread_pct = spread / c.mid if c.mid > 0 else float("inf")
+        spread_pct = spread / c.mid
         if c.open_interest >= min_oi and c.volume >= min_volume and spread_pct <= max_spread_pct:
             liquid.append(c)
     return liquid
