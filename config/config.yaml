@@ -82,3 +82,16 @@ adaptation:
   performance_lookback: 20
   min_risk_per_trade: 0.005
   max_risk_per_trade: 0.05
+
+# Cloud Storage Configuration (S3-compatible)
+storage:
+  enabled: false                    # Set to true to enable S3 storage
+  provider: "massive"               # massive, aws, minio, etc.
+  endpoint: "https://files.massive.com"
+  bucket: "flatfiles"
+  region: "us-east-1"
+  auto_sync: false                  # Automatically sync local data to S3
+  sync_features: true               # Sync feature store to S3
+  sync_ledger: true                 # Sync ledger to S3
+  sync_logs: false                  # Sync logs to S3
+  sync_models: false                # Sync ML models to S3
