@@ -154,6 +154,21 @@ class AdaptationConfig(BaseModel):
     max_risk_per_trade: float = 0.05
 
 
+class StorageConfig(BaseModel):
+    """Configuration for cloud storage (S3-compatible)."""
+
+    enabled: bool = False
+    provider: str = "massive"  # massive, aws, minio, etc.
+    endpoint: str = "https://files.massive.com"
+    bucket: str = "flatfiles"
+    region: str = "us-east-1"
+    auto_sync: bool = False  # Automatically sync local data to S3
+    sync_features: bool = True  # Sync feature store to S3
+    sync_ledger: bool = True  # Sync ledger to S3
+    sync_logs: bool = False  # Sync logs to S3
+    sync_models: bool = False  # Sync ML models to S3
+
+
 class AppConfig(BaseModel):
     """Main application configuration."""
 
@@ -163,3 +178,4 @@ class AppConfig(BaseModel):
     trading: TradingConfig = Field(default_factory=TradingConfig)
     tracking: TrackingConfig = Field(default_factory=TrackingConfig)
     adaptation: AdaptationConfig = Field(default_factory=AdaptationConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
