@@ -1,0 +1,32 @@
+watchlist:
+  indices:
+    - symbol: SPY
+      name: S&P 500 ETF
+    - symbol: QQQ
+      name: Nasdaq 100 ETF
+    - symbol: IWM
+      name: Russell 2000 ETF
+  mega_tech:
+    - symbol: AAPL
+      name: Apple Inc.
+    - symbol: MSFT
+      name: Microsoft Corp.
+    - symbol: NVDA
+      name: NVIDIA Corp.
+    - symbol: TSLA
+      name: Tesla Inc.
+    - symbol: AMD
+      name: Advanced Micro Devices
+  financials:
+    - symbol: JPM
+      name: JPMorgan Chase
+    - symbol: BAC
+      name: Bank of America
+  high_volume:
+    - symbol: PLTR
+      name: Palantir Technologies
+    - symbol: SOFI
+      name: SoFi Technologies
+  strategic:
+    - symbol: COIN
+      name: Coinbase Global

@@ -1,0 +1,110 @@
+﻿.\.venv\Scripts\pytho
+n.exe : 2025-11-24 
+15:30:45.070 | INFO  
+   | execution.broker
+_adapters.alpaca_adap
+ter:__init__:89 - 
+AlpacaBrokerAdapter 
+initialized 
+(paper=True, base_url
+=https://paper-api.al
+paca.markets)
+At line:1 char:32
++ ... 
+NCODING="utf-8"; .\.v
+env\Scripts\python.ex
+e debug_bot.py 2>&1 
+| Out-F ...
++                    
+  ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: (2025-11   
+ -24 15:3...alpac    
+a.markets):Strin    
+g) [], RemoteExc    
+eption
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+2025-11-24 
+15:30:45.504 | INFO  
+   | execution.broker
+_adapters.alpaca_adap
+ter:__init__:94 - 
+Connected to Alpaca 
+- Account ID: 7244350
+8-88f8-420d-a070-f4f1
+b67f5f81, Balance: 
+$28,689.89
+2025-11-24 
+15:30:45.504 | INFO  
+   | execution.broker
+_adapters.alpaca_adap
+ter:_verify_options_p
+ermissions:139 - 
+Options trading 
+level detected: %s 
+(approved: %s, 
+required: %s)
+Traceback (most 
+recent call last):
+  File 
+"C:\Users\Darrin Voge
+li\FINAL_GNOSIS\debug
+_bot.py", line 18, 
+in main
+    bot = 
+LiveTradingBot(
+        symbol='SPY',
+    ...<3 lines>...
+        
+paper_mode=True
+    )
+  File 
+"C:\Users\Darrin Voge
+li\FINAL_GNOSIS\gnosi
+s\trading\live_bot.py
+", line 131, in 
+__init__
+    self.stream = 
+StockDataStream(
+                  
+~~~~~~~~~~~~~~~^
+        api_key=self.
+adapter.api_key,
+        ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^
+        secret_key=se
+lf.adapter.secret_key
+,
+        ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^
+^
+        feed="iex",  
+# free plan feed
+        ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^
+    )
+    ^
+  File 
+"C:\Users\Darrin Voge
+li\FINAL_GNOSIS\.venv
+\Lib\site-packages\al
+paca\data\live\stock.
+py", line 49, in 
+__init__
+    else BaseURL.MARK
+ET_DATA_STREAM.value 
++ "/v2/" + feed.value
+                     
+                     
+           ^^^^^^^^^^
+AttributeError: 
+'str' object has no 
+attribute 'value'
+Initializing LiveTradingBot for SPY...
+Error initializing bot: 'str' object has no attribute 'value'

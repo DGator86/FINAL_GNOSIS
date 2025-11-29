@@ -1,0 +1,25 @@
+Fatal error: 'NoneType' object has no attribute 'is_running'
+Traceback (most recent call last):
+  File "C:\Users\Darrin Vogeli\FINAL_GNOSIS\.venv\Lib\site-packages\alpaca\data\live\websocket.py", line 366, in run
+    asyncio.run(self._run_forever())
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Darrin Vogeli\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 191, in run
+    raise RuntimeError(
+        "asyncio.run() cannot be called from a running event loop")
+RuntimeError: asyncio.run() cannot be called from a running event loop
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Darrin Vogeli\FINAL_GNOSIS\start_full_trading_system.py", line 292, in run
+    await asyncio.gather(*tasks)
+  File "C:\Users\Darrin Vogeli\FINAL_GNOSIS\gnosis\trading\live_bot.py", line 151, in run
+    await self.stream.run()
+          ~~~~~~~~~~~~~~~^^
+  File "C:\Users\Darrin Vogeli\FINAL_GNOSIS\.venv\Lib\site-packages\alpaca\data\live\websocket.py", line 371, in run
+    self.stop()
+    ~~~~~~~~~^^
+  File "C:\Users\Darrin Vogeli\FINAL_GNOSIS\.venv\Lib\site-packages\alpaca\data\live\websocket.py", line 375, in stop
+    if self._loop.is_running():
+       ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'is_running'
