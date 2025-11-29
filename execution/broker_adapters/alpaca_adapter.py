@@ -13,7 +13,12 @@ from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
-from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.requests import (
+    MarketOrderRequest,
+    LimitOrderRequest,
+    StopOrderRequest,
+    StopLimitOrderRequest,
+)
 from loguru import logger
 from pydantic import BaseModel
 
@@ -221,24 +226,78 @@ class AlpacaBrokerAdapter:
         try:
             # Convert string enums
             order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
+            order_type_lower = order_type.lower()
             
-            # For now, only support market orders
-            # TODO: Add support for limit/stop orders
-            if order_type.lower() != "market":
-                logger.warning(f"Order type {order_type} not yet supported, using market order")
+            # Convert time in force
+            tif_map = {
+                "day": TimeInForce.DAY,
+                "gtc": TimeInForce.GTC,
+                "ioc": TimeInForce.IOC,
+                "fok": TimeInForce.FOK,
+            }
+            tif = tif_map.get(time_in_force.lower(), TimeInForce.DAY)
             
-            # Create market order request
-            order_data = MarketOrderRequest(
-                symbol=symbol,
-                qty=quantity,
-                side=order_side,
-                time_in_force=TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC,
-            )
+            # Create appropriate order request based on type
+            if order_type_lower == "market":
+                order_data = MarketOrderRequest(
+                    symbol=symbol,
+                    qty=quantity,
+                    side=order_side,
+                    time_in_force=tif,
+                )
+                logger.info(f"Submitting MARKET order: {side.upper()} {quantity} {symbol}")
+                
+            elif order_type_lower == "limit":
+                if limit_price is None:
+                    logger.error("Limit price required for limit orders")
+                    return None
+                order_data = LimitOrderRequest(
+                    symbol=symbol,
+                    qty=quantity,
+                    side=order_side,
+                    time_in_force=tif,
+                    limit_price=limit_price,
+                )
+                logger.info(f"Submitting LIMIT order: {side.upper()} {quantity} {symbol} @ ${limit_price}")
+                
+            elif order_type_lower == "stop":
+                if stop_price is None:
+                    logger.error("Stop price required for stop orders")
+                    return None
+                order_data = StopOrderRequest(
+                    symbol=symbol,
+                    qty=quantity,
+                    side=order_side,
+                    time_in_force=tif,
+                    stop_price=stop_price,
+                )
+                logger.info(f"Submitting STOP order: {side.upper()} {quantity} {symbol} @ stop ${stop_price}")
+                
+            elif order_type_lower == "stop_limit":
+                if limit_price is None or stop_price is None:
+                    logger.error("Both limit and stop prices required for stop-limit orders")
+                    return None
+                order_data = StopLimitOrderRequest(
+                    symbol=symbol,
+                    qty=quantity,
+                    side=order_side,
+                    time_in_force=tif,
+                    limit_price=limit_price,
+                    stop_price=stop_price,
+                )
+                logger.info(
+                    f"Submitting STOP-LIMIT order: {side.upper()} {quantity} {symbol} "
+                    f"@ stop ${stop_price}, limit ${limit_price}"
+                )
+                
+            else:
+                logger.error(f"Unsupported order type: {order_type}. Supported: market, limit, stop, stop_limit")
+                return None
             
             # Submit order
             order = self.trading_client.submit_order(order_data)
             
-            logger.info(f"Order submitted: {side.upper()} {quantity} {symbol} - Order ID: {order.id}")
+            logger.info(f"Order submitted successfully - Order ID: {order.id}")
             
             return str(order.id)
             

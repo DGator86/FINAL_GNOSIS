@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 import torch
+import warnings
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.preprocessing import StandardScaler
@@ -159,7 +160,6 @@ class GnosisLSTMForecaster(BaseGnosisModel):
                 continue
 
             input_dim = X_seq_train.shape[-1]
-            model = LSTMForecaster(
             model = AttentionLSTMBackbone(
                 input_dim=input_dim,
                 hidden_dim=self.hidden_dim,

@@ -297,52 +297,6 @@ HTML_TEMPLATE = """
                         b.composer_confidence - a.composer_confidence
                     );
                     
-                    sortedSymbols.forEach(symbol => {
-                        const status = symbol.composer_status.toLowerCase();
-                        const confidence = symbol.composer_confidence * 100;
-                        
-                        html += `
-                            <div class="symbol-card ${status}">
-                                <div class="symbol-header">
-                                    <div class="symbol-name">${symbol.symbol}</div>
-                                    <div class="symbol-price">$${symbol.price.toFixed(2)}</div>
-                                </div>
-                                
-                                <div class="composer-status">
-                                    <span style="font-size: 0.9em;">Composer Agent</span>
-                                    <span class="status-badge ${status}">${symbol.composer_status}</span>
-                                </div>
-                                
-                                <div class="confidence-bar">
-                                    <div class="confidence-fill" style="width: ${confidence}%"></div>
-                                </div>
-                                <div style="text-align: center; font-size: 0.8em; margin-top: 3px;">
-                                    Confidence: ${confidence.toFixed(1)}%
-                                </div>
-                                
-                                <div class="signals">
-                                    <div class="signal-row">
-                                        <span>🔄 Flow Signal:</span>
-                                        <span>${symbol.signals.flow.signal}</span>
-                                    </div>
-                                    <div class="signal-row">
-                                        <span>📈 Momentum:</span>
-                                        <span>${symbol.signals.momentum.signal}</span>
-                                    </div>
-                                    ${symbol.flow_data.total_flows ? `
-                                    <div class="signal-row">
-                                        <span>📊 Options Flow:</span>
-                                        <span>${symbol.flow_data.bullish_count}↑ ${symbol.flow_data.bearish_count}↓</span>
-                                    </div>
-                                    ` : ''}
-                                </div>
-                            </div>
-                        `;
-                    });
-                    
-                    html += '</div>';
-                    container.innerHTML = html;
-                    
                     // Update timestamp
                     document.getElementById('last-update').textContent = 
                         new Date(data.last_update).toLocaleTimeString();
@@ -361,36 +315,38 @@ HTML_TEMPLATE = """
 """
 
 
-@app.route('/')
+@app.route("/")
 def index():
     """Main dashboard page"""
     return render_template_string(HTML_TEMPLATE)
 
 
-@app.route('/api/state')
+@app.route("/api/state")
 def get_state():
     """API endpoint to get current scanner state"""
     state_file = Path("data/scanner_state/current_state.json")
-    
+
     if state_file.exists():
-        with open(state_file, 'r') as f:
+        with open(state_file, "r") as f:
             return jsonify(json.load(f))
     else:
-        return jsonify({
-            'symbols': {},
-            'market_open': False,
-            'positions': [],
-            'account': {
-                'portfolio_value': 30000,
-                'cash': 30000,
-                'buying_power': 60000,
-                'pnl': 0
-            },
-            'last_update': datetime.now().isoformat()
-        })
+        return jsonify(
+            {
+                "symbols": {},
+                "market_open": False,
+                "positions": [],
+                "account": {
+                    "portfolio_value": 30000,
+                    "cash": 30000,
+                    "buying_power": 60000,
+                    "pnl": 0,
+                },
+                "last_update": datetime.now().isoformat(),
+            }
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("""
 ╔════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
@@ -401,5 +357,5 @@ if __name__ == '__main__':
 ║                                                                        ║
 ╚════════════════════════════════════════════════════════════════════════╝
     """)
-    
-    app.run(host='0.0.0.0', port=8000, debug=False)
+
+    app.run(host="0.0.0.0", port=8000, debug=False)

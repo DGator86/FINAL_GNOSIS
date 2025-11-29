@@ -10,6 +10,7 @@ from alpaca.common.exceptions import APIError
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
 from alpaca.data.timeframe import TimeFrame
+from alpaca.data.enums import DataFeed
 from loguru import logger
 
 from engines.inputs.market_data_adapter import OHLCV, Quote
@@ -74,6 +75,7 @@ class AlpacaMarketDataAdapter:
                 timeframe=tf,
                 start=start,
                 end=end,
+                feed=DataFeed.IEX,
             )
             
             # Get bars
