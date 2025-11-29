@@ -12,12 +12,13 @@ from pathlib import Path
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from gnosis.trading.live_bot import LiveTradingBot
+from gnosis.unified_trading_bot import UnifiedTradingBot
+import yaml
 
 
 async def main():
     """Run bot with configuration"""
-    
+
     print("""
 ╔════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
@@ -29,8 +30,9 @@ Configuration:
   Symbol:   SPY
   Interval: 1-minute bars
   Memory:   ✅ Enabled (episodic learning)
-  Trading:  ❌ DRY RUN (set enable_trading=True to trade)
+  Trading:  ✅ ENABLED (Paper Trading)
   Mode:     📄 Paper (Alpaca paper account)
+  Bot Type: Unified (Options + Equity)
   
 Risk Controls:
   Max Position:     15% per trade
@@ -42,26 +44,35 @@ Risk Controls:
 
 Press Ctrl+C to stop gracefully.
 """)
-    
+
     # Confirm start
     try:
         response = input("Start bot? (y/n): ")
-        if response.lower() != 'y':
+        if response.lower() != "y":
             print("Cancelled.")
             return
     except KeyboardInterrupt:
         print("\nCancelled.")
         return
-    
+
+    # Load config
+    try:
+        with open("config/config.yaml", "r") as f:
+            config = yaml.safe_load(f)
+    except FileNotFoundError:
+        print("⚠️ config.yaml not found, using defaults")
+        config = {}
+
     # Create and run bot
-    bot = LiveTradingBot(
-        symbol="SPY",
-        bar_interval="1Min",
-        enable_memory=True,      # Use episodic memory
-        enable_trading=True,     # TRADING ENABLED - Will place paper orders
-        paper_mode=True          # Paper trading account
+    bot = UnifiedTradingBot(
+        config=config,
+        enable_trading=True,  # TRADING ENABLED - Will place paper orders
+        paper_mode=True,  # Paper trading account
     )
-    
+
+    print("Initializing bot for SPY...")
+    await bot.add_symbol("SPY")
+
     await bot.run()
 
 
@@ -73,5 +84,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ Fatal error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

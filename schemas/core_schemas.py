@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 class EngineSnapshot(BaseModel):
     """Base snapshot from an engine."""
-    
+
     timestamp: datetime
     symbol: str
     data: Dict[str, Any] = Field(default_factory=dict)
@@ -19,7 +19,7 @@ class EngineSnapshot(BaseModel):
 
 class HedgeSnapshot(BaseModel):
     """Snapshot from the Hedge Engine."""
-    
+
     timestamp: datetime
     symbol: str
     elasticity: float = 0.0
@@ -38,7 +38,7 @@ class HedgeSnapshot(BaseModel):
 
 class LiquiditySnapshot(BaseModel):
     """Snapshot from the Liquidity Engine."""
-    
+
     timestamp: datetime
     symbol: str
     liquidity_score: float = 0.5
@@ -50,7 +50,7 @@ class LiquiditySnapshot(BaseModel):
 
 class SentimentSnapshot(BaseModel):
     """Snapshot from the Sentiment Engine."""
-    
+
     timestamp: datetime
     symbol: str
     sentiment_score: float = 0.0
@@ -62,7 +62,7 @@ class SentimentSnapshot(BaseModel):
 
 class ElasticitySnapshot(BaseModel):
     """Snapshot from the Elasticity Engine."""
-    
+
     timestamp: datetime
     symbol: str
     volatility: float = 0.0
@@ -119,6 +119,7 @@ class MLEnhancementSnapshot(BaseModel):
 
 class DirectionEnum(str, Enum):
     """Trade direction enum."""
+
     LONG = "long"
     SHORT = "short"
     NEUTRAL = "neutral"
@@ -126,7 +127,7 @@ class DirectionEnum(str, Enum):
 
 class AgentSuggestion(BaseModel):
     """Suggestion from a primary agent."""
-    
+
     agent_name: str
     timestamp: datetime
     symbol: str
@@ -138,6 +139,7 @@ class AgentSuggestion(BaseModel):
 
 class StrategyType(str, Enum):
     """Strategy type enum."""
+
     DIRECTIONAL = "directional"
     MEAN_REVERSION = "mean_reversion"
     BREAKOUT = "breakout"
@@ -145,9 +147,35 @@ class StrategyType(str, Enum):
     HEDGED = "hedged"
 
 
+class OptionsLeg(BaseModel):
+    """Single leg of an options strategy."""
+
+    symbol: str
+    ratio: int
+    side: str  # "buy" or "sell"
+    type: str  # "call" or "put"
+    strike: float
+    expiration: str  # YYYY-MM-DD
+    action: str  # "buy_to_open", "sell_to_open", "buy_to_close", "sell_to_close"
+
+
+class OptionsOrderRequest(BaseModel):
+    """Request for a multi-leg options order."""
+
+    symbol: str  # Underlying symbol
+    strategy_name: str
+    legs: List[OptionsLeg]
+    max_loss: float
+    max_profit: float
+    bpr: float  # Buying Power Reduction
+    rationale: str
+    confidence: float
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
 class TradeIdea(BaseModel):
     """Trade idea from the trade agent."""
-    
+
     timestamp: datetime
     symbol: str
     strategy_type: StrategyType
@@ -158,6 +186,7 @@ class TradeIdea(BaseModel):
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     reasoning: str = ""
+    options_request: Optional[OptionsOrderRequest] = None
 
 
 class WatchlistEntry(BaseModel):
@@ -173,6 +202,7 @@ class WatchlistEntry(BaseModel):
 
 class OrderStatus(str, Enum):
     """Order status enum."""
+
     PENDING = "pending"
     SUBMITTED = "submitted"
     FILLED = "filled"
@@ -183,7 +213,7 @@ class OrderStatus(str, Enum):
 
 class OrderResult(BaseModel):
     """Result of an order execution."""
-    
+
     timestamp: datetime
     symbol: str
     status: OrderStatus
@@ -224,7 +254,7 @@ class AdaptationUpdate(BaseModel):
 
 class LedgerEntry(BaseModel):
     """Entry in the ledger store."""
-    
+
     timestamp: datetime
     symbol: str
     event_type: str
@@ -233,7 +263,7 @@ class LedgerEntry(BaseModel):
 
 class PipelineResult(BaseModel):
     """Complete result from a pipeline run."""
-    
+
     timestamp: datetime
     symbol: str
     hedge_snapshot: Optional[HedgeSnapshot] = None
@@ -249,3 +279,66 @@ class PipelineResult(BaseModel):
     tracking_snapshot: Optional[TrackingSnapshot] = None
     adaptation_update: Optional[AdaptationUpdate] = None
     ml_snapshot: Optional[MLEnhancementSnapshot] = None
+
+
+class OptionsPosition(BaseModel):
+    """Options position tracking."""
+
+    symbol: str  # Option symbol
+    underlying: str
+    quantity: float
+    entry_price: float
+    current_price: float
+    market_value: float
+    unrealized_pnl: float
+    unrealized_pnl_pct: float
+    side: str
+    expiration: datetime
+    strike: float
+    option_type: str  # "call" or "put"
+    delta: Optional[float] = None
+    gamma: Optional[float] = None
+    theta: Optional[float] = None
+    vega: Optional[float] = None
+
+
+class PortfolioGreeks(BaseModel):
+    """Aggregate portfolio Greeks."""
+
+    net_delta: float = 0.0
+    net_gamma: float = 0.0
+    net_theta: float = 0.0
+    net_vega: float = 0.0
+    timestamp: datetime
+
+
+class Position(BaseModel):
+    """Position tracking for UnifiedTradingBot."""
+
+    symbol: str
+    side: str  # "long" or "short"
+    size: float  # Position size in $ (or BPR for options)
+    entry_price: float
+    entry_time: datetime
+    quantity: float = 0.0
+
+    # Risk Management
+    highest_price: Optional[float] = None
+    stop_loss_price: Optional[float] = None
+    take_profit_price: Optional[float] = None
+    trailing_stop_price: Optional[float] = None
+    trailing_stop_active: bool = False
+
+    # Metadata
+    asset_class: str = "equity"  # "equity", "option", "option_strategy"
+    option_symbol: Optional[str] = None
+
+    def update_highest_price(self, current_price: float) -> None:
+        """Update highest price seen for trailing stop."""
+        if self.highest_price is None:
+            self.highest_price = current_price
+        else:
+            if self.side == "long":
+                self.highest_price = max(self.highest_price, current_price)
+            else:
+                self.highest_price = min(self.highest_price, current_price)
