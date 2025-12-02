@@ -149,10 +149,19 @@ bot = LiveTradingBot(
 )
 ```
 
-**⚠️ IMPORTANT:** 
+**⚠️ IMPORTANT:**
 - `enable_trading=False` is DRY RUN mode (no actual orders placed)
 - Set `enable_trading=True` only when ready to paper trade
 - Always use `paper_mode=True` for testing
+
+### Troubleshooting: Bot is not placing trades
+
+If the dashboard shows signals but no orders are being submitted:
+
+- **Check the launcher flag:** Verify the `enable_trading` argument is set to `True` in the starter script you are running (e.g., `start_paper_trading.py`, `start_with_dashboard.py`). A `False` value keeps the bot in dry-run mode.
+- **Confirm valid Alpaca keys:** Ensure `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` are loaded in the environment and point to a paper account when `paper_mode=True`.
+- **Verify market session:** Alpaca rejects orders outside regular or extended trading hours for some symbols. Check the `trading.calendar` API in the logs to confirm the market is open for the current day.
+- **Review risk caps:** The risk manager blocks entries when portfolio limits are hit (daily loss, drawdown, or max positions). Inspect the console or dashboard logs for messages from `risk_manager.py`.
 
 ### Environment Variables
 
