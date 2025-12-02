@@ -1,6 +1,7 @@
 import logging
+import os
 from datetime import datetime
-from typing import List, Dict, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,13 +13,6 @@ try:
     from pipeline.full_pipeline import run_full_pipeline_for_symbol  # type: ignore
 except Exception:  # pragma: no cover - defensive
     run_full_pipeline_for_symbol = None  # type: ignore
-import os
-from datetime import datetime
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Dict, Optional
-from loguru import logger
 
 # Try to import the UnusualWhalesAdapter
 try:
@@ -83,19 +77,21 @@ class TradeIdea(BaseModel):
 # -----------------------------------------------------
 # HELPERS
 # -----------------------------------------------------
-
-def _coerce_float(v) -> float:
+def _coerce_float(value: Any, default: float = 0.0) -> float:
     try:
-        return float(v)
-    except Exception:
-        return 0.0
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _parse_direction(flow: dict) -> Optional[str]:
     candidates = [
-        flow.get("direction"), flow.get("sentiment"),
-        flow.get("side"), flow.get("order_side"),
-        flow.get("option_type"), flow.get("type"),
+        flow.get("direction"),
+        flow.get("sentiment"),
+        flow.get("side"),
+        flow.get("order_side"),
+        flow.get("option_type"),
+        flow.get("type"),
     ]
 
     for cand in candidates:
@@ -154,9 +150,39 @@ def _determine_horizon(exp: Optional[datetime], flow: dict) -> str:
     return "POSITION"
 
 
-# -----------------------------------------------------
-# UNUSUAL WHALES PIPELINE
-# -----------------------------------------------------
+def _get(obj: Any, *names: str, default: Any = None) -> Any:
+    """Safely get attribute or dict key from an object using multiple candidate names."""
+    for name in names:
+        if hasattr(obj, name):
+            value = getattr(obj, name)
+            if value is not None:
+                return value
+        if isinstance(obj, dict) and name in obj and obj[name] is not None:
+            return obj[name]
+    return default
+
+
+def _normalize_direction(raw: Optional[str]) -> str:
+    if not raw:
+        return "LONG"
+    text = str(raw).upper()
+    if any(tok in text for tok in ["SHORT", "PUT", "BEAR", "DOWN"]):
+        return "SHORT"
+    return "LONG"
+
+
+def _normalize_horizon(raw: Optional[str]) -> str:
+    if not raw:
+        return "SWING"
+    text = str(raw).upper()
+    if "INTRA" in text or text in {"0DTE", "1D"}:
+        return "INTRADAY"
+    if any(tok in text for tok in ["SWING", "5D", "10D", "WEEK"]):
+        return "SWING"
+    if any(tok in text for tok in ["POS", "POSITION", "MONTH", "30D"]):
+        return "POSITION"
+    return "SWING"
+
 
 def generate_trade_ideas_from_unusual_whales(symbol: str) -> List[TradeIdea]:
     symbol = symbol.upper()
@@ -200,49 +226,24 @@ def generate_trade_ideas_from_unusual_whales(symbol: str) -> List[TradeIdea]:
             f"Expiry {expiry_label}. Use for confirmation."
         )
 
-# ---------- Helper for engine integration ----------
+        ideas.append(
+            TradeIdea(
+                id=f"uw-{symbol}-{idx}",
+                symbol=symbol,
+                title=title,
+                thesis=thesis,
+                direction=direction,
+                confidence=confidence,
+                horizon=horizon,
+            )
+        )
 
-def _get(obj: Any, *names: str, default: Any = None) -> Any:
-    """
-    Safely get attribute or dict key from an object using multiple candidate names.
-    """
-    for name in names:
-        if hasattr(obj, name):
-            value = getattr(obj, name)
-            if value is not None:
-                return value
-        if isinstance(obj, dict) and name in obj and obj[name] is not None:
-            return obj[name]
-    return default
+    if not ideas:
+        logger.info("UW flow returned zero usable trades; using mock ideas instead.")
+        return [idea for idea in MOCK_TRADE_IDEAS if idea.symbol == symbol]
 
-
-def _coerce_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _normalize_direction(raw: Optional[str]) -> str:
-    if not raw:
-        return "LONG"
-    text = str(raw).upper()
-    if any(tok in text for tok in ["SHORT", "PUT", "BEAR", "DOWN"]):
-        return "SHORT"
-    return "LONG"
-
-
-def _normalize_horizon(raw: Optional[str]) -> str:
-    if not raw:
-        return "SWING"
-    text = str(raw).upper()
-    if "INTRA" in text or text in {"0DTE", "1D"}:
-        return "INTRADAY"
-    if any(tok in text for tok in ["SWING", "5D", "10D", "WEEK"]):
-        return "SWING"
-    if any(tok in text for tok in ["POS", "POSITION", "MONTH", "30D"]):
-        return "POSITION"
-    return "SWING"
+    ideas.sort(key=lambda x: x.confidence, reverse=True)
+    return ideas
 
 
 def generate_trade_ideas_from_gnosis(symbol: str) -> List[TradeIdea]:
@@ -316,10 +317,6 @@ def generate_trade_ideas_from_gnosis(symbol: str) -> List[TradeIdea]:
             TradeIdea(
                 id=f"gnosis-{t_symbol}-{idx}",
                 symbol=t_symbol,
-        ideas.append(
-            TradeIdea(
-                id=f"uw-{symbol}-{idx}",
-                symbol=symbol,
                 title=title,
                 thesis=thesis,
                 direction=direction,
@@ -335,12 +332,6 @@ def generate_trade_ideas_from_gnosis(symbol: str) -> List[TradeIdea]:
     # Sort by confidence descending so the strongest idea is first
     ideas.sort(key=lambda ti: ti.confidence, reverse=True)
     return ideas
-
-
-# ---------- Temporary Mock Data (same as frontend) ----------
-
-    ideas.sort(key=lambda x: x.confidence, reverse=True)
-    return ideas or [idea for idea in MOCK_TRADE_IDEAS if idea.symbol == symbol]
 
 
 # -----------------------------------------------------
@@ -526,5 +517,17 @@ def get_trade_ideas(symbol: str) -> List[TradeIdea]:
     Fallback: mock ideas for that symbol if engine import or execution fails.
     """
     symbol = symbol.upper()
-    return generate_trade_ideas_from_gnosis(symbol)
-    return generate_trade_ideas_from_unusual_whales(symbol.upper())
+
+    gnosis_ideas = generate_trade_ideas_from_gnosis(symbol)
+    uw_ideas = generate_trade_ideas_from_unusual_whales(symbol)
+
+    combined: List[TradeIdea] = []
+    seen_ids = set()
+    for idea in gnosis_ideas + uw_ideas:
+        if idea.id in seen_ids:
+            continue
+        seen_ids.add(idea.id)
+        combined.append(idea)
+
+    combined.sort(key=lambda ti: ti.confidence, reverse=True)
+    return combined
