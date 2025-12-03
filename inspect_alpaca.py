@@ -1,4 +1,5 @@
 import inspect
+
 from alpaca.data.live import StockDataStream
 
 print("StockDataStream._run_forever source:")
