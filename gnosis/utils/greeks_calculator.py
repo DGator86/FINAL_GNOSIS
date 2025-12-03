@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+from scipy import stats
 from loguru import logger
 
 
@@ -39,12 +42,21 @@ class GreeksCalculator:
             return None
 
         try:
-            # Alpaca provides Greeks in option quotes
-            # This is a placeholder - actual implementation depends on Alpaca API
-            logger.info(f"Fetching Greeks for {symbol}")
+            # Alpaca options API returns Greeks in the snapshot/quote
+            # Get latest option quote which includes Greeks
+            quote = self.options_adapter.get_latest_quote(symbol)
 
-            # TODO: Implement actual Alpaca API call
-            # For now, return None to indicate unavailable
+            if quote and hasattr(quote, 'greeks'):
+                greeks = quote.greeks
+                return {
+                    'delta': greeks.delta,
+                    'gamma': greeks.gamma,
+                    'theta': greeks.theta,
+                    'vega': greeks.vega,
+                    'rho': getattr(greeks, 'rho', 0.0),
+                }
+
+            logger.warning(f"No Greeks available from API for {symbol}")
             return None
 
         except Exception as e:
@@ -111,6 +123,103 @@ class GreeksCalculator:
             "timestamp": datetime.now().isoformat(),
         }
 
+    def calculate_black_scholes_greeks(
+        self,
+        option_type: str,
+        spot_price: float,
+        strike: float,
+        time_to_expiration: float,
+        risk_free_rate: float,
+        volatility: float,
+        dividend_yield: float = 0.0,
+    ) -> Dict[str, float]:
+        """
+        Calculate Greeks using Black-Scholes-Merton model.
+
+        Args:
+            option_type: 'call' or 'put'
+            spot_price: Current underlying price
+            strike: Strike price
+            time_to_expiration: Time to expiration in years
+            risk_free_rate: Risk-free interest rate (annual)
+            volatility: Implied volatility (annual, e.g., 0.20 for 20%)
+            dividend_yield: Continuous dividend yield (annual)
+
+        Returns:
+            Dictionary with delta, gamma, theta, vega, rho
+        """
+        try:
+            # Prevent division by zero
+            if time_to_expiration <= 0:
+                # At expiration, options have intrinsic value only
+                intrinsic = max(0, spot_price - strike) if option_type == "call" else max(0, strike - spot_price)
+                return {
+                    "delta": 1.0 if (option_type == "call" and spot_price > strike) else 0.0,
+                    "gamma": 0.0,
+                    "theta": 0.0,
+                    "vega": 0.0,
+                    "rho": 0.0,
+                }
+
+            # Calculate d1 and d2
+            d1 = (math.log(spot_price / strike) + (risk_free_rate - dividend_yield + 0.5 * volatility**2) * time_to_expiration) / (volatility * math.sqrt(time_to_expiration))
+            d2 = d1 - volatility * math.sqrt(time_to_expiration)
+
+            # Standard normal CDF and PDF
+            nd1 = stats.norm.cdf(d1)
+            nd2 = stats.norm.cdf(d2)
+            npd1 = stats.norm.pdf(d1)
+
+            # Delta
+            if option_type == "call":
+                delta = math.exp(-dividend_yield * time_to_expiration) * nd1
+            else:
+                delta = -math.exp(-dividend_yield * time_to_expiration) * (1 - nd1)
+
+            # Gamma (same for calls and puts)
+            gamma = (math.exp(-dividend_yield * time_to_expiration) * npd1) / (spot_price * volatility * math.sqrt(time_to_expiration))
+
+            # Theta (daily decay, divide by 365)
+            if option_type == "call":
+                theta = (
+                    -spot_price * npd1 * volatility * math.exp(-dividend_yield * time_to_expiration) / (2 * math.sqrt(time_to_expiration))
+                    - risk_free_rate * strike * math.exp(-risk_free_rate * time_to_expiration) * nd2
+                    + dividend_yield * spot_price * math.exp(-dividend_yield * time_to_expiration) * nd1
+                ) / 365.0
+            else:
+                theta = (
+                    -spot_price * npd1 * volatility * math.exp(-dividend_yield * time_to_expiration) / (2 * math.sqrt(time_to_expiration))
+                    + risk_free_rate * strike * math.exp(-risk_free_rate * time_to_expiration) * (1 - nd2)
+                    - dividend_yield * spot_price * math.exp(-dividend_yield * time_to_expiration) * (1 - nd1)
+                ) / 365.0
+
+            # Vega (per 1% change in volatility, divide by 100)
+            vega = (spot_price * math.exp(-dividend_yield * time_to_expiration) * npd1 * math.sqrt(time_to_expiration)) / 100.0
+
+            # Rho (per 1% change in interest rate, divide by 100)
+            if option_type == "call":
+                rho = (strike * time_to_expiration * math.exp(-risk_free_rate * time_to_expiration) * nd2) / 100.0
+            else:
+                rho = (-strike * time_to_expiration * math.exp(-risk_free_rate * time_to_expiration) * (1 - nd2)) / 100.0
+
+            return {
+                "delta": round(delta, 4),
+                "gamma": round(gamma, 6),
+                "theta": round(theta, 4),
+                "vega": round(vega, 4),
+                "rho": round(rho, 4),
+            }
+
+        except Exception as e:
+            logger.error(f"Error calculating Black-Scholes Greeks: {e}")
+            return {
+                "delta": 0.0,
+                "gamma": 0.0,
+                "theta": 0.0,
+                "vega": 0.0,
+                "rho": 0.0,
+            }
+
     def estimate_greeks_simple(
         self,
         option_type: str,
@@ -121,8 +230,8 @@ class GreeksCalculator:
         """
         Simple estimation of Greeks without full Black-Scholes.
 
-        This is a rough approximation for when API data is unavailable.
-        NOT suitable for production trading decisions.
+        DEPRECATED: Use calculate_black_scholes_greeks() instead for accurate calculations.
+        This method is kept for backwards compatibility only.
 
         Args:
             option_type: 'call' or 'put'
@@ -133,41 +242,20 @@ class GreeksCalculator:
         Returns:
             Dictionary with estimated Greeks
         """
-        # Calculate moneyness
-        moneyness = (
-            (current_price - strike) / strike
-            if option_type == "call"
-            else (strike - current_price) / strike
-        )
-
-        # Rough delta estimation
-        if option_type == "call":
-            if current_price > strike:
-                delta = 0.5 + min(0.5, moneyness * 2)  # ITM: 0.5-1.0
-            else:
-                delta = 0.5 - min(0.5, abs(moneyness) * 2)  # OTM: 0-0.5
-        else:  # put
-            if current_price < strike:
-                delta = -0.5 - min(0.5, moneyness * 2)  # ITM: -0.5 to -1.0
-            else:
-                delta = -0.5 + min(0.5, abs(moneyness) * 2)  # OTM: -0.5 to 0
-
-        # Rough gamma (highest ATM, decreases as you move away)
-        gamma = max(0, 0.05 * (1 - abs(moneyness) * 5))
-
-        # Rough theta (increases as expiration approaches)
-        theta = -0.05 * (30 / max(1, days_to_expiration))
-
-        # Rough vega (highest ATM, decreases with time)
-        vega = 0.1 * (days_to_expiration / 30) * (1 - abs(moneyness))
-
         logger.warning(
-            f"Using ESTIMATED Greeks for {option_type} {strike} - NOT ACCURATE for trading!"
+            "estimate_greeks_simple() is DEPRECATED. Use calculate_black_scholes_greeks() for accurate Greeks."
         )
 
-        return {
-            "delta": round(delta, 4),
-            "gamma": round(gamma, 4),
-            "theta": round(theta, 4),
-            "vega": round(vega, 4),
-        }
+        # Use Black-Scholes with assumed volatility and risk-free rate
+        assumed_vol = 0.25  # 25% annual volatility
+        assumed_rate = 0.05  # 5% risk-free rate
+        time_to_exp = days_to_expiration / 365.0
+
+        return self.calculate_black_scholes_greeks(
+            option_type=option_type,
+            spot_price=current_price,
+            strike=strike,
+            time_to_expiration=time_to_exp,
+            risk_free_rate=assumed_rate,
+            volatility=assumed_vol,
+        )

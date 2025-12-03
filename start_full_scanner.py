@@ -32,7 +32,7 @@ from alpaca.trading.enums import OrderSide, TimeInForce
 try:
     from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
     UW_AVAILABLE = True
-except:
+except ImportError:
     UW_AVAILABLE = False
     print("⚠️  Unusual Whales not available")
 
@@ -139,7 +139,8 @@ async def scan_symbol(symbol: str):
                         'bearish_count': bearish,
                         'total_flows': len(flows)
                     }
-            except:
+            except Exception as e:
+                # Flow data not available, continue with defaults
                 pass
         
         # Get recent bars for momentum
