@@ -65,7 +65,7 @@ class AlpacaBrokerAdapter:
     def __init__(self, paper: Optional[bool] = None):
         """
         Initialize Alpaca adapter.
-        
+
         Args:
             paper: Whether to use paper trading (default: True)
         """
@@ -74,29 +74,39 @@ class AlpacaBrokerAdapter:
         self.api_key = os.getenv("ALPACA_API_KEY")
         self.secret_key = os.getenv("ALPACA_SECRET_KEY")
         self.base_url = get_alpaca_base_url(self.paper)
-        
+
         if not self.api_key or not self.secret_key:
             raise ValueError("Alpaca credentials not found in environment. Set ALPACA_API_KEY and ALPACA_SECRET_KEY.")
-        
+
         # Initialize trading client
         self.trading_client = TradingClient(
             api_key=self.api_key,
             secret_key=self.secret_key,
             paper=self.paper,
         )
-        
+
         # Initialize data client
         self.data_client = StockHistoricalDataClient(
             api_key=self.api_key,
             secret_key=self.secret_key,
         )
-        
+
+        # Risk management settings from environment
+        self.max_position_size_pct = float(os.getenv("MAX_POSITION_SIZE_PCT", "2.0")) / 100.0
+        self.max_daily_loss_usd = float(os.getenv("MAX_DAILY_LOSS_USD", "5000.0"))
+        self.max_portfolio_leverage = float(os.getenv("MAX_PORTFOLIO_LEVERAGE", "1.0"))
+
+        # Track daily P&L for circuit breaker
+        self.session_start_equity = None
+
         logger.info(f"AlpacaBrokerAdapter initialized (paper={self.paper}, base_url={self.base_url})")
-        
+        logger.info(f"Risk Limits - Max Position: {self.max_position_size_pct*100:.1f}%, Max Daily Loss: ${self.max_daily_loss_usd:,.2f}")
+
         # Verify connection
         try:
             account = self.trading_client.get_account()
             logger.info(f"Connected to Alpaca - Account ID: {account.id}, Balance: ${float(account.cash):,.2f}")
+            self.session_start_equity = float(account.equity)
             self._verify_options_permissions(account)
         except APIError as e:
             logger.error(f"Failed to connect to Alpaca: {e}")
@@ -127,6 +137,75 @@ class AlpacaBrokerAdapter:
         except APIError as e:
             logger.error(f"Error getting account info: {e}")
             raise
+
+    def _validate_position_size(self, symbol: str, quantity: float, current_price: Optional[float] = None) -> None:
+        """
+        Validate that the order doesn't exceed position size limits.
+
+        Args:
+            symbol: Trading symbol
+            quantity: Order quantity
+            current_price: Current price (will fetch if not provided)
+
+        Raises:
+            ValueError: If position size exceeds limits
+        """
+        # Get current account value
+        account = self.get_account()
+        portfolio_value = account.portfolio_value
+
+        # Get current price if not provided
+        if current_price is None:
+            try:
+                from alpaca.data.requests import StockLatestQuoteRequest
+                quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+                quote = self.data_client.get_stock_latest_quote(quote_request)
+                current_price = float(quote[symbol].ask_price)
+            except Exception as e:
+                logger.warning(f"Could not fetch price for {symbol}, using conservative estimate: {e}")
+                # Use buying power as conservative fallback
+                current_price = account.buying_power / quantity if quantity > 0 else 0.0
+
+        # Calculate order value
+        order_value = quantity * current_price
+
+        # Check against maximum position size
+        max_position_value = portfolio_value * self.max_position_size_pct
+
+        if order_value > max_position_value:
+            raise ValueError(
+                f"Order size ${order_value:,.2f} exceeds maximum position size of "
+                f"${max_position_value:,.2f} ({self.max_position_size_pct*100:.1f}% of ${portfolio_value:,.2f})"
+            )
+
+        logger.debug(f"Position size validation passed: ${order_value:,.2f} <= ${max_position_value:,.2f}")
+
+    def _check_daily_loss_limit(self) -> None:
+        """
+        Check if daily loss limit has been exceeded (circuit breaker).
+
+        Raises:
+            ValueError: If daily loss limit exceeded
+        """
+        if self.session_start_equity is None:
+            logger.warning("Session start equity not set, cannot check daily loss limit")
+            return
+
+        # Get current equity
+        account = self.get_account()
+        current_equity = account.equity
+
+        # Calculate session P&L
+        session_pnl = current_equity - self.session_start_equity
+
+        # Check if loss exceeds limit
+        if session_pnl < -self.max_daily_loss_usd:
+            raise ValueError(
+                f"CIRCUIT BREAKER TRIGGERED: Daily loss of ${-session_pnl:,.2f} exceeds limit of "
+                f"${self.max_daily_loss_usd:,.2f}. Trading halted for this session."
+            )
+
+        logger.debug(f"Daily loss check passed: P&L = ${session_pnl:+,.2f}")
 
     def _verify_options_permissions(self, account: object) -> None:
         """Ensure the account has the required options trading level."""
@@ -224,6 +303,14 @@ class AlpacaBrokerAdapter:
             Order ID if successful, None otherwise
         """
         try:
+            # Risk management checks before placing order
+            if side.lower() == "buy":
+                # Check daily loss limit (circuit breaker)
+                self._check_daily_loss_limit()
+
+                # Validate position size
+                self._validate_position_size(symbol, quantity, limit_price if limit_price else None)
+
             # Convert string enums
             order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
             order_type_lower = order_type.lower()

@@ -547,7 +547,8 @@ class SemanticMemory:
                             f"{condition_data['name']} {relation_type} {self.concepts[action_id].name} "
                             f"(strength: {strength:.2f})"
                         )
-            except:
+            except (KeyError, AttributeError):
+                # Skip incomplete graph edges
                 continue
         
         return reasoning[:3]  # Limit to top 3 reasoning steps

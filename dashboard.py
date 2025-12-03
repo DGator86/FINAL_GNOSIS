@@ -89,7 +89,8 @@ def load_ledger_data():
         for line in f:
             try:
                 records.append(json.loads(line))
-            except:
+            except json.JSONDecodeError:
+                # Skip malformed JSON lines
                 continue
     
     if not records:
