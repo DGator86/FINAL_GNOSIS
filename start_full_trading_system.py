@@ -11,6 +11,11 @@ from pathlib import Path
 from datetime import datetime
 import signal
 
+# Force UTF-8 encoding for Windows console
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -102,10 +107,16 @@ class FullTradingSystem:
         self.scanner = MultiTimeframeScanner()
 
         # Initialize Unified Trading Bot
-        logger.info("Initializing Unified Trading Bot...")
-        self.bot = UnifiedTradingBot(
-            config=self.config, enable_trading=True, paper_mode=self.paper_mode
+        import inspect
+
+        logger.info(f"UnifiedTradingBot class: {UnifiedTradingBot}")
+        logger.info(f"UnifiedTradingBot file: {inspect.getfile(UnifiedTradingBot)}")
+        logger.info(f"UnifiedTradingBot init: {inspect.signature(UnifiedTradingBot.__init__)}")
+
+        logger.info(
+            f"Initializing Unified Trading Bot with config keys: {list(self.config.keys())}"
         )
+        self.bot = UnifiedTradingBot(self.config, enable_trading=True, paper_mode=self.paper_mode)
 
         # Start with SPY, QQQ, and top tech stocks
         primary_symbols = ["SPY", "QQQ", "AAPL", "NVDA", "TSLA"]
@@ -348,15 +359,15 @@ if __name__ == "__main__":
     # Run the system
     try:
         print("""
-⚠️  STARTING FULL PAPER TRADING SYSTEM
+!!  STARTING FULL PAPER TRADING SYSTEM
    This will begin placing paper trades immediately!
    Press Ctrl+C at any time to stop.
 """)
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n👋 Trading system stopped by user.")
+        print("\n>> Trading system stopped by user.")
     except Exception as e:
-        print(f"\n❌ Fatal error: {e}")
+        print(f"\nXX Fatal error: {e}")
         import traceback
 
         traceback.print_exc()

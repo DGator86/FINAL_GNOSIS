@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Set, Any
@@ -63,14 +64,25 @@ class UnifiedTradingBot:
         self.options_adapter = AlpacaOptionsAdapter(paper=paper_mode)
 
         # Initialize Agents
+        logger.info("Initializing TradeAgentRouter...")
         self.trade_agent = TradeAgentRouter(config=config, options_adapter=self.options_adapter)
-        self.hedge_agent = HedgeAgentV4()
-        self.liquidity_agent = LiquidityAgentV2()
-        self.sentiment_agent = SentimentAgentV2()
-        self.composer_agent = ComposerAgentV2()
+
+        logger.info("Initializing HedgeAgentV4...")
+        self.hedge_agent = HedgeAgentV4(config=config)
+
+        logger.info("Initializing LiquidityAgentV2...")
+        self.liquidity_agent = LiquidityAgentV2(config=config)
+
+        logger.info("Initializing SentimentAgentV2...")
+        self.sentiment_agent = SentimentAgentV2(config=config)
+
+        logger.info("Initializing ComposerAgentV2...")
+        self.composer_agent = ComposerAgentV2(config=config)
 
         # Initialize Data Stream
+        logger.info("Initializing StockDataStream...")
         self.stream = StockDataStream(os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_SECRET_KEY"))
+        logger.info("StockDataStream initialized.")
 
     async def add_symbol(self, symbol: str):
         """Add a symbol to monitor and trade."""
@@ -81,7 +93,7 @@ class UnifiedTradingBot:
         self.active_symbols.add(symbol)
 
         # Initialize timeframe manager for this symbol
-        tf_mgr = TimeframeManager(symbol)
+        tf_mgr = TimeframeManager()
         self.symbol_data[symbol] = SymbolData(symbol=symbol, timeframe_mgr=tf_mgr)
 
         # Subscribe to bars
@@ -107,6 +119,8 @@ class UnifiedTradingBot:
     async def _handle_bar(self, bar):
         """Handle incoming bar data."""
         symbol = bar.symbol
+        logger.debug(f"Received bar for {symbol}: Close={bar.close}")
+
         if symbol not in self.symbol_data:
             return
 
@@ -123,29 +137,179 @@ class UnifiedTradingBot:
         # Check circuit breaker
         await self.check_circuit_breaker()
 
+        # Export state for dashboard
+        await self.export_state()
+
+    async def export_state(self):
+        """Export current state to JSON for dashboard."""
+        try:
+            # Prepare positions data
+            positions_data = []
+            for symbol, pos in self.positions.items():
+                pos_dict = pos.dict()
+                positions_data.append(pos_dict)
+
+            # Prepare account data (simplified)
+            account_data = {
+                "portfolio_value": self.daily_start_value,  # Approx
+                "pnl": 0.0,  # TODO: Calculate real PnL
+            }
+            try:
+                acct = self.adapter.get_account()
+                account_data["portfolio_value"] = float(acct.portfolio_value)
+                account_data["pnl"] = float(acct.equity) - float(acct.last_equity)
+            except Exception:
+                pass
+
+            # Prepare symbols data (from active symbols)
+            symbols_data = {}
+            for sym in self.active_symbols:
+                # Placeholder for scanner data
+                symbols_data[sym] = {
+                    "symbol": sym,
+                    "price": 0.0,  # TODO: Get last price
+                    "composer_confidence": 0.5,  # Placeholder
+                    "composer_signal": "HOLD",
+                }
+
+            state = {
+                "market_open": True,  # TODO: Check clock
+                "account": account_data,
+                "positions": positions_data,
+                "symbols": symbols_data,
+                "last_update": datetime.now().isoformat(),
+            }
+
+            # Write to file
+            os.makedirs("data/scanner_state", exist_ok=True)
+            with open("data/scanner_state/current_state.json", "w") as f:
+                json.dump(state, f, default=str)
+
+        except Exception as e:
+            logger.error(f"Failed to export state: {e}")
+
     async def analyze_and_trade(self, symbol: str, current_price: float):
         """Analyze market and generate trade signals."""
+        # Skip if already at max positions
+        if len(self.positions) >= self.max_positions:
+            logger.debug(f"Skipping {symbol}: Max positions reached ({len(self.positions)})")
+            return
+
+        # Skip if already in position for this symbol
+        if symbol in self.positions:
+            logger.debug(f"Skipping {symbol}: Already in position")
+            return
+
+        # Skip if circuit breaker triggered
+        if self.circuit_breaker_triggered:
+            logger.debug(f"Skipping {symbol}: Circuit breaker triggered")
+            return
+
+        # Get timeframe data
+        if symbol not in self.symbol_data:
+            return
+
+        tf_mgr = self.symbol_data[symbol].timeframe_mgr
+
+        # Check if we have enough data
+        bar_counts = tf_mgr.get_bar_counts()
+        if bar_counts.get("1Min", 0) < 5:  # Reduced from 20 to 5 for testing
+            logger.debug(f"Skipping {symbol}: Not enough bars ({bar_counts.get('1Min', 0)} < 5)")
+            return
+
+        # Create simple agent suggestions based on price action
+        suggestions = []
+
+        # Simple trend detection from 5min bars
+        bars_5min = tf_mgr.get_bars("5Min", count=5)
+        if len(bars_5min) >= 2:  # Reduced requirement
+            # Simple momentum: Close > Open (Bullish) or Close < Open (Bearish)
+            last_bar = bars_5min[-1]
+            prev_bar = bars_5min[-2]
+
+            trend_up = last_bar.close > last_bar.open and last_bar.close > prev_bar.close
+            trend_down = last_bar.close < last_bar.open and last_bar.close < prev_bar.close
+
+            if trend_up or trend_down:
+                from schemas.core_schemas import AgentSuggestion, DirectionEnum
+
+                direction = DirectionEnum.LONG if trend_up else DirectionEnum.SHORT
+                confidence = 0.7  # High confidence for testing
+
+                suggestions.append(
+                    AgentSuggestion(
+                        agent_name="simple_trend",
+                        timestamp=datetime.now(),
+                        symbol=symbol,
+                        direction=direction,
+                        confidence=confidence,
+                        reasoning=f"{'Uptrend' if trend_up else 'Downtrend'} detected (Close vs Open/Prev)",
+                        target_allocation=0.0,
+                    )
+                )
+
+        # If no clear signal, don't trade
+        if not suggestions:
+            logger.debug(f"Skipping {symbol}: No trend detected")
+            return
+
+        # Use composer to make final decision
+        composer_result = self.composer_agent.compose(suggestions, datetime.now())
+
+        # Check if composer gives GO signal
+        if composer_result.get("confidence", 0) < 0.5:  # Reduced threshold
+            logger.debug(
+                f"Skipping {symbol}: Low confidence ({composer_result.get('confidence', 0):.2f})"
+            )
+            return
+
+        direction_str = composer_result.get("direction", "NEUTRAL")
+        if direction_str == "NEUTRAL":
+            return
+
+        logger.info(
+            f"🎯 Trading signal for {symbol}: {direction_str} (confidence: {composer_result['confidence']:.2f})"
+        )
+
+        # Create ComposerDecision for TradeAgentRouter
+        from agents.composer.composer_agent_v2 import ComposerDecision
+
+        composer_decision = ComposerDecision(
+            timestamp=datetime.now(),
+            symbol=symbol,
+            go_signal=True,
+            predicted_direction=direction_str,
+            confidence=composer_result["confidence"],
+            predicted_timeframe="intraday",
+            risk_reward_ratio=2.0,
+            reasoning=composer_result.get("reasoning", "Trend-based signal"),
+        )
+
         # Get account info for capital
         try:
             account = self.adapter.get_account()
-            # available_capital = float(account.cash) # Unused
+            available_capital = float(account.cash)
         except Exception:
-            pass
-            # available_capital = 100000.0
+            available_capital = 10000.0  # Fallback
 
-        # Check max positions
-        if len(self.positions) >= self.max_positions:
-            return
+        # Generate strategy using TradeAgentRouter
+        try:
+            strategy = self.trade_agent.generate_strategy(
+                composer_decision=composer_decision,
+                current_price=current_price,
+                available_capital=available_capital,
+                timestamp=datetime.now(),
+            )
 
-        # Generate Strategy using Router
-        # Note: In a real scenario, we would get signals from other agents first.
-        # For now, we'll assume the router can generate a strategy if we ask it.
-        # But the router expects a 'composer_decision'.
+            if strategy:
+                logger.info(f"✅ Strategy generated for {symbol}")
+                # Execute the trade
+                await self.open_position(symbol, strategy, current_price)
+            else:
+                logger.info(f"⚠️ No valid strategy generated for {symbol}")
 
-        # Placeholder for composer decision
-        # We need to create a dummy decision or integrate with composer
-        # For now, let's skip if we don't have a signal
-        pass
+        except Exception as e:
+            logger.error(f"Error generating/executing strategy for {symbol}: {e}")
 
     async def open_position(self, symbol: str, strategy, current_price: float) -> None:
         """Open a new position."""
@@ -153,21 +317,17 @@ class UnifiedTradingBot:
         # Get account info for sizing
         try:
             account = self.adapter.get_account()
-            # buying_power = float(account.buying_power) # Unused
             equity = float(account.equity)
         except Exception:
-            # buying_power = 100000.0
             equity = 100000.0
 
         if isinstance(strategy, OptionsOrderRequest):
             logger.info(f"Opening OPTIONS strategy: {strategy.strategy_name} for {symbol}")
 
             # Calculate Quantity based on Risk
-            # Risk amount = Equity * Risk %
             risk_amount = equity * self.risk_per_trade_pct
 
             # Cost basis per contract (BPR or Max Loss)
-            # Use BPR as the primary cost constraint, or max_loss if BPR is 0 (e.g. long options)
             cost_per_unit = strategy.bpr if strategy.bpr > 0 else strategy.max_loss
 
             # If cost is still 0 or undefined, fallback to a safe default or 1
@@ -198,11 +358,10 @@ class UnifiedTradingBot:
                 logger.info(f"DRY RUN: Would execute {strategy.strategy_name} x {quantity}")
 
             # Track position
-            # For options, we track the primary leg or the strategy as a whole
             primary_leg = strategy.legs[0]
             pos = Position(
                 symbol=symbol,
-                side="long",  # Strategies are generally "long" the strategy itself (even if net short premium)
+                side="long",
                 size=strategy.bpr * quantity,
                 entry_price=current_price,
                 entry_time=datetime.now(),
@@ -378,10 +537,28 @@ class UnifiedTradingBot:
         """Run the trading bot."""
         self.running = True
         logger.info("Starting UnifiedTradingBot stream...")
-        await self.stream.run()
+        try:
+            if self.stream:
+                # Use _run_forever if available (async), otherwise fallback to run (sync wrapper)
+                if hasattr(self.stream, "_run_forever"):
+                    logger.info("Using async stream._run_forever()")
+                    await self.stream._run_forever()
+                else:
+                    logger.info("Using sync stream.run()")
+                    await self.stream.run()
+            else:
+                logger.warning("No valid stream to run.")
+        except Exception as e:
+            logger.error(f"Stream run failed: {e}")
 
     async def stop(self):
         """Stop the trading bot."""
         self.running = False
         if self.stream:
-            await self.stream.stop()
+            try:
+                await self.stream.stop()
+            except AttributeError:
+                # Stream loop might not be initialized if run() wasn't called
+                pass
+            except Exception as e:
+                logger.error(f"Error stopping stream: {e}")
