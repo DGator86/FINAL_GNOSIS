@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 import torch
-import warnings
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.preprocessing import StandardScaler
@@ -116,7 +115,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
 
         return np.array(X), np.array(y)
 
-    def train(self, X: np.ndarray, y: np.ndarray, **kwargs) -> Dict[str, Any]:
+    def train(self, X: np.ndarray, y: np.ndarray, **kwargs: Any) -> Dict[int, Dict[str, Any]]:
         """Train LSTM models for multiple horizons."""
 
         validation_split = kwargs.get("validation_split", 0.2)
@@ -262,7 +261,7 @@ class GnosisLSTMForecaster(BaseGnosisModel):
         self.logger.info("LSTM training completed for all horizons")
         return training_results
 
-    def predict(self, X: np.ndarray, **kwargs) -> Dict[str, Any]:
+    def predict(self, X: np.ndarray, **kwargs: Any) -> Dict[str, Any]:
         """Generate multi-horizon predictions with optional uncertainty."""
 
         if not self.is_trained or not self.models:
