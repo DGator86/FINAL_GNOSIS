@@ -286,8 +286,8 @@ Press Ctrl+C to stop gracefully.
 
 ✅ System shutdown complete. All positions remain open in paper account.
 """)
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Error during shutdown summary: {e}")
         
         logger.info("Shutdown complete.")
 

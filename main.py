@@ -291,8 +291,8 @@ def live_loop(
                 typer.echo(f"   Final Cash: ${account.cash:,.2f}")
                 positions = broker.get_positions()
                 typer.echo(f"   Open Positions: {len(positions)}")
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not fetch final account info: {e}")
         
         typer.echo("="*80)
 
@@ -635,8 +635,8 @@ def multi_symbol_loop(
                 if positions:
                     for pos in positions:
                         typer.echo(f"      {pos.symbol}: {pos.quantity} @ ${pos.avg_entry_price:.2f} | P&L: ${pos.unrealized_pnl:+,.2f}")
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not fetch final portfolio info: {e}")
         
         typer.echo("="*80)
 

@@ -100,7 +100,8 @@ for name, url, use_query_param in test_cases:
                     best_result = (auth_name, status, "SUCCESS", data)
                     results[name] = best_result
                     break  # Found working auth method
-                except:
+                except (ValueError, KeyError) as e:
+                    # Non-JSON response
                     print(f"     Response (text): {response.text[:100]}")
                     best_result = (auth_name, status, "SUCCESS (non-JSON)", response.text[:200])
                     results[name] = best_result

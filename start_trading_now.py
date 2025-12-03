@@ -158,7 +158,8 @@ async def trade_symbols():
                                 if bullish_count >= 3:
                                     bullish_signal = True
                                     print(f"   📈 Bullish options flow detected for {symbol}")
-                        except:
+                        except Exception as e:
+                            # Flow data not available, skip
                             pass
                         
                         # Simple momentum check (would be more sophisticated in production)
