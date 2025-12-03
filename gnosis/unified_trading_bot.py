@@ -96,7 +96,49 @@ class UnifiedTradingBot:
         tf_mgr = TimeframeManager()
         self.symbol_data[symbol] = SymbolData(symbol=symbol, timeframe_mgr=tf_mgr)
 
-        # Subscribe to bars
+        # Fetch historical bars to populate initial data
+        try:
+            from alpaca.data.historical import StockHistoricalDataClient
+            from alpaca.data.requests import StockBarsRequest
+            from alpaca.data.timeframe import TimeFrame
+            from datetime import datetime, timedelta
+
+            # Initialize historical data client
+            hist_client = StockHistoricalDataClient(
+                os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_SECRET_KEY")
+            )
+
+            # Request last 50 1-minute bars
+            end_time = datetime.now()
+            start_time = end_time - timedelta(hours=2)  # Look back 2 hours to ensure we get 50 bars
+
+            request_params = StockBarsRequest(
+                symbol_or_symbols=symbol, timeframe=TimeFrame.Minute, start=start_time, end=end_time
+            )
+
+            bars_response = hist_client.get_stock_bars(request_params)
+
+            if symbol in bars_response.data:
+                historical_bars = bars_response.data[symbol]
+                # Take last 50 bars
+                recent_bars = (
+                    historical_bars[-50:] if len(historical_bars) > 50 else historical_bars
+                )
+
+                # Feed bars into timeframe manager
+                for bar in recent_bars:
+                    tf_mgr.update(bar)
+
+                logger.info(f"Loaded {len(recent_bars)} historical bars for {symbol}")
+                bar_counts = tf_mgr.get_bar_counts()
+                logger.info(f"Bar counts: {bar_counts}")
+            else:
+                logger.warning(f"No historical bars found for {symbol}")
+
+        except Exception as e:
+            logger.error(f"Failed to fetch historical bars for {symbol}: {e}")
+
+        # Subscribe to live bars
         try:
             self.stream.subscribe_bars(self._handle_bar, symbol)
         except Exception as e:
