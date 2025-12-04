@@ -224,6 +224,118 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             logger.error(f"Error getting IV for {symbol}: {error}")
             return None
 
+    def get_stock_quote(self, symbol: str) -> Optional[dict]:
+        """Get real-time stock quote from Unusual Whales.
+
+        Returns dict with: last_price, bid, ask, volume, timestamp
+        """
+        if not self.client or not self.api_token:
+            return None
+
+        try:
+            # Try v2 endpoint first
+            endpoints = [
+                f"{self.BASE_URL}/v2/stock/quote/{symbol}",
+                f"{self.BASE_URL}/api/stock/quote/{symbol}",
+                f"{self.BASE_URL}/api/quote/{symbol}",
+            ]
+
+            for url in endpoints:
+                try:
+                    response = self.client.get(url)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    # Extract quote data from various possible formats
+                    quote_data = data.get("data", data)
+                    if isinstance(quote_data, list) and quote_data:
+                        quote_data = quote_data[0]
+
+                    if quote_data and isinstance(quote_data, dict):
+                        return {
+                            "last_price": quote_data.get("last") or quote_data.get("price") or quote_data.get("close"),
+                            "bid": quote_data.get("bid"),
+                            "ask": quote_data.get("ask"),
+                            "volume": quote_data.get("volume"),
+                            "timestamp": quote_data.get("timestamp") or quote_data.get("updated_at"),
+                        }
+                except httpx.HTTPStatusError:
+                    continue
+
+            logger.warning(f"No stock quote endpoint working for {symbol}")
+            return None
+        except Exception as error:
+            logger.error(f"Error getting stock quote for {symbol}: {error}")
+            return None
+
+    def get_stock_bars(self, symbol: str, timeframe: str = "1Min", limit: int = 50) -> List[dict]:
+        """Get historical stock bars/candles from Unusual Whales.
+
+        Args:
+            symbol: Stock symbol
+            timeframe: Timeframe (1Min, 5Min, 15Min, 1H, 1D)
+            limit: Number of bars to retrieve
+
+        Returns:
+            List of bars with: timestamp, open, high, low, close, volume
+        """
+        if not self.client or not self.api_token:
+            return []
+
+        try:
+            # Map timeframe to UW format
+            tf_map = {
+                "1Min": "1m",
+                "5Min": "5m",
+                "15Min": "15m",
+                "1H": "1h",
+                "1D": "1d"
+            }
+            uw_timeframe = tf_map.get(timeframe, "1m")
+
+            endpoints = [
+                f"{self.BASE_URL}/v2/stock/historical/{symbol}",
+                f"{self.BASE_URL}/api/stock/historical/{symbol}",
+                f"{self.BASE_URL}/api/historical/{symbol}",
+            ]
+
+            params = {
+                "timeframe": uw_timeframe,
+                "limit": limit
+            }
+
+            for url in endpoints:
+                try:
+                    response = self.client.get(url, params=params)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    bars_data = data.get("data", data.get("bars", []))
+                    if bars_data and isinstance(bars_data, list):
+                        bars = []
+                        for bar in bars_data:
+                            if isinstance(bar, dict):
+                                bars.append({
+                                    "timestamp": bar.get("timestamp") or bar.get("t"),
+                                    "open": bar.get("open") or bar.get("o"),
+                                    "high": bar.get("high") or bar.get("h"),
+                                    "low": bar.get("low") or bar.get("l"),
+                                    "close": bar.get("close") or bar.get("c"),
+                                    "volume": bar.get("volume") or bar.get("v"),
+                                })
+
+                        if bars:
+                            logger.info(f"Retrieved {len(bars)} bars for {symbol} from Unusual Whales")
+                            return bars
+                except httpx.HTTPStatusError:
+                    continue
+
+            logger.warning(f"No historical bars endpoint working for {symbol}")
+            return []
+        except Exception as error:
+            logger.error(f"Error getting stock bars for {symbol}: {error}")
+            return []
+
     def close(self) -> None:
         if self.client:
             self.client.close()

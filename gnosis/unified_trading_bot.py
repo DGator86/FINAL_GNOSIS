@@ -136,9 +136,39 @@ class UnifiedTradingBot:
                 logger.warning(f"No historical bars found for {symbol}")
 
         except Exception as e:
-            # Try yfinance as fallback for historical data
+            # Try Unusual Whales first (premium data source), then yfinance
             logger.warning(f"Alpaca historical data failed for {symbol}: {e}")
-            logger.info(f"Trying yfinance as fallback for {symbol}...")
+            logger.info(f"Trying Unusual Whales as fallback for {symbol}...")
+
+            try:
+                from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+
+                uw_adapter = UnusualWhalesAdapter()
+                bars = uw_adapter.get_stock_bars(symbol, timeframe="1Min", limit=50)
+
+                if bars:
+                    # Convert UW data to Alpaca-like bar format
+                    for bar_data in bars:
+                        class UWBar:
+                            def __init__(self, data):
+                                self.t = data.get("timestamp")
+                                self.o = data.get("open")
+                                self.h = data.get("high")
+                                self.l = data.get("low")
+                                self.c = data.get("close")
+                                self.v = data.get("volume")
+
+                        bar = UWBar(bar_data)
+                        tf_mgr.update(bar)
+
+                    logger.info(f"✅ Loaded {len(bars)} bars from Unusual Whales for {symbol}")
+                    # Skip yfinance since we got data from UW
+                    return
+                else:
+                    logger.info("No data from Unusual Whales, trying yfinance...")
+            except Exception as uw_error:
+                logger.warning(f"Unusual Whales fallback failed for {symbol}: {uw_error}")
+                logger.info(f"Trying yfinance as final fallback for {symbol}...")
 
             try:
                 import yfinance as yf
@@ -178,11 +208,13 @@ class UnifiedTradingBot:
                 logger.warning(f"yfinance fallback also failed for {symbol}: {yf_error}")
                 logger.info(f"Continuing without historical data for {symbol} - will use real-time stream")
 
-        # Subscribe to live bars
+        # Subscribe to live bars (optional - gracefully handle connection limits)
         try:
             self.stream.subscribe_bars(self._handle_bar, symbol)
+            logger.info(f"Subscribed to live bars for {symbol}")
         except Exception as e:
-            logger.error(f"Failed to subscribe to {symbol}: {e}")
+            logger.warning(f"Could not subscribe to live bars for {symbol}: {e}")
+            logger.info(f"Will use polling mode for {symbol} instead of live stream")
 
     async def update_universe(self, update: UniverseUpdate):
         """Update the active universe."""
