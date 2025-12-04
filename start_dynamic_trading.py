@@ -9,6 +9,10 @@ import sys
 import os
 from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables FIRST
+load_dotenv()
 
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent))

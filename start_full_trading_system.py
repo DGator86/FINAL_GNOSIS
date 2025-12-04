@@ -10,6 +10,10 @@ import os
 from pathlib import Path
 from datetime import datetime
 import signal
+from dotenv import load_dotenv
+
+# Load environment variables FIRST
+load_dotenv()
 
 # Force UTF-8 encoding for Windows console
 if sys.platform == "win32":
