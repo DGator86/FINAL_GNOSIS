@@ -73,19 +73,11 @@ try:
     print("\n🔄 Connecting to Unusual Whales...")
     uw_adapter = UnusualWhalesAdapter()
     
-    # Test connection
-    tide = uw_adapter.get_market_tide()
-    if tide and 'data' in tide:
+    # Test connection with unusual activity
+    activity = uw_adapter.get_unusual_activity()
+    if activity:
         print("✅ Unusual Whales connected successfully")
-        
-        # Get latest market sentiment
-        if isinstance(tide['data'], list) and len(tide['data']) > 0:
-            latest = tide['data'][-1]
-            net_call = float(latest.get('net_call_premium', 0))
-            net_put = float(latest.get('net_put_premium', 0))
-            
-            sentiment = "BULLISH 📈" if net_call > abs(net_put) else "BEARISH 📉"
-            print(f"   Current Market Sentiment: {sentiment}")
+        print(f"   Found {len(activity)} recent unusual options activities")
     
 except Exception as e:
     print(f"⚠️  Unusual Whales connection issue (non-critical): {e}")

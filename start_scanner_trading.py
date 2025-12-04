@@ -24,7 +24,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from gnosis.scanner import MultiTimeframeScanner
 from gnosis.unified_trading_bot import UnifiedTradingBot
-from gnosis.dashboard.dashboard_server import app
+
+# Dashboard is optional
+try:
+    from gnosis.dashboard.dashboard_server import app
+    DASHBOARD_AVAILABLE = True
+except ImportError:
+    DASHBOARD_AVAILABLE = False
+    print("⚠️  Dashboard not available (gnosis.dashboard not found) - continuing without it")
 
 
 class TradingSystem:
@@ -139,6 +146,9 @@ class TradingSystem:
 
     def start_dashboard(self):
         """Start the web dashboard in a separate thread"""
+        if not DASHBOARD_AVAILABLE:
+            print("⚠️  Dashboard not available - skipping")
+            return
 
         def run_dashboard():
             uvicorn.run(
