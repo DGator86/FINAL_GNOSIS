@@ -143,27 +143,46 @@ class UnifiedTradingBot:
             try:
                 from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
 
+                # Define bar class once
+                class UWBar:
+                    """Simple bar object compatible with TimeframeManager"""
+                    def __init__(self, t, o, h, l, c, v):
+                        self.t = t  # timestamp
+                        self.o = o  # open
+                        self.h = h  # high
+                        self.l = l  # low
+                        self.c = c  # close
+                        self.v = v  # volume
+
                 uw_adapter = UnusualWhalesAdapter()
-                bars = uw_adapter.get_stock_bars(symbol, timeframe="1Min", limit=50)
+                bars_data = uw_adapter.get_stock_bars(symbol, timeframe="1Min", limit=50)
 
-                if bars:
+                if bars_data:
                     # Convert UW data to Alpaca-like bar format
-                    for bar_data in bars:
-                        class UWBar:
-                            def __init__(self, data):
-                                self.t = data.get("timestamp")
-                                self.o = data.get("open")
-                                self.h = data.get("high")
-                                self.l = data.get("low")
-                                self.c = data.get("close")
-                                self.v = data.get("volume")
+                    bars_loaded = 0
+                    for bar_dict in bars_data:
+                        try:
+                            bar = UWBar(
+                                t=bar_dict.get("timestamp"),
+                                o=bar_dict.get("open"),
+                                h=bar_dict.get("high"),
+                                l=bar_dict.get("low"),
+                                c=bar_dict.get("close"),
+                                v=bar_dict.get("volume")
+                            )
+                            if bar.t and bar.o and bar.h and bar.l and bar.c:  # Validate bar has data
+                                tf_mgr.update(bar)
+                                bars_loaded += 1
+                        except Exception as bar_error:
+                            logger.debug(f"Skipped bar for {symbol}: {bar_error}")
+                            continue
 
-                        bar = UWBar(bar_data)
-                        tf_mgr.update(bar)
-
-                    logger.info(f"✅ Loaded {len(bars)} bars from Unusual Whales for {symbol}")
-                    # Skip yfinance since we got data from UW
-                    return
+                    if bars_loaded > 0:
+                        logger.info(f"✅ Loaded {bars_loaded} bars from Unusual Whales for {symbol}")
+                        # Skip yfinance since we got data from UW
+                        return
+                    else:
+                        logger.info("No valid bars from Unusual Whales, trying yfinance...")
                 else:
                     logger.info("No data from Unusual Whales, trying yfinance...")
             except Exception as uw_error:
@@ -174,34 +193,44 @@ class UnifiedTradingBot:
                 import yfinance as yf
                 from datetime import datetime, timedelta
 
+                # Define bar class once outside loop
+                class YFBar:
+                    """Simple bar object compatible with TimeframeManager"""
+                    def __init__(self, t, o, h, l, c, v):
+                        self.t = t  # timestamp
+                        self.o = o  # open
+                        self.h = h  # high
+                        self.l = l  # low
+                        self.c = c  # close
+                        self.v = v  # volume
+
                 ticker = yf.Ticker(symbol)
                 # Get last 2 hours of 1-minute data
                 hist = ticker.history(period="1d", interval="1m")
 
                 if not hist.empty:
                     # Convert yfinance data to Alpaca-like bar format
+                    bars_loaded = 0
                     for idx, row in hist.tail(50).iterrows():
-                        # Create a simple bar object that timeframe_manager can handle
-                        class YFBar:
-                            def __init__(self, timestamp, open, high, low, close, volume):
-                                self.t = timestamp
-                                self.o = open
-                                self.h = high
-                                self.l = low
-                                self.c = close
-                                self.v = volume
+                        try:
+                            bar = YFBar(
+                                t=idx,
+                                o=float(row['Open']),
+                                h=float(row['High']),
+                                l=float(row['Low']),
+                                c=float(row['Close']),
+                                v=int(row['Volume'])
+                            )
+                            tf_mgr.update(bar)
+                            bars_loaded += 1
+                        except Exception as bar_error:
+                            logger.debug(f"Skipped bar for {symbol}: {bar_error}")
+                            continue
 
-                        bar = YFBar(
-                            timestamp=idx,
-                            open=row['Open'],
-                            high=row['High'],
-                            low=row['Low'],
-                            close=row['Close'],
-                            volume=int(row['Volume'])
-                        )
-                        tf_mgr.update(bar)
-
-                    logger.info(f"✅ Loaded {len(hist.tail(50))} bars from yfinance for {symbol}")
+                    if bars_loaded > 0:
+                        logger.info(f"✅ Loaded {bars_loaded} bars from yfinance for {symbol}")
+                    else:
+                        logger.warning(f"No valid bars loaded from yfinance for {symbol}")
                 else:
                     logger.warning(f"No yfinance data available for {symbol}")
             except Exception as yf_error:
