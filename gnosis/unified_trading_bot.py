@@ -136,7 +136,47 @@ class UnifiedTradingBot:
                 logger.warning(f"No historical bars found for {symbol}")
 
         except Exception as e:
-            logger.error(f"Failed to fetch historical bars for {symbol}: {e}")
+            # Try yfinance as fallback for historical data
+            logger.warning(f"Alpaca historical data failed for {symbol}: {e}")
+            logger.info(f"Trying yfinance as fallback for {symbol}...")
+
+            try:
+                import yfinance as yf
+                from datetime import datetime, timedelta
+
+                ticker = yf.Ticker(symbol)
+                # Get last 2 hours of 1-minute data
+                hist = ticker.history(period="1d", interval="1m")
+
+                if not hist.empty:
+                    # Convert yfinance data to Alpaca-like bar format
+                    for idx, row in hist.tail(50).iterrows():
+                        # Create a simple bar object that timeframe_manager can handle
+                        class YFBar:
+                            def __init__(self, timestamp, open, high, low, close, volume):
+                                self.t = timestamp
+                                self.o = open
+                                self.h = high
+                                self.l = low
+                                self.c = close
+                                self.v = volume
+
+                        bar = YFBar(
+                            timestamp=idx,
+                            open=row['Open'],
+                            high=row['High'],
+                            low=row['Low'],
+                            close=row['Close'],
+                            volume=int(row['Volume'])
+                        )
+                        tf_mgr.update(bar)
+
+                    logger.info(f"✅ Loaded {len(hist.tail(50))} bars from yfinance for {symbol}")
+                else:
+                    logger.warning(f"No yfinance data available for {symbol}")
+            except Exception as yf_error:
+                logger.warning(f"yfinance fallback also failed for {symbol}: {yf_error}")
+                logger.info(f"Continuing without historical data for {symbol} - will use real-time stream")
 
         # Subscribe to live bars
         try:
