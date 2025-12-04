@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  trading-bot:
+    build: .
+    container_name: gnosis-trading
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - TZ=America/New_York
+    # Uncomment to use a specific launcher script
+    # command: python start_scanner_trading.py
+
+  # Optional: Dashboard only (no trading)
+  # dashboard:
+  #   build: .
+  #   container_name: gnosis-dashboard
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   ports:
+  #     - "8080:8080"
+  #   command: python start_with_dashboard.py
