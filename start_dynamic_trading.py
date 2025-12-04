@@ -16,9 +16,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Set environment for full trading
 os.environ["ENABLE_TRADING"] = "true"
 
+from typing import Any, Optional
+
 import yaml
 from loguru import logger
-from typing import Optional, Any
 
 from engines.engine_factory import EngineFactory
 from execution.broker_adapters.settings import get_alpaca_paper_setting
@@ -234,7 +235,7 @@ class DynamicTradingSystem:
    Cash: ${float(account.cash):,.2f}  # type: ignore[union-attr]
    P&L Today: ${float(account.portfolio_value) - 30000:+,.2f}  # type: ignore[union-attr]
    Open Positions: {len(broker_positions)}
-   Active Universe: {len(self.trading_bot.active_symbols)}  # type: ignore[union-attr]
+  Active Universe: {len(self.trading_bot.active_symbols)}  # type: ignore[union-attr]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
 
