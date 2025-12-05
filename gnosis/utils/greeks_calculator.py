@@ -259,3 +259,225 @@ class GreeksCalculator:
             risk_free_rate=assumed_rate,
             volatility=assumed_vol,
         )
+
+    # =========================================================================
+    # Strategy Analysis Methods (PoP, Breakevens, P&L)
+    # =========================================================================
+
+    def calculate_option_payoff(
+        self,
+        option_type: str,
+        strike: float,
+        premium: float,
+        quantity: int,
+        stock_price: float,
+    ) -> float:
+        """
+        Calculate option P&L at expiration for a given stock price.
+
+        Args:
+            option_type: 'call' or 'put'
+            strike: Strike price
+            premium: Premium paid (positive) or received (negative)
+            quantity: Number of contracts (positive=long, negative=short)
+            stock_price: Stock price at expiration
+
+        Returns:
+            P&L per contract in dollars (multiply by 100 for actual value)
+        """
+        if option_type == "call":
+            intrinsic = max(0, stock_price - strike)
+        else:
+            intrinsic = max(0, strike - stock_price)
+
+        # Long position: pay premium, receive intrinsic
+        # Short position: receive premium, pay intrinsic
+        if quantity > 0:
+            return (intrinsic - premium) * abs(quantity)
+        else:
+            return (premium - intrinsic) * abs(quantity)
+
+    def calculate_strategy_payoff(
+        self,
+        legs: List[Dict[str, Any]],
+        stock_price: float,
+    ) -> float:
+        """
+        Calculate total strategy P&L at expiration.
+
+        Args:
+            legs: List of option legs, each with:
+                - type: 'call' or 'put'
+                - strike: Strike price
+                - premium: Premium per share
+                - quantity: Contracts (positive=long, negative=short)
+            stock_price: Stock price at expiration
+
+        Returns:
+            Total P&L in dollars per share (multiply by 100 for contract value)
+        """
+        total_pnl = 0.0
+        for leg in legs:
+            total_pnl += self.calculate_option_payoff(
+                option_type=leg["type"],
+                strike=leg["strike"],
+                premium=leg["premium"],
+                quantity=leg["quantity"],
+                stock_price=stock_price,
+            )
+        return total_pnl
+
+    def calculate_probability_of_profit(
+        self,
+        legs: List[Dict[str, Any]],
+        spot_price: float,
+        volatility: float,
+        days_to_expiration: int,
+        risk_free_rate: float = 0.05,
+        simulations: int = 10000,
+    ) -> Dict[str, float]:
+        """
+        Calculate probability of profit using Monte Carlo simulation.
+
+        Args:
+            legs: List of option legs (see calculate_strategy_payoff)
+            spot_price: Current stock price
+            volatility: Implied volatility (annual, e.g., 0.25 for 25%)
+            days_to_expiration: Days until expiration
+            risk_free_rate: Risk-free rate (annual)
+            simulations: Number of Monte Carlo paths
+
+        Returns:
+            Dictionary with probability metrics
+        """
+        if days_to_expiration <= 0:
+            # At expiration, just calculate current P&L
+            pnl = self.calculate_strategy_payoff(legs, spot_price)
+            return {
+                "probability_of_profit": 1.0 if pnl > 0 else 0.0,
+                "expected_profit": max(0, pnl) * 100,
+                "expected_loss": min(0, pnl) * 100,
+                "average_pnl": pnl * 100,
+                "max_profit": pnl * 100,
+                "max_loss": pnl * 100,
+            }
+
+        # GBM simulation for terminal prices
+        dt = days_to_expiration / 252.0
+        drift = (risk_free_rate - 0.5 * volatility**2) * dt
+        shock = volatility * np.sqrt(dt) * np.random.randn(simulations)
+        terminal_prices = spot_price * np.exp(drift + shock)
+
+        # Calculate P&L for each simulation
+        pnls = np.array([
+            self.calculate_strategy_payoff(legs, price) * 100
+            for price in terminal_prices
+        ])
+
+        profitable = pnls > 0
+        winners = pnls[profitable]
+        losers = pnls[~profitable]
+
+        return {
+            "probability_of_profit": float(np.mean(profitable)),
+            "expected_profit": float(np.mean(winners)) if len(winners) > 0 else 0.0,
+            "expected_loss": float(np.mean(losers)) if len(losers) > 0 else 0.0,
+            "average_pnl": float(np.mean(pnls)),
+            "max_profit": float(np.max(pnls)),
+            "max_loss": float(np.min(pnls)),
+            "pnl_std_dev": float(np.std(pnls)),
+        }
+
+    def find_breakevens(
+        self,
+        legs: List[Dict[str, Any]],
+        spot_price: float,
+        price_range_pct: float = 0.50,
+        precision: float = 0.01,
+    ) -> List[float]:
+        """
+        Find breakeven points for a strategy.
+
+        Args:
+            legs: List of option legs
+            spot_price: Current stock price
+            price_range_pct: Range to search (e.g., 0.50 = ±50%)
+            precision: Price increment for search
+
+        Returns:
+            List of breakeven prices (sorted)
+        """
+        low = spot_price * (1 - price_range_pct)
+        high = spot_price * (1 + price_range_pct)
+        prices = np.arange(low, high, precision)
+
+        breakevens = []
+        prev_pnl = None
+
+        for price in prices:
+            pnl = self.calculate_strategy_payoff(legs, price)
+
+            if prev_pnl is not None:
+                # Check for sign change (crossing zero)
+                if (prev_pnl < 0 and pnl >= 0) or (prev_pnl >= 0 and pnl < 0):
+                    breakevens.append(round(price, 2))
+
+            prev_pnl = pnl
+
+        return breakevens
+
+    def analyze_profit_zones(
+        self,
+        legs: List[Dict[str, Any]],
+        spot_price: float,
+        price_range_pct: float = 0.50,
+    ) -> Dict[str, Any]:
+        """
+        Analyze profit and loss zones for a strategy.
+
+        Args:
+            legs: List of option legs
+            spot_price: Current stock price
+            price_range_pct: Range to analyze (e.g., 0.50 = ±50%)
+
+        Returns:
+            Dictionary with zone analysis
+        """
+        low = spot_price * (1 - price_range_pct)
+        high = spot_price * (1 + price_range_pct)
+        prices = np.linspace(low, high, 500)
+
+        pnls = np.array([
+            self.calculate_strategy_payoff(legs, price) * 100
+            for price in prices
+        ])
+
+        # Find profit zones (contiguous regions where P&L > 0)
+        profit_zones = []
+        in_profit = False
+        zone_start = None
+
+        for i, (price, pnl) in enumerate(zip(prices, pnls)):
+            if pnl > 0 and not in_profit:
+                zone_start = price
+                in_profit = True
+            elif pnl <= 0 and in_profit:
+                profit_zones.append((round(zone_start, 2), round(prices[i-1], 2)))
+                in_profit = False
+
+        if in_profit:
+            profit_zones.append((round(zone_start, 2), round(high, 2)))
+
+        # Find max profit and loss points
+        max_profit_idx = np.argmax(pnls)
+        max_loss_idx = np.argmin(pnls)
+
+        return {
+            "profit_zones": profit_zones,
+            "max_profit": round(float(pnls[max_profit_idx]), 2),
+            "max_profit_at": round(float(prices[max_profit_idx]), 2),
+            "max_loss": round(float(pnls[max_loss_idx]), 2),
+            "max_loss_at": round(float(prices[max_loss_idx]), 2),
+            "breakevens": self.find_breakevens(legs, spot_price, price_range_pct),
+            "pnl_at_current": round(float(self.calculate_strategy_payoff(legs, spot_price) * 100), 2),
+        }
