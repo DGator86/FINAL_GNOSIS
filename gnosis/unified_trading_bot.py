@@ -96,66 +96,49 @@ class UnifiedTradingBot:
         tf_mgr = TimeframeManager()
         self.symbol_data[symbol] = SymbolData(symbol=symbol, timeframe_mgr=tf_mgr)
 
-        # Fetch historical bars from yfinance (free, reliable stock data source)
+        # Fetch historical bars from Alpaca Professional API (with SIP data access)
         try:
-            import yfinance as yf
+            from alpaca.data.historical import StockHistoricalDataClient
+            from alpaca.data.requests import StockBarsRequest
+            from alpaca.data.timeframe import TimeFrame
             from datetime import datetime, timedelta
 
-            # Fetch last 2 days of 1-minute bars from yfinance
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period="2d", interval="1m")
+            # Initialize historical data client
+            hist_client = StockHistoricalDataClient(
+                os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_SECRET_KEY")
+            )
 
-            if not hist.empty:
-                # Convert yfinance bars to format timeframe manager expects
-                from dataclasses import dataclass
+            # Request last 2 hours of 1-minute bars (Professional tier has full SIP access)
+            end_time = datetime.now()
+            start_time = end_time - timedelta(hours=2)
 
-                @dataclass
-                class YFBar:
-                    t: datetime
-                    o: float
-                    h: float
-                    l: float
-                    c: float
-                    v: int
+            request_params = StockBarsRequest(
+                symbol_or_symbols=symbol, timeframe=TimeFrame.Minute, start=start_time, end=end_time
+            )
 
-                    @property
-                    def timestamp(self):
-                        return self.t
-                    @property
-                    def open(self):
-                        return self.o
-                    @property
-                    def high(self):
-                        return self.h
-                    @property
-                    def low(self):
-                        return self.l
-                    @property
-                    def close(self):
-                        return self.c
-                    @property
-                    def volume(self):
-                        return self.v
+            bars_response = hist_client.get_stock_bars(request_params)
 
-                for timestamp, row in hist.iterrows():
-                    bar = YFBar(
-                        t=timestamp.to_pydatetime(),
-                        o=float(row['Open']),
-                        h=float(row['High']),
-                        l=float(row['Low']),
-                        c=float(row['Close']),
-                        v=int(row['Volume'])
-                    )
+            if symbol in bars_response.data:
+                historical_bars = bars_response.data[symbol]
+                # Feed all bars into timeframe manager
+                for bar in historical_bars:
                     tf_mgr.update(bar)
 
                 bar_counts = tf_mgr.get_bar_counts()
-                logger.info(f"✅ Loaded {len(hist)} bars from yfinance for {symbol} | Counts: {bar_counts}")
+                logger.info(f"✅ Loaded {len(historical_bars)} bars from Alpaca Professional for {symbol} | Counts: {bar_counts}")
             else:
-                logger.warning(f"No historical data from yfinance for {symbol}")
+                logger.info(f"No historical bars for {symbol} yet - will accumulate from stream")
 
         except Exception as e:
             logger.warning(f"Could not load historical bars for {symbol}: {e}")
-            logger.info(f"Will start accumulating data from polling")
+            logger.info(f"Will accumulate bars from real-time stream")
+
+        # Subscribe to live bars from Alpaca Professional stream (unlimited connections)
+        try:
+            self.stream.subscribe_bars(self._handle_bar, symbol)
+            logger.info(f"✅ Subscribed to Alpaca Professional live stream for {symbol}")
+        except Exception as e:
+            logger.error(f"Failed to subscribe to live bars for {symbol}: {e}")
 
     async def update_universe(self, update: UniverseUpdate):
         """Update the active universe."""
@@ -589,79 +572,22 @@ class UnifiedTradingBot:
             pass
 
     async def run(self):
-        """Run the trading bot with yfinance polling for live data."""
+        """Run the trading bot with Alpaca Professional real-time stream."""
         self.running = True
-        logger.info("Starting UnifiedTradingBot with yfinance polling...")
-
-        import asyncio
-        import yfinance as yf
-        from dataclasses import dataclass
-
-        @dataclass
-        class YFBar:
-            t: datetime
-            o: float
-            h: float
-            l: float
-            c: float
-            v: int
-
-            @property
-            def timestamp(self):
-                return self.t
-            @property
-            def open(self):
-                return self.o
-            @property
-            def high(self):
-                return self.h
-            @property
-            def low(self):
-                return self.l
-            @property
-            def close(self):
-                return self.c
-            @property
-            def volume(self):
-                return self.v
-
+        logger.info("Starting UnifiedTradingBot with Alpaca Professional stream...")
         try:
-            # Poll for new bars every 60 seconds
-            while self.running:
-                for symbol in list(self.active_symbols):
-                    try:
-                        ticker = yf.Ticker(symbol)
-                        # Get last 5 minutes of data to catch any new bars
-                        hist = ticker.history(period="1d", interval="1m")
-
-                        if not hist.empty:
-                            # Get the most recent bar
-                            latest_row = hist.iloc[-1]
-                            latest_timestamp = hist.index[-1].to_pydatetime()
-
-                            bar = YFBar(
-                                t=latest_timestamp,
-                                o=float(latest_row['Open']),
-                                h=float(latest_row['High']),
-                                l=float(latest_row['Low']),
-                                c=float(latest_row['Close']),
-                                v=int(latest_row['Volume'])
-                            )
-
-                            # Update timeframe manager
-                            if symbol in self.symbol_data:
-                                self.symbol_data[symbol].timeframe_mgr.update(bar)
-                                # Analyze and trade
-                                await self.analyze_and_trade(symbol, bar.close)
-
-                    except Exception as e:
-                        logger.debug(f"Error polling {symbol}: {e}")
-
-                # Wait 60 seconds before next poll
-                await asyncio.sleep(60)
-
+            if self.stream:
+                # Use async stream._run_forever() for real-time data
+                if hasattr(self.stream, "_run_forever"):
+                    logger.info("✅ Using Alpaca Professional WebSocket stream (unlimited connections, SIP data)")
+                    await self.stream._run_forever()
+                else:
+                    logger.info("Using fallback stream.run()")
+                    await self.stream.run()
+            else:
+                logger.warning("No valid stream to run.")
         except Exception as e:
-            logger.error(f"Polling loop failed: {e}")
+            logger.error(f"Alpaca Professional stream failed: {e}")
 
     async def stop(self):
         """Stop the trading bot."""
