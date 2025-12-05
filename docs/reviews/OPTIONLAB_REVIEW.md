@@ -172,9 +172,9 @@ class GreeksCalculator:
 
 ---
 
-## Alternative: Native Enhancement
+## Native Enhancement (IMPLEMENTED)
 
-Instead of integrating OptionLab, consider implementing the missing features natively:
+Instead of integrating OptionLab, we implemented the missing features natively in `gnosis/utils/greeks_calculator.py`:
 
 ### 1. Enhanced Probability of Profit
 
