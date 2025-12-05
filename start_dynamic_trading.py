@@ -77,7 +77,7 @@ class DynamicTradingSystem:
             scanner=scanner,
             top_n=25,
             refresh_interval_seconds=900,  # 15 minutes
-            min_score_threshold=0.5
+            min_score_threshold=0.2  # Lowered to allow symbols without full historical data
         )
         
         # Create unified trading bot
