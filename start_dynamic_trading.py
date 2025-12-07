@@ -45,6 +45,7 @@ class DynamicTradingSystem:
         self.running: bool = False
         self.paper_mode: bool = get_alpaca_paper_setting()
         self.config: Any
+        self.session_start_value: float = 0.0  # Track starting portfolio value
 
         # Load config
         with open("config/config.yaml", "r") as f:
@@ -104,6 +105,20 @@ class DynamicTradingSystem:
         # Load universe into trading bot
         await self.trading_bot.update_universe(initial_update)
 
+        # Capture starting portfolio value for P&L tracking
+        try:
+            from alpaca.trading.client import TradingClient
+
+            api_key = os.getenv("ALPACA_API_KEY")
+            secret_key = os.getenv("ALPACA_SECRET_KEY")
+            client = TradingClient(api_key, secret_key, paper=self.paper_mode)
+            account = client.get_account()
+            self.session_start_value = float(account.portfolio_value)  # type: ignore[union-attr]
+            logger.info(f"Session start portfolio value: ${self.session_start_value:,.2f}")
+        except Exception as e:
+            logger.warning(f"Could not capture starting portfolio value: {e}")
+            self.session_start_value = 0.0
+
         print(f"""
 ✅ SYSTEM INITIALIZED:
    • Universe: {len(initial_update.current)} top opportunities
@@ -111,7 +126,8 @@ class DynamicTradingSystem:
    • Max Positions: 5 concurrent
    • Risk Management: Stop-loss, Take-profit, Trailing stops
    • Close on exit: Losing positions only
-   
+   • Starting Portfolio: ${self.session_start_value:,.2f}
+
 ⚡ TRADING STATUS: ENABLED - WILL PLACE PAPER ORDERS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
@@ -228,14 +244,16 @@ class DynamicTradingSystem:
                 # Get positions from client (actual broker positions)
                 broker_positions = client.get_all_positions()
 
+                portfolio_value = float(account.portfolio_value)  # type: ignore[union-attr]
+                session_pnl = portfolio_value - self.session_start_value if self.session_start_value > 0 else 0.0
                 print(f"""
 📈 PERFORMANCE UPDATE ({datetime.now().strftime("%H:%M:%S")}):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   Portfolio Value: ${float(account.portfolio_value):,.2f}  # type: ignore[union-attr]
+   Portfolio Value: ${portfolio_value:,.2f}
    Cash: ${float(account.cash):,.2f}  # type: ignore[union-attr]
-   P&L Today: ${float(account.portfolio_value) - 30000:+,.2f}  # type: ignore[union-attr]
+   Session P&L: ${session_pnl:+,.2f}
    Open Positions: {len(broker_positions)}
-  Active Universe: {len(self.trading_bot.active_symbols)}  # type: ignore[union-attr]
+   Active Universe: {len(self.trading_bot.active_symbols)}  # type: ignore[union-attr]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
 
@@ -320,13 +338,15 @@ Press Ctrl+C to stop gracefully.
             account = client.get_account()
 
             final_value = float(account.portfolio_value)  # type: ignore[union-attr, arg-type]
-            final_pnl = final_value - 30000
+            final_pnl = final_value - self.session_start_value if self.session_start_value > 0 else 0.0
+            pnl_pct = (final_pnl / self.session_start_value * 100) if self.session_start_value > 0 else 0.0
 
             print(f"""
 📊 FINAL SESSION REPORT:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Starting Value: ${self.session_start_value:,.2f}
    Final Portfolio Value: ${final_value:,.2f}
-   Session P&L: ${final_pnl:+,.2f}
+   Session P&L: ${final_pnl:+,.2f} ({pnl_pct:+.2f}%)
    Universe Size: {len(self.universe_mgr.active_universe) if self.universe_mgr else 0}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
