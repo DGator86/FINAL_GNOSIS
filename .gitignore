@@ -1,5 +1,5 @@
 # Environment variables and secrets
-# .env files are now tracked
+.env
 *.key
 *.pem
 secrets/
