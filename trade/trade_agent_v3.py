@@ -485,6 +485,13 @@ class TradeAgentV3:
 
         min_cost = current_price * max(1, self.min_shares_per_trade)
         if max_position_value < min_cost:
+            if available_capital >= min_cost:
+                logger.info(
+                    f"Budget below preferred size for {symbol} (budget=${max_position_value:.2f}, "
+                    f"required=${min_cost:.2f}); bumping to minimum {self.min_shares_per_trade} share",
+                )
+                return max(1, self.min_shares_per_trade)
+
             logger.warning(
                 f"Position sizing below minimum for {symbol}: price=${current_price:.2f}, "
                 f"budget=${max_position_value:.2f}, required=${min_cost:.2f} "

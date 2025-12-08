@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from alpaca.common.exceptions import APIError
@@ -65,12 +65,26 @@ class AlpacaMarketDataAdapter:
 
             tf = timeframe_map.get(timeframe, TimeFrame.Day)
 
+            # Normalize datetimes to be timezone-aware (UTC) to avoid API rejection
+            start_utc = self._ensure_utc(start)
+            end_utc = self._ensure_utc(end)
+
+            # Guard against inverted windows (can happen with naive timestamps)
+            if end_utc <= start_utc:
+                end_utc = start_utc + timedelta(minutes=1)
+                logger.warning(
+                    "Adjusted bar window for {symbol}: start >= end (tf={tf}) -> new_end={end}",
+                    symbol=symbol,
+                    tf=timeframe,
+                    end=end_utc,
+                )
+
             # Create request
             request = StockBarsRequest(
                 symbol_or_symbols=symbol,
                 timeframe=tf,
-                start=start,
-                end=end,
+                start=start_utc,
+                end=end_utc,
                 feed=DataFeed[self.data_feed] if self.data_feed in DataFeed.__members__ else DataFeed.IEX,
             )
 
@@ -84,19 +98,19 @@ class AlpacaMarketDataAdapter:
                     symbol=symbol,
                     timeframe=timeframe,
                     feed=self.data_feed,
-                    start=start,
-                    end=end,
+                    start=start_utc,
+                    end=end_utc,
                     keys=self._describe_bars_response(bars_response),
                 )
 
                 # Retry with a slightly wider window for intraday gaps
                 if timeframe.endswith("Min") or timeframe.endswith("Hour"):
-                    fallback_start = min(start, end - timedelta(days=2))
+                    fallback_start = min(start_utc, end_utc - timedelta(days=2))
                     fallback_request = StockBarsRequest(
                         symbol_or_symbols=symbol,
                         timeframe=tf,
                         start=fallback_start,
-                        end=end,
+                        end=end_utc,
                         feed=DataFeed[self.data_feed] if self.data_feed in DataFeed.__members__ else DataFeed.IEX,
                     )
                     logger.info(
@@ -104,7 +118,7 @@ class AlpacaMarketDataAdapter:
                         symbol=symbol,
                         timeframe=timeframe,
                         start=fallback_start,
-                        end=end,
+                        end=end_utc,
                         feed=self.data_feed,
                     )
                     bars_response = self.client.get_stock_bars(fallback_request)
@@ -116,8 +130,8 @@ class AlpacaMarketDataAdapter:
                         symbol=symbol,
                         timeframe=timeframe,
                         feed=self.data_feed,
-                        start=start,
-                        end=end,
+                        start=start_utc,
+                        end=end_utc,
                         keys=self._describe_bars_response(bars_response),
                     )
                     return []
@@ -161,6 +175,29 @@ class AlpacaMarketDataAdapter:
                 return list(data.get(symbol, []))
             return list(data)
 
+        if hasattr(response, "get"):
+            try:
+                bars = response.get(symbol)
+                if bars is not None:
+                    return list(bars)
+            except Exception:
+                pass
+
+        if hasattr(response, "__getitem__"):
+            try:
+                return list(response[symbol])
+            except Exception:
+                pass
+
+        if hasattr(response, "bars"):
+            try:
+                bars_attr = getattr(response, "bars")
+                if isinstance(bars_attr, dict):
+                    return list(bars_attr.get(symbol, []))
+                return list(bars_attr)
+            except Exception:
+                pass
+
         if isinstance(response, dict):
             return list(response.get(symbol, []))
 
@@ -192,6 +229,14 @@ class AlpacaMarketDataAdapter:
             return str(type(data))
 
         return str(type(response))
+
+    @staticmethod
+    def _ensure_utc(dt: datetime) -> datetime:
+        """Ensure datetimes are timezone-aware in UTC for Alpaca requests."""
+
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
 
     def get_quote(self, symbol: str) -> Quote:
         """

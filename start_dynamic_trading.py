@@ -297,6 +297,13 @@ Press Ctrl+C to stop gracefully.
             logger.warning("Shutdown signal received...")
             for task in tasks:
                 task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await self.shutdown()
+        except asyncio.CancelledError:
+            logger.info("Tasks cancelled; shutting down gracefully")
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             await self.shutdown()
         except Exception as e:
             logger.error(f"Fatal error: {e}")
@@ -305,6 +312,7 @@ Press Ctrl+C to stop gracefully.
             traceback.print_exc()
             for task in tasks:
                 task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             await self.shutdown()
 
     async def shutdown(self) -> None:
