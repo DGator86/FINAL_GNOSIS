@@ -8,7 +8,7 @@ from trade.trade_agent_v3 import TradeAgentV3
 def test_minimum_share_size_when_budget_small_but_capital_healthy():
     agent = TradeAgentV3({"max_position_size_pct": 0.02, "base_position_size_pct": 0.02})
 
-    quantity = agent._calculate_equity_quantity(
+    quantity, reason = agent._calculate_equity_quantity(
         symbol="MRK",
         current_price=100.0,
         available_capital=30_000.0,
@@ -21,7 +21,7 @@ def test_minimum_share_size_when_budget_small_but_capital_healthy():
 def test_zero_quantity_when_even_one_share_unaffordable():
     agent = TradeAgentV3({"max_position_size_pct": 0.02, "base_position_size_pct": 0.02})
 
-    quantity = agent._calculate_equity_quantity(
+    quantity, reason = agent._calculate_equity_quantity(
         symbol="GOOGL",
         current_price=150.0,
         available_capital=50.0,
@@ -29,3 +29,4 @@ def test_zero_quantity_when_even_one_share_unaffordable():
     )
 
     assert quantity == 0
+    assert "insufficient capital" in reason

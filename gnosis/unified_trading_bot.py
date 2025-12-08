@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import json
 from dataclasses import dataclass
@@ -49,6 +50,7 @@ class UnifiedTradingBot:
         self.symbol_data: Dict[str, SymbolData] = {}
         self.running = False
         self.stopping = False
+        self.stream_task: asyncio.Task | None = None
 
         # Risk Management
         self.risk_per_trade_pct = config.get("risk", {}).get("risk_per_trade_pct", 0.02)
@@ -624,23 +626,46 @@ class UnifiedTradingBot:
         self.running = True
         logger.info("Starting UnifiedTradingBot stream...")
         try:
-            if self.stream:
-                # Use _run_forever if available (async), otherwise fallback to run (sync wrapper)
-                if hasattr(self.stream, "_run_forever"):
-                    logger.info("Using async stream._run_forever()")
-                    await self.stream._run_forever()
-                else:
-                    logger.info("Using sync stream.run()")
-                    await self.stream.run()
-            else:
+            if not self.stream:
                 logger.warning("No valid stream to run.")
+                return
+
+            # Use _run_forever if available (async), otherwise fallback to run (sync wrapper)
+            if hasattr(self.stream, "_run_forever"):
+                logger.info("Using async stream._run_forever()")
+                self.stream_task = asyncio.create_task(self.stream._run_forever())
+            else:
+                logger.info("Using sync stream.run()")
+                self.stream_task = asyncio.create_task(self.stream.run())
+
+            await self.stream_task
+        except asyncio.CancelledError:
+            logger.info("Stream task cancelled; stopping stream")
+            await self._stop_stream()
+            raise
+        except KeyboardInterrupt:
+            logger.info("KeyboardInterrupt received; stopping stream")
+            await self._stop_stream()
         except Exception as e:
             logger.error(f"Stream run failed: {e}")
+            await self._stop_stream()
 
     async def stop(self):
         """Stop the trading bot."""
         self.running = False
         self.stopping = True
+        await self._stop_stream()
+
+    async def _stop_stream(self) -> None:
+        """Safely cancel and stop the Alpaca stream without surfacing noisy tracebacks."""
+        try:
+            if self.stream_task and not self.stream_task.done():
+                self.stream_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self.stream_task
+        except Exception as exc:
+            logger.debug(f"Stream task cancellation emitted: {exc}")
+
         if self.stream:
             try:
                 await self.stream.stop()

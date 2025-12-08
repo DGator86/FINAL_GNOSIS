@@ -218,7 +218,7 @@ class TradeAgentV3:
         position_size_pct = self.base_position_size_pct * (1 + confidence_multiplier)
         position_size_pct = min(position_size_pct, self.max_position_size_pct)
 
-        quantity = self._calculate_equity_quantity(
+        quantity, sizing_reason = self._calculate_equity_quantity(
             symbol=composer_decision.symbol,
             current_price=current_price,
             available_capital=available_capital,
@@ -226,9 +226,11 @@ class TradeAgentV3:
         )
 
         if quantity < 1:
+            reason = sizing_reason or "calculated quantity below minimum"
             logger.warning(
-                "Quantity < 1 for {symbol}: price={price}, equity={equity}, budget_pct={pct:.4f}",
+                "Skipping {symbol}: {reason} (price={price}, equity={equity}, budget_pct={pct:.4f})",
                 symbol=composer_decision.symbol,
+                reason=reason,
                 price=current_price,
                 equity=available_capital,
                 pct=position_size_pct,
@@ -464,24 +466,22 @@ class TradeAgentV3:
         current_price: float,
         available_capital: float,
         position_size_pct: float,
-    ) -> int:
+    ) -> tuple[int, str | None]:
         """Calculate share quantity while enforcing minimum sizing.
 
-        Returns 0 when sizing fails; calling code should skip trades in that case.
+        Returns (quantity, reason). Quantity of 0 indicates a skip with `reason` explaining why.
         """
 
         if current_price <= 0:
-            logger.warning(f"Invalid current price for {symbol}: {current_price}")
-            return 0
+            return 0, f"invalid current price {current_price}"
 
         max_position_value = available_capital * position_size_pct
 
         if max_position_value < self.min_dollars_per_trade:
-            logger.warning(
-                f"Position budget ${max_position_value:.2f} below min ${self.min_dollars_per_trade:.2f} "
-                f"for {symbol}, skipping"
+            return 0, (
+                f"position budget ${max_position_value:.2f} below min_dollars_per_trade "
+                f"${self.min_dollars_per_trade:.2f}"
             )
-            return 0
 
         min_cost = current_price * max(1, self.min_shares_per_trade)
         if max_position_value < min_cost:
@@ -490,31 +490,23 @@ class TradeAgentV3:
                     f"Budget below preferred size for {symbol} (budget=${max_position_value:.2f}, "
                     f"required=${min_cost:.2f}); bumping to minimum {self.min_shares_per_trade} share",
                 )
-                return max(1, self.min_shares_per_trade)
+                return max(1, self.min_shares_per_trade), None
 
-            logger.warning(
-                f"Position sizing below minimum for {symbol}: price=${current_price:.2f}, "
-                f"budget=${max_position_value:.2f}, required=${min_cost:.2f} "
-                f"(shares>={self.min_shares_per_trade})"
+            return 0, (
+                f"insufficient capital for minimum {self.min_shares_per_trade} shares "
+                f"(price=${current_price:.2f}, budget=${max_position_value:.2f}, required=${min_cost:.2f})"
             )
-            return 0
 
         raw_quantity = max_position_value / current_price
         quantity = max(self.min_shares_per_trade, int(raw_quantity))
 
         if quantity < 1:
-            logger.warning(
-                "Calculated quantity < 1 for {symbol}: price=${price:.2f}, equity=${equity:.2f}, "
-                "budget=${budget:.2f}, pct={pct:.4f}",
-                symbol=symbol,
-                price=current_price,
-                equity=available_capital,
-                budget=max_position_value,
-                pct=position_size_pct,
+            return 0, (
+                f"calculated quantity < 1 (price=${current_price:.2f}, equity=${available_capital:.2f}, "
+                f"budget=${max_position_value:.2f}, pct={position_size_pct:.4f})"
             )
-            return 0
 
-        return quantity
+        return quantity, None
 
     def strategy_to_trade_idea(self, strategy: TradeStrategy) -> TradeIdea:
         """Convert TradeStrategy to TradeIdea for execution.
