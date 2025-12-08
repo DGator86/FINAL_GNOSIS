@@ -80,6 +80,8 @@ class DynamicUniverseManager:
             symbols=candidate_symbols if candidate_symbols is not None else [], top_n=self.top_n
         )
 
+        initial_scan = self.last_scan_time is None
+
         # Filter by minimum score and drop NaNs explicitly
         qualified_opps = [
             opp
@@ -125,11 +127,23 @@ class DynamicUniverseManager:
             )
 
         if not top_opportunities and not self.active_universe:
-            logger.warning(
-                "Universe scan returned no qualifying symbols and no active universe exists (scanned={scanned}, above_threshold={qualified})",
-                scanned=scan_result.symbols_scanned,
-                qualified=len(qualified_opps),
-            )
+            if not scan_result.opportunities:
+                logger.warning(
+                    "Universe scan returned no opportunities (scanned={scanned}). "
+                    "Initial universe is empty – no trades will be placed until data becomes available. "
+                    "Check market data credentials and scanners (ALPACA_API_KEY/SECRET, ALPACA_DATA_FEED, Unusual Whales token).",
+                    scanned=scan_result.symbols_scanned,
+                )
+            else:
+                logger.warning(
+                    "Universe scan returned no qualifying symbols and no active universe exists (scanned={scanned}, above_threshold={qualified}).",
+                    scanned=scan_result.symbols_scanned,
+                    qualified=len(qualified_opps),
+                )
+            if initial_scan:
+                logger.info(
+                    "Initial universe size is 0. System will continue scanning but trading will remain idle until opportunities qualify."
+                )
 
         # Update state
         self.active_universe = new_universe

@@ -2,6 +2,9 @@ import asyncio
 from datetime import datetime
 import asyncio
 
+import asyncio
+from datetime import datetime
+
 import pytest
 
 pytest.importorskip("loguru")
@@ -70,3 +73,14 @@ def test_universe_falls_back_when_all_below_threshold():
 
     assert set(update.current) <= {"AAPL", "MSFT", "JPM"}
     assert len(update.current) == 2
+
+
+def test_initial_empty_universe_reports_empty_state():
+    scanner = StubScanner([])
+    manager = DynamicUniverseManager(scanner=scanner, top_n=5, min_score_threshold=0.5)
+
+    update = asyncio.run(manager.refresh_universe(["AAPL", "MSFT"]))
+
+    assert update.current == []
+    assert manager.active_universe == []
+    assert manager.last_scan_results == []

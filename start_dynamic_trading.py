@@ -96,13 +96,28 @@ class DynamicTradingSystem:
         initial_update = await self.universe_mgr.refresh_universe(initial_symbols)
 
         logger.info(f"Initial universe: {len(initial_update.current)} symbols")
-        for i, symbol in enumerate(initial_update.current[:10], 1):
-            logger.info(f"  {i}. {symbol}")
-        if len(initial_update.current) > 10:
-            logger.info(f"  ... and {len(initial_update.current) - 10} more")
+        if initial_update.current:
+            for i, symbol in enumerate(initial_update.current[:10], 1):
+                logger.info(f"  {i}. {symbol}")
+            if len(initial_update.current) > 10:
+                logger.info(f"  ... and {len(initial_update.current) - 10} more")
+        else:
+            logger.warning(
+                "Initial universe is empty. No trades will be placed until valid opportunities are detected."
+            )
+            logger.info(
+                "Validate data sources: ALPACA_API_KEY/SECRET, ALPACA_DATA_FEED (IEX vs SIP), and Unusual Whales token if using flow data."
+            )
 
         # Load universe into trading bot
         await self.trading_bot.update_universe(initial_update)
+
+        if initial_update.current:
+            trading_banner = "⚡ TRADING STATUS: ENABLED - WILL PLACE PAPER ORDERS"
+        else:
+            trading_banner = (
+                "⚠️  TRADING STATUS: STANDBY - UNIVERSE IS EMPTY (no orders will be placed)"
+            )
 
         print(f"""
 ✅ SYSTEM INITIALIZED:
@@ -111,8 +126,8 @@ class DynamicTradingSystem:
    • Max Positions: 5 concurrent
    • Risk Management: Stop-loss, Take-profit, Trailing stops
    • Close on exit: Losing positions only
-   
-⚡ TRADING STATUS: ENABLED - WILL PLACE PAPER ORDERS
+
+{trading_banner}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
 

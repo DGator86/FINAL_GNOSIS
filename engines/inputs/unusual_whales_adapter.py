@@ -117,7 +117,11 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             status_code = error.response.status_code
             detail = error.response.text if error.response else ""
             if status_code in {401, 403}:
-                logger.error("❌ Invalid token or subscription missing API access - switching to stub mode")
+                logger.error(
+                    "❌ Unusual Whales auth/subscription error %s: %s - switching to stub mode",
+                    status_code,
+                    detail,
+                )
                 self.use_stub = True
             elif status_code == 404:
                 logger.warning(

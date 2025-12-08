@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from datetime import datetime
+
 import pytest
 
 pytest.importorskip("httpx")
@@ -46,6 +48,14 @@ def response_404():
     return httpx.Response(status_code=404, json={}, request=httpx.Request("GET", "http://test"))
 
 
+def response_401():
+    return httpx.Response(status_code=401, json={"detail": "unauthorized"}, request=httpx.Request("GET", "http://test"))
+
+
+def response_500():
+    return httpx.Response(status_code=500, json={}, request=httpx.Request("GET", "http://test"))
+
+
 def test_successful_chain_parsing():
     adapter = UnusualWhalesOptionsAdapter(token="x", client=FakeUWClient([response_with_contracts()]))
     contracts = adapter.get_chain("AAPL", datetime.now())
@@ -63,3 +73,24 @@ def test_404_does_not_disable_future_calls():
     assert first  # falls back to stub but still returns list
     assert len(second) == 1  # 404 did not permanently force stub-only
     assert adapter.use_stub is False
+
+
+def test_401_switches_to_stub_mode():
+    client = FakeUWClient([response_401(), response_with_contracts()])
+    adapter = UnusualWhalesOptionsAdapter(token="x", client=client)
+
+    first = adapter.get_chain("TSLA", datetime.now())
+    second = adapter.get_chain("TSLA", datetime.now())
+
+    assert first  # stub fallback
+    assert second  # stub because use_stub=True
+    assert adapter.use_stub is True
+
+
+def test_generic_http_error_falls_back_to_stub():
+    client = FakeUWClient([response_500()])
+    adapter = UnusualWhalesOptionsAdapter(token="x", client=client)
+
+    chain = adapter.get_chain("NVDA", datetime.now())
+
+    assert chain  # should return stub data even on 500

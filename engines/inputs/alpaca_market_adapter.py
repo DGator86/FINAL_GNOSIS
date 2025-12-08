@@ -94,7 +94,7 @@ class AlpacaMarketDataAdapter:
 
             if not bars:
                 logger.warning(
-                    "No bars found for {symbol} (tf={timeframe}, feed={feed}, start={start}, end={end}) | raw_keys={keys}",
+                    "No bars found for {symbol} (tf={timeframe}, feed={feed}, start={start}, end={end}) | response={keys}",
                     symbol=symbol,
                     timeframe=timeframe,
                     feed=self.data_feed,
@@ -126,7 +126,7 @@ class AlpacaMarketDataAdapter:
 
                 if not bars:
                     logger.warning(
-                        "No bars found for {symbol} after retry (tf={timeframe}, feed={feed}, start={start}, end={end}) | raw_keys={keys}",
+                        "No bars found for {symbol} after retry (tf={timeframe}, feed={feed}, start={start}, end={end}) | response={keys}",
                         symbol=symbol,
                         timeframe=timeframe,
                         feed=self.data_feed,
@@ -173,6 +173,9 @@ class AlpacaMarketDataAdapter:
             data = response.data
             if isinstance(data, dict):
                 return list(data.get(symbol, []))
+            if isinstance(data, list):
+                # MultiStockBars can sometimes expose a list of bars with symbol attributes
+                return [bar for bar in data if getattr(bar, "symbol", symbol) == symbol]
             return list(data)
 
         if hasattr(response, "get"):
@@ -194,6 +197,8 @@ class AlpacaMarketDataAdapter:
                 bars_attr = getattr(response, "bars")
                 if isinstance(bars_attr, dict):
                     return list(bars_attr.get(symbol, []))
+                if isinstance(bars_attr, list):
+                    return [bar for bar in bars_attr if getattr(bar, "symbol", symbol) == symbol]
                 return list(bars_attr)
             except Exception:
                 pass
@@ -226,7 +231,17 @@ class AlpacaMarketDataAdapter:
             data = getattr(response, "data")
             if isinstance(data, dict):
                 return ",".join(sorted(map(str, data.keys())))
+            if isinstance(data, list):
+                return f"list[{len(data)}]"
             return str(type(data))
+
+        if hasattr(response, "bars"):
+            bars_attr = getattr(response, "bars")
+            if isinstance(bars_attr, dict):
+                return ",".join(sorted(map(str, bars_attr.keys())))
+            if isinstance(bars_attr, list):
+                return f"bars[{len(bars_attr)}]"
+            return str(type(bars_attr))
 
         return str(type(response))
 
