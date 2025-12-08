@@ -65,8 +65,8 @@ def test_404_does_not_disable_future_calls():
     first = adapter.get_chain("MSFT", datetime.now())
     second = adapter.get_chain("MSFT", datetime.now())
 
-    assert first  # falls back to stub but still returns list
-    assert len(second) == 1  # 404 did not permanently force stub-only
+    assert first == []  # 404 should skip symbol without forcing stub
+    assert len(second) == 1  # 404 did not permanently disable real calls
     assert adapter.use_stub is False
 
 
@@ -77,9 +77,9 @@ def test_401_switches_to_stub_mode():
     first = adapter.get_chain("TSLA", datetime.now())
     second = adapter.get_chain("TSLA", datetime.now())
 
-    assert first  # stub fallback
-    assert second  # stub because use_stub=True
-    assert adapter.use_stub is True
+    assert first == []  # auth failure skips data without crashing
+    assert second == []  # adapter stays disabled after auth errors
+    assert adapter.use_stub is False
 
 
 def test_generic_http_error_falls_back_to_stub():

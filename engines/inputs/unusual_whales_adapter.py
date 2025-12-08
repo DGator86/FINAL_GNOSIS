@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -11,6 +12,30 @@ from loguru import logger
 
 from gnosis.utils.option_utils import OptionUtils
 from engines.inputs.options_chain_adapter import OptionContract, OptionsChainAdapter
+
+
+@dataclass
+class UnusualWhalesConfig:
+    """Runtime configuration for the Unusual Whales adapter."""
+
+    base_url: str
+    timeout: float
+    token: Optional[str]
+    use_stub: bool
+
+    @classmethod
+    def from_env(cls, token: Optional[str] = None) -> "UnusualWhalesConfig":
+        """Build configuration using environment variables and optional override."""
+
+        api_token = token or os.getenv("UNUSUAL_WHALES_API_TOKEN")
+        if not api_token:
+            api_token = os.getenv("UNUSUAL_WHALES_TOKEN") or os.getenv("UNUSUAL_WHALES_API_KEY")
+
+        base_url = os.getenv("UNUSUAL_WHALES_BASE_URL", "https://api.unusualwhales.com").rstrip("/")
+        timeout = float(os.getenv("UNUSUAL_WHALES_TIMEOUT", "30.0"))
+        use_stub = os.getenv("UNUSUAL_WHALES_DISABLED", "false").lower() in {"1", "true", "yes"}
+
+        return cls(base_url=base_url, timeout=timeout, token=api_token, use_stub=use_stub)
 
 
 class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
@@ -22,41 +47,60 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
     - Endpoint: /api/stock/{symbol}/option-contracts (full OCC symbols)
     """
 
-    BASE_URL = "https://api.unusualwhales.com"
-
     def __init__(self, *, token: Optional[str] = None, client: Optional[httpx.Client] = None):
         """Initialize the adapter with Bearer authentication."""
 
-        self.api_token = token or os.getenv("UNUSUAL_WHALES_TOKEN") or os.getenv("UNUSUAL_WHALES_API_KEY")
-        self.use_stub = False
+        self.config = UnusualWhalesConfig.from_env(token)
+        self.api_token = self.config.token
+        self.use_stub = self.config.use_stub
+        self.base_url = self.config.base_url
+        self.timeout = self.config.timeout
         self._warning_cache: Dict[str, datetime] = {}
+        self._disabled_reason: Optional[str] = None
 
-        if os.getenv("UNUSUAL_WHALES_DISABLED", "false").lower() in {"1", "true", "yes"}:
-            logger.info("Unusual Whales disabled via UNUSUAL_WHALES_DISABLED – using stub data")
+        if self.use_stub:
             self.client = None
-            self.use_stub = True
+            self._disabled_reason = "disabled-via-env"
+            logger.info(
+                "Unusual Whales disabled via UNUSUAL_WHALES_DISABLED – using stub data"
+            )
             return
 
         if not self.api_token:
-            logger.warning("⚠️  UNUSUAL_WHALES_TOKEN not set → using stub data fallback")
             self.client = None
-            self.use_stub = True
-        else:
-            self.headers = {
-                "Accept": "application/json",
-                "Authorization": f"Bearer {self.api_token}",
-            }
-            self.client = client or httpx.Client(headers=self.headers, timeout=30.0)
-            logger.info("UnusualWhalesOptionsAdapter initialized with API token")
+            self._disabled_reason = "missing-token"
+            logger.error(
+                "🚫 UNUSUAL_WHALES_API_TOKEN is not set – Unusual Whales data will be skipped"
+            )
+            return
+
+        self.headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {self.api_token}",
+        }
+        self.client = client or httpx.Client(headers=self.headers, timeout=self.timeout)
+        logger.info(
+            "UnusualWhalesOptionsAdapter initialized (token from env, base_url=%s, timeout=%.1fs)",
+            self.base_url,
+            self.timeout,
+        )
 
     def get_chain(self, symbol: str, timestamp: datetime, expiration: Optional[str] = None) -> List[OptionContract]:
         """Get options chain for a symbol using the public contracts endpoint."""
 
-        if not self.client or not self.api_token or self.use_stub:
-            return self._get_stub_chain(symbol, timestamp)
+        if not self.client:
+            if self.use_stub:
+                return self._get_stub_chain(symbol, timestamp)
 
-        url = f"{self.BASE_URL}/api/stock/{symbol}/option-contracts"
-        params = {"expiration_date": expiration} if expiration else {}
+            logger.info(
+                "⏭️  Skipping Unusual Whales for %s (adapter disabled: %s)",
+                symbol,
+                self._disabled_reason or "unknown",
+            )
+            return []
+
+        url = f"{self.base_url}/api/stock/{symbol}/option-contracts"
+        params = {"expiration_date": expiration, "limit": 500} if expiration else {"limit": 500}
 
         try:
             response = self.client.get(url, params=params)
@@ -65,8 +109,11 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             contracts_data = payload.get("data", []) or payload.get("contracts", [])
 
             if not contracts_data:
-                logger.warning(f"No options chain data for {symbol} - using stub")
-                return self._get_stub_chain(symbol, timestamp)
+                logger.info(
+                    "⏭️  Unusual Whales returned no contracts for %s - skipping symbol",
+                    symbol,
+                )
+                return []
 
             contracts: List[OptionContract] = []
             for option in contracts_data:
@@ -114,25 +161,59 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                 logger.info(f"✅ Retrieved {len(contracts)} option contracts for {symbol}")
                 return contracts
 
-            logger.warning(f"No valid contracts parsed for {symbol} - using stub")
-            return self._get_stub_chain(symbol, timestamp)
+            logger.warning(
+                f"No valid contracts parsed for {symbol} from Unusual Whales response"
+            )
+            return []
 
         except httpx.HTTPStatusError as error:
             status_code = error.response.status_code
-            detail = error.response.text if error.response else ""
+            detail = self._extract_detail(error.response)
             self._log_once(symbol, url, params, status_code, detail)
+
             if status_code in {401, 403}:
+                self._disabled_reason = f"auth-{status_code}"
+                self.client = None
                 logger.error(
-                    "❌ Unusual Whales auth/subscription error %s: %s - switching to stub mode",
+                    "❌ Unusual Whales authentication/subscription error %s - check UNUSUAL_WHALES_API_TOKEN",
+                    status_code,
+                )
+                return []
+
+            if status_code == 404:
+                logger.info(
+                    "⏭️  Unusual Whales has no data for %s (404) - skipping without stub",
+                    symbol,
+                )
+                return []
+
+            if status_code in {400, 422}:
+                logger.error(
+                    "❌ Unusual Whales rejected request for %s | status=%s | detail=%s",
+                    symbol,
                     status_code,
                     detail,
                 )
-                self.use_stub = True
-            else:
-                logger.error(f"❌ Unusual Whales HTTP error {status_code}: {error} | detail={detail}")
-            return self._get_stub_chain(symbol, timestamp)
+                return []
+
+            if status_code == 429 or status_code >= 500:
+                logger.warning(
+                    "⚠️  Unusual Whales transient error for %s | status=%s | detail=%s",
+                    symbol,
+                    status_code,
+                    detail,
+                )
+                return self._get_stub_chain(symbol, timestamp)
+
+            logger.error(
+                "❌ Unexpected Unusual Whales response for %s | status=%s | detail=%s",
+                symbol,
+                status_code,
+                detail,
+            )
+            return []
         except httpx.HTTPError as error:
-            logger.error(f"HTTP error getting options chain for {symbol}: {error}")
+            logger.warning(f"HTTP error getting options chain for {symbol}: {error}")
             return self._get_stub_chain(symbol, timestamp)
         except Exception as error:
             logger.error(f"Error getting options chain for {symbol}: {error}")
@@ -164,6 +245,21 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                 )
             self._warning_cache[cache_key] = now
 
+    @staticmethod
+    def _extract_detail(response: Optional[httpx.Response]) -> str:
+        if not response:
+            return ""
+
+        try:
+            payload = response.json()
+            if isinstance(payload, dict):
+                for key in ("detail", "message", "error"):
+                    if payload.get(key):
+                        return str(payload[key])
+            return str(payload)[:500]
+        except Exception:
+            return response.text[:500] if response.text else ""
+
     def _get_stub_chain(self, symbol: str, timestamp: datetime) -> List[OptionContract]:
         """Return deterministic stub data when the API is unavailable."""
 
@@ -184,8 +280,8 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
 
         try:
             endpoints = [
-                f"{self.BASE_URL}/api/activity",
-                f"{self.BASE_URL}/api/options/activity",
+                f"{self.base_url}/api/activity",
+                f"{self.base_url}/api/options/activity",
             ]
 
             params = {"ticker": symbol} if symbol else {}
@@ -214,8 +310,8 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
 
         try:
             endpoints = [
-                f"{self.BASE_URL}/api/flow/{symbol}",
-                f"{self.BASE_URL}/api/options/flow/{symbol}",
+                f"{self.base_url}/api/flow/{symbol}",
+                f"{self.base_url}/api/options/flow/{symbol}",
             ]
 
             for url in endpoints:
@@ -238,8 +334,8 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
 
         try:
             endpoints = [
-                f"{self.BASE_URL}/api/stock/{symbol}/iv",
-                f"{self.BASE_URL}/api/options/{symbol}/iv",
+                f"{self.base_url}/api/stock/{symbol}/iv",
+                f"{self.base_url}/api/options/{symbol}/iv",
             ]
 
             for url in endpoints:

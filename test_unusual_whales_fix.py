@@ -31,7 +31,7 @@ def main():
     print()
     
     # Check token
-    token = os.getenv("UNUSUAL_WHALES_TOKEN") or os.getenv("UNUSUAL_WHALES_API_KEY")
+    token = os.getenv("UNUSUAL_WHALES_API_TOKEN") or os.getenv("UNUSUAL_WHALES_TOKEN") or os.getenv("UNUSUAL_WHALES_API_KEY")
     if token:
         print(f"✅ Token found: {token[:20]}..." if len(token) > 20 else f"✅ Token found: {token}")
     else:
@@ -100,7 +100,7 @@ def main():
     else:
         print("💡 To use real data:")
         print("   1. Get API token from https://unusualwhales.com")
-        print("   2. Add to .env: UNUSUAL_WHALES_TOKEN=your_token_here")
+        print("   2. Add to .env: UNUSUAL_WHALES_API_TOKEN=your_token_here")
         print("   3. Re-run this test")
     print()
 
