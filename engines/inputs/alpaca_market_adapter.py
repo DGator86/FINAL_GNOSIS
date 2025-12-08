@@ -69,6 +69,12 @@ class AlpacaMarketDataAdapter:
             start_utc = self._ensure_utc(start)
             end_utc = self._ensure_utc(end)
 
+            # Clamp end to now to avoid requesting future bars that return empty sets
+            now_utc = datetime.now(timezone.utc)
+            if end_utc > now_utc:
+                logger.debug("Clamping end time for %s from %s to %s", symbol, end_utc, now_utc)
+                end_utc = now_utc
+
             # Guard against inverted windows (can happen with naive timestamps)
             if end_utc <= start_utc:
                 end_utc = start_utc + timedelta(minutes=1)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict
 
 
@@ -13,35 +14,32 @@ class OptionUtils:
     def generate_occ_symbol(
         symbol: str, expiration: datetime, option_type: str, strike: float
     ) -> str:
-        """Generate OCC standard option symbol.
+        """Generate deterministic OCC option symbol compatible with Alpaca.
 
-        Format: SYMBOLYYMMDD[C/P]00000000
-        Example: AAPL230616C00150000 (AAPL June 16 2023 150.00 Call)
-
-        Args:
-            symbol: Underlying symbol (e.g., AAPL)
-            expiration: Expiration date
-            option_type: 'call' or 'put'
-            strike: Strike price
-
-        Returns:
-            OCC formatted symbol string
+        The builder normalizes the underlying to uppercase, rounds strikes to
+        three decimals (per OCC thousandth convention), and zero-pads to eight
+        digits. Spaces in short underlyings are removed because Alpaca rejects
+        space-padded roots.
         """
-        # Format date: YYMMDD
-        date_str = expiration.strftime("%y%m%d")
 
-        # Format type: C or P
+        root = symbol.upper()
+        date_str = expiration.strftime("%y%m%d")
         type_char = "C" if option_type.lower() == "call" else "P"
 
-        # Format strike: 8 digits, multiplied by 1000, zero padded
-        # 150.00 -> 150000 -> 00150000
-        strike_int = int(strike * 1000)
+        strike_dec = Decimal(str(strike)).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+        strike_int = int(strike_dec * 1000)
         strike_str = f"{strike_int:08d}"
 
-        # Pad symbol to 6 chars with spaces if needed (standard OCC)
-        # But most APIs (Alpaca/Polygon) accept compact format: AAPL...
-        # We'll use compact format as it's more commonly accepted by modern APIs
-        return f"{symbol}{date_str}{type_char}{strike_str}"
+        return f"{root}{date_str}{type_char}{strike_str}"
+
+    @staticmethod
+    def to_alpaca_symbol(symbol: str, expiration: datetime, option_type: str, strike: float) -> str:
+        """Explicit helper for Alpaca/ OCC option symbol formatting.
+
+        Alias for :meth:`generate_occ_symbol` to keep call sites readable.
+        """
+
+        return OptionUtils.generate_occ_symbol(symbol, expiration, option_type, strike)
 
     @staticmethod
     def parse_occ_symbol(occ_symbol: str) -> Dict[str, Any]:

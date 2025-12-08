@@ -8,8 +8,10 @@ from typing import List, Optional
 
 from alpaca.common.exceptions import APIError
 from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.historical.option import OptionHistoricalDataClient
 from alpaca.data.live import StockDataStream
 from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
+from alpaca.data.requests import OptionSnapshotRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
@@ -27,6 +29,8 @@ from execution.broker_adapters.settings import (
     get_alpaca_paper_setting,
     get_required_options_level,
 )
+from gnosis.utils.option_utils import OptionUtils
+from execution.risk_utils import assert_within_max, calculate_order_value, is_option_symbol
 
 
 class Account(BaseModel):
@@ -90,6 +94,7 @@ class AlpacaBrokerAdapter:
             api_key=self.api_key,
             secret_key=self.secret_key,
         )
+        self.option_data_client: Optional[OptionHistoricalDataClient] = None
 
         # Risk management settings from environment
         self.max_position_size_pct = float(os.getenv("MAX_POSITION_SIZE_PCT", "2.0")) / 100.0
@@ -168,32 +173,56 @@ class AlpacaBrokerAdapter:
         # Get current account value
         account = self.get_account()
         portfolio_value = account.portfolio_value
+        max_position_value = portfolio_value * self.max_position_size_pct
 
         # Get current price if not provided
         if current_price is None:
-            try:
-                from alpaca.data.requests import StockLatestQuoteRequest
-                quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-                quote = self.data_client.get_stock_latest_quote(quote_request)
-                current_price = float(quote[symbol].ask_price)
-            except Exception as e:
-                logger.warning(f"Could not fetch price for {symbol}, using conservative estimate: {e}")
-                # Use buying power as conservative fallback
-                current_price = account.buying_power / quantity if quantity > 0 else 0.0
+            if is_option_symbol(symbol):
+                current_price = self._fetch_option_price(symbol)
+            else:
+                try:
+                    quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+                    quote = self.data_client.get_stock_latest_quote(quote_request)
+                    current_price = float(quote[symbol].ask_price)
+                except Exception as e:
+                    logger.warning(f"Could not fetch price for {symbol}, skipping order sizing: {e}")
+                    raise ValueError(f"Cannot size order for {symbol} without a price") from e
 
-        # Calculate order value
-        order_value = quantity * current_price
+        if current_price is None or current_price <= 0:
+            raise ValueError(f"Cannot size order for {symbol}: invalid price {current_price}")
 
-        # Check against maximum position size
-        max_position_value = portfolio_value * self.max_position_size_pct
+        order_value = calculate_order_value(symbol, quantity, current_price)
 
-        if order_value > max_position_value:
-            raise ValueError(
-                f"Order size ${order_value:,.2f} exceeds maximum position size of "
-                f"${max_position_value:,.2f} ({self.max_position_size_pct*100:.1f}% of ${portfolio_value:,.2f})"
-            )
+        assert_within_max(symbol, order_value, portfolio_value, self.max_position_size_pct)
 
         logger.debug(f"Position size validation passed: ${order_value:,.2f} <= ${max_position_value:,.2f}")
+
+    def _fetch_option_price(self, symbol: str) -> Optional[float]:
+        try:
+            if self.option_data_client is None:
+                self.option_data_client = OptionHistoricalDataClient(
+                    api_key=self.api_key,
+                    secret_key=self.secret_key,
+                )
+
+            request = OptionSnapshotRequest(symbol_or_symbols=symbol)
+            snapshot = self.option_data_client.get_option_snapshot(request)
+            snap = snapshot.get(symbol) if hasattr(snapshot, "get") else None
+            if snap:
+                bid = getattr(snap.latest_quote, "bid_price", None) if snap.latest_quote else None
+                ask = getattr(snap.latest_quote, "ask_price", None) if snap.latest_quote else None
+                last = getattr(snap, "last_price", None)
+                prices = [p for p in [bid, ask, last] if p is not None and p > 0]
+                if prices:
+                    return float(sum(prices) / len(prices))
+        except Exception as error:  # pragma: no cover - network dependency
+            logger.warning(
+                "Could not fetch option price for %s: %s (symbol fields=%s)",
+                symbol,
+                error,
+                OptionUtils.parse_occ_symbol(symbol) if len(symbol) >= 15 else {},
+            )
+        return None
 
     def _check_daily_loss_limit(self) -> None:
         """
