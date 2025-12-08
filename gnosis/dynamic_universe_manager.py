@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
+import math
 
 from loguru import logger
 
@@ -79,9 +80,13 @@ class DynamicUniverseManager:
             symbols=candidate_symbols if candidate_symbols is not None else [], top_n=self.top_n
         )
 
-        # Filter by minimum score
+        # Filter by minimum score and drop NaNs explicitly
         qualified_opps = [
-            opp for opp in scan_result.opportunities if opp.score >= self.min_score_threshold
+            opp
+            for opp in scan_result.opportunities
+            if opp.score is not None
+            and not math.isnan(opp.score)
+            and opp.score >= self.min_score_threshold
         ]
 
         # Take top N
@@ -92,6 +97,23 @@ class DynamicUniverseManager:
         added = list(set(new_universe) - set(self.active_universe))
         removed = list(set(self.active_universe) - set(new_universe))
 
+        # Update state, but avoid dropping to zero on transient data gaps
+        if not top_opportunities and self.active_universe:
+            logger.warning(
+                "Universe scan returned no qualifying symbols (scanned={scanned}, above_threshold={qualified}). "
+                "Keeping existing universe of {current_count} symbols.",
+                scanned=scan_result.symbols_scanned,
+                qualified=len(qualified_opps),
+                current_count=len(self.active_universe),
+            )
+            return UniverseUpdate(
+                added=[],
+                removed=[],
+                current=self.active_universe,
+                timestamp=datetime.now(),
+                opportunities=self.last_scan_results,
+            )
+
         # Update state
         self.active_universe = new_universe
         self.last_scan_results = top_opportunities
@@ -99,7 +121,8 @@ class DynamicUniverseManager:
 
         logger.info(
             f"Universe updated: {len(new_universe)} symbols | "
-            f"+{len(added)} added | -{len(removed)} removed"
+            f"+{len(added)} added | -{len(removed)} removed "
+            f"(scanned={scan_result.symbols_scanned}, above_threshold={len(qualified_opps)})"
         )
 
         if added:
