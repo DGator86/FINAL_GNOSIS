@@ -23,7 +23,7 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
 
     BASE_URL = "https://api.unusualwhales.com"
 
-    def __init__(self, *, token: Optional[str] = None):
+    def __init__(self, *, token: Optional[str] = None, client: Optional[httpx.Client] = None):
         """Initialize the adapter with Bearer authentication.
 
         Args:
@@ -42,7 +42,7 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                 "Accept": "application/json",
                 "Authorization": f"Bearer {self.api_token}",
             }
-            self.client = httpx.Client(headers=self.headers, timeout=30.0)
+            self.client = client or httpx.Client(headers=self.headers, timeout=30.0)
             logger.info("UnusualWhalesOptionsAdapter initialized with API token")
 
     def get_chain(self, symbol: str, timestamp: datetime, expiration: Optional[str] = None) -> List[OptionContract]:
@@ -115,13 +115,16 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
 
         except httpx.HTTPStatusError as error:
             status_code = error.response.status_code
+            detail = error.response.text if error.response else ""
             if status_code in {401, 403}:
                 logger.error("❌ Invalid token or subscription missing API access - switching to stub mode")
+                self.use_stub = True
             elif status_code == 404:
-                logger.warning("⚠️  Unusual Whales endpoint returned 404 - verify symbol or subscription")
+                logger.warning(
+                    f"⚠️  Unusual Whales returned 404 for {symbol} | params={params} | detail={detail}"
+                )
             else:
-                logger.error(f"❌ Unusual Whales HTTP error {status_code}: {error}")
-            self.use_stub = True
+                logger.error(f"❌ Unusual Whales HTTP error {status_code}: {error} | detail={detail}")
             return self._get_stub_chain(symbol, timestamp)
         except httpx.HTTPError as error:
             logger.error(f"HTTP error getting options chain for {symbol}: {error}")

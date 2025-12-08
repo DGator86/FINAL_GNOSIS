@@ -14,6 +14,7 @@ from alpaca.data.live import StockDataStream
 
 from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
 from execution.broker_adapters.alpaca_options_adapter import AlpacaOptionsAdapter
+from execution.broker_adapters.settings import get_required_options_level
 from gnosis.timeframe_manager import TimeframeManager
 from gnosis.dynamic_universe_manager import UniverseUpdate
 from agents.hedge_agent_v4 import HedgeAgentV4
@@ -61,11 +62,50 @@ class UnifiedTradingBot:
 
         # Initialize adapters
         self.adapter = AlpacaBrokerAdapter(paper=paper_mode)
-        self.options_adapter = AlpacaOptionsAdapter(paper=paper_mode)
+
+        options_config_enabled = config.get("enable_options", True)
+        self.options_adapter = None
+        options_enabled = False
+        account_level = None
+
+        try:
+            account = self.adapter.get_account()
+            account_level = getattr(account, "options_trading_level", None)
+            approved_level = getattr(account, "options_approved_level", None)
+            required_level = get_required_options_level()
+
+            if not options_config_enabled:
+                options_reason = "Config enable_options=False"
+            elif account_level is None:
+                options_reason = "Alpaca account missing options_trading_level"
+            elif account_level < required_level:
+                options_reason = (
+                    f"Alpaca options_trading_level={account_level} below required {required_level}"
+                )
+            else:
+                options_enabled = True
+                self.options_adapter = AlpacaOptionsAdapter(paper=paper_mode)
+                options_reason = ""
+
+            if options_enabled:
+                logger.info(
+                    "Options enabled: Alpaca level %s (approved=%s, required=%s)",
+                    account_level,
+                    approved_level,
+                    required_level,
+                )
+            else:
+                logger.warning(f"Options disabled: {options_reason}")
+        except Exception as exc:
+            logger.warning(f"Options disabled due to account check failure: {exc}")
+            options_enabled = False
+            self.options_adapter = None
 
         # Initialize Agents
         logger.info("Initializing TradeAgentRouter...")
-        self.trade_agent = TradeAgentRouter(config=config, options_adapter=self.options_adapter)
+        router_config = dict(config)
+        router_config["enable_options"] = options_enabled and options_config_enabled
+        self.trade_agent = TradeAgentRouter(config=router_config, options_adapter=self.options_adapter)
 
         logger.info("Initializing HedgeAgentV4...")
         self.hedge_agent = HedgeAgentV4(config=config)

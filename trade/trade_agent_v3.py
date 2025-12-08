@@ -140,6 +140,8 @@ class TradeAgentV3:
         self.max_position_size_pct = self.config.get("max_position_size_pct", 0.10)  # 10% max
         self.base_position_size_pct = self.config.get("base_position_size_pct", 0.05)  # 5% base
         self.max_portfolio_risk_pct = self.config.get("max_portfolio_risk_pct", 0.02)  # 2% max risk
+        self.min_shares_per_trade = self.config.get("min_shares_per_trade", 1)
+        self.min_dollars_per_trade = self.config.get("min_dollars_per_trade", 0)
 
         # Options configuration
         self.prefer_options = self.config.get("prefer_options", False)
@@ -198,11 +200,14 @@ class TradeAgentV3:
         position_size_pct = self.base_position_size_pct * (1 + confidence_multiplier)
         position_size_pct = min(position_size_pct, self.max_position_size_pct)
 
-        position_value = available_capital * position_size_pct
-        quantity = int(position_value / current_price)
+        quantity = self._calculate_equity_quantity(
+            symbol=composer_decision.symbol,
+            current_price=current_price,
+            available_capital=available_capital,
+            position_size_pct=position_size_pct,
+        )
 
         if quantity < 1:
-            logger.warning(f"Quantity < 1 for {composer_decision.symbol}, skipping")
             return None
 
         # Calculate entry and exit prices
@@ -358,6 +363,10 @@ class TradeAgentV3:
         quantity = int(position_value / cost_per_contract)
 
         if quantity < 1:
+            logger.warning(
+                f"Options sizing below minimum for {symbol}: cost/contract=${cost_per_contract:.2f}, "
+                f"position_budget=${position_value:.2f}"
+            )
             return None
 
         # Risk management for options
@@ -423,6 +432,45 @@ class TradeAgentV3:
         )
 
         return strategy
+
+    def _calculate_equity_quantity(
+        self,
+        symbol: str,
+        current_price: float,
+        available_capital: float,
+        position_size_pct: float,
+    ) -> int:
+        """Calculate share quantity while enforcing minimum sizing.
+
+        Returns 0 when sizing fails; calling code should skip trades in that case.
+        """
+
+        if current_price <= 0:
+            logger.warning(f"Invalid current price for {symbol}: {current_price}")
+            return 0
+
+        max_position_value = available_capital * position_size_pct
+
+        if max_position_value < self.min_dollars_per_trade:
+            logger.warning(
+                f"Position budget ${max_position_value:.2f} below min ${self.min_dollars_per_trade:.2f} "
+                f"for {symbol}, skipping"
+            )
+            return 0
+
+        min_cost = current_price * max(1, self.min_shares_per_trade)
+        if max_position_value < min_cost:
+            logger.warning(
+                f"Position sizing below minimum for {symbol}: price=${current_price:.2f}, "
+                f"budget=${max_position_value:.2f}, required=${min_cost:.2f} "
+                f"(shares>={self.min_shares_per_trade})"
+            )
+            return 0
+
+        raw_quantity = max_position_value / current_price
+        quantity = max(self.min_shares_per_trade, int(raw_quantity))
+
+        return quantity
 
     def strategy_to_trade_idea(self, strategy: TradeStrategy) -> TradeIdea:
         """Convert TradeStrategy to TradeIdea for execution.

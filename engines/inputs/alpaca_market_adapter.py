@@ -19,7 +19,7 @@ from engines.inputs.market_data_adapter import OHLCV, Quote
 class AlpacaMarketDataAdapter:
     """Alpaca market data adapter using official Alpaca SDK."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, client: StockHistoricalDataClient | None = None, data_feed: str | None = None) -> None:
         """Initialize Alpaca market data adapter."""
         self.api_key = os.getenv("ALPACA_API_KEY")
         self.secret_key = os.getenv("ALPACA_SECRET_KEY")
@@ -29,7 +29,8 @@ class AlpacaMarketDataAdapter:
                 "Alpaca credentials not found. Set ALPACA_API_KEY and ALPACA_SECRET_KEY."
             )
 
-        self.client = StockHistoricalDataClient(api_key=self.api_key, secret_key=self.secret_key)
+        self.client = client or StockHistoricalDataClient(api_key=self.api_key, secret_key=self.secret_key)
+        self.data_feed = (data_feed or os.getenv("ALPACA_DATA_FEED", "IEX")).upper()
 
         logger.info("AlpacaMarketDataAdapter initialized")
 
@@ -70,24 +71,31 @@ class AlpacaMarketDataAdapter:
                 timeframe=tf,
                 start=start,
                 end=end,
-                feed=DataFeed.IEX,
+                feed=DataFeed[self.data_feed] if self.data_feed in DataFeed.__members__ else DataFeed.IEX,
             )
 
             # Get bars
             bars_response = self.client.get_stock_bars(request)
+            bars = self._extract_bars(bars_response, symbol)
 
-            if symbol not in bars_response:
-                logger.warning(f"No bars found for {symbol}")
+            if not bars:
+                logger.warning(
+                    "No bars found for {symbol} (tf={timeframe}, feed={feed}, start={start}, end={end}) | raw_keys={keys}",
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    feed=self.data_feed,
+                    start=start,
+                    end=end,
+                    keys=self._describe_bars_response(bars_response),
+                )
                 return []
-
-            bars = bars_response[symbol]
 
             # Convert to OHLCV objects
             result = []
             for bar in bars:
                 result.append(
                     OHLCV(
-                        timestamp=bar.timestamp,
+                        timestamp=getattr(bar, "timestamp", getattr(bar, "t", None)),
                         open=float(bar.open),
                         high=float(bar.high),
                         low=float(bar.low),
@@ -102,6 +110,56 @@ class AlpacaMarketDataAdapter:
         except APIError as e:
             logger.error(f"Error getting bars for {symbol}: {e}")
             return []
+        except Exception as e:
+            logger.error(
+                f"Unexpected error getting bars for {symbol} (tf={timeframe}): {e}"
+            )
+            return []
+
+    @staticmethod
+    def _extract_bars(response, symbol: str):
+        """Return list-like collection of bars from any Alpaca response shape."""
+
+        if response is None:
+            return []
+
+        if hasattr(response, "data"):
+            data = response.data
+            if isinstance(data, dict):
+                return list(data.get(symbol, []))
+            return list(data)
+
+        if isinstance(response, dict):
+            return list(response.get(symbol, []))
+
+        if hasattr(response, "__iter__"):
+            try:
+                return list(response)
+            except TypeError:
+                return []
+
+        return []
+
+    @staticmethod
+    def _describe_bars_response(response) -> str:
+        """Provide lightweight diagnostics for logging empty responses."""
+
+        if response is None:
+            return "<none>"
+
+        if hasattr(response, "keys"):
+            try:
+                return ",".join(sorted(map(str, response.keys())))
+            except Exception:
+                return str(type(response))
+
+        if hasattr(response, "data"):
+            data = getattr(response, "data")
+            if isinstance(data, dict):
+                return ",".join(sorted(map(str, data.keys())))
+            return str(type(data))
+
+        return str(type(response))
 
     def get_quote(self, symbol: str) -> Quote:
         """

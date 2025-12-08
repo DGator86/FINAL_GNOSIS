@@ -58,6 +58,12 @@ Run the bundled smoke and engine tests to confirm everything is wired up:
 pytest
 ```
 
+### Live trading toggles
+
+- `ENABLE_TRADING=true` is set by `start_dynamic_trading.py` and will place paper orders when `ALPACA_PAPER=1` (default).
+- `ALPACA_DATA_FEED` can be set to `IEX` (paper default) or `SIP` for richer historical bars.
+- Position sizing now honors `min_shares_per_trade` (default 1) and optional `min_dollars_per_trade` so valid signals do not die with a generic "Quantity < 1" log.
+
 ## Next Steps
 
 1. Swap stub adapters for real data sources (broker APIs, market data vendors, news feeds).
