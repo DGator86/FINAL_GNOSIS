@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 
 from alpaca.common.exceptions import APIError
@@ -88,7 +88,39 @@ class AlpacaMarketDataAdapter:
                     end=end,
                     keys=self._describe_bars_response(bars_response),
                 )
-                return []
+
+                # Retry with a slightly wider window for intraday gaps
+                if timeframe.endswith("Min") or timeframe.endswith("Hour"):
+                    fallback_start = min(start, end - timedelta(days=2))
+                    fallback_request = StockBarsRequest(
+                        symbol_or_symbols=symbol,
+                        timeframe=tf,
+                        start=fallback_start,
+                        end=end,
+                        feed=DataFeed[self.data_feed] if self.data_feed in DataFeed.__members__ else DataFeed.IEX,
+                    )
+                    logger.info(
+                        "Retrying {symbol} bars with expanded window (tf={timeframe}, start={start}, end={end}, feed={feed})",
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        start=fallback_start,
+                        end=end,
+                        feed=self.data_feed,
+                    )
+                    bars_response = self.client.get_stock_bars(fallback_request)
+                    bars = self._extract_bars(bars_response, symbol)
+
+                if not bars:
+                    logger.warning(
+                        "No bars found for {symbol} after retry (tf={timeframe}, feed={feed}, start={start}, end={end}) | raw_keys={keys}",
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        feed=self.data_feed,
+                        start=start,
+                        end=end,
+                        keys=self._describe_bars_response(bars_response),
+                    )
+                    return []
 
             # Convert to OHLCV objects
             result = []

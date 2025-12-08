@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+import asyncio
 
 import pytest
 
@@ -59,3 +60,13 @@ def test_universe_filters_scores_below_threshold():
     update = asyncio.run(manager.refresh_universe(["AAPL", "LOW"]))
 
     assert update.current == ["AAPL"]
+
+
+def test_universe_falls_back_when_all_below_threshold():
+    scanner = StubScanner([opp("AAPL", 0.2), opp("MSFT", 0.1), opp("JPM", 0.05)])
+    manager = DynamicUniverseManager(scanner=scanner, top_n=2, min_score_threshold=0.5)
+
+    update = asyncio.run(manager.refresh_universe(["AAPL", "MSFT", "JPM"]))
+
+    assert set(update.current) <= {"AAPL", "MSFT", "JPM"}
+    assert len(update.current) == 2
