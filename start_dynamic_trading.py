@@ -232,7 +232,9 @@ class DynamicTradingSystem:
 📈 PERFORMANCE UPDATE ({datetime.now().strftime("%H:%M:%S")}):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    Portfolio Value: ${float(account.portfolio_value):,.2f}  # type: ignore[union-attr]
+   Equity: ${float(account.equity):,.2f}  # type: ignore[union-attr]
    Cash: ${float(account.cash):,.2f}  # type: ignore[union-attr]
+   Buying Power: ${float(account.buying_power):,.2f}  # type: ignore[union-attr]
    P&L Today: ${float(account.portfolio_value) - 30000:+,.2f}  # type: ignore[union-attr]
    Open Positions: {len(broker_positions)}
   Active Universe: {len(self.trading_bot.active_symbols)}  # type: ignore[union-attr]
