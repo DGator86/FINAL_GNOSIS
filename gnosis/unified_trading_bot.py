@@ -330,7 +330,7 @@ class UnifiedTradingBot:
         # Get account info for capital
         try:
             account = self.adapter.get_account()
-            available_capital = float(account.cash)
+            available_capital = float(account.equity)
         except Exception:
             available_capital = 10000.0  # Fallback
 

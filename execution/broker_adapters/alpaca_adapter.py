@@ -105,8 +105,23 @@ class AlpacaBrokerAdapter:
         # Verify connection
         try:
             account = self.trading_client.get_account()
-            logger.info(f"Connected to Alpaca - Account ID: {account.id}, Balance: ${float(account.cash):,.2f}")
-            self.session_start_equity = float(account.equity)
+
+            equity = float(account.equity)
+            cash = float(account.cash)
+            buying_power = float(account.buying_power)
+
+            logger.info(
+                "Connected to Alpaca - Account ID: %s, Equity: $%s, Cash: $%s, Buying Power: $%s",
+                account.id,
+                f"{equity:,.2f}",
+                f"{cash:,.2f}",
+                f"{buying_power:,.2f}",
+            )
+
+            self.session_start_equity = equity
+            self.equity = equity
+            self.cash = cash
+            self.buying_power = buying_power
             self._verify_options_permissions(account)
         except APIError as e:
             logger.error(f"Failed to connect to Alpaca: {e}")

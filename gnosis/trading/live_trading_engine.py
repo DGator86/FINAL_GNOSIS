@@ -90,16 +90,16 @@ class GnosisLiveTradingEngine:
             self.logger.warning("Insufficient data to build features for %s", symbol)
             return
 
-        market_snapshot = {
-            "timestamp": datetime.utcnow(),
-            "symbol": symbol,
-            "close": current_price,
-            "price": current_price,
-            "volume": float(historical["volume"].iloc[-1]),
-            "account_balance": float(account.cash),
-            "portfolio_value": float(account.portfolio_value),
-            "volatility": features.get("volatility", 0.02),
-        }
+            market_snapshot = {
+                "timestamp": datetime.utcnow(),
+                "symbol": symbol,
+                "close": current_price,
+                "price": current_price,
+                "volume": float(historical["volume"].iloc[-1]),
+                "account_balance": float(account.equity),
+                "portfolio_value": float(account.portfolio_value),
+                "volatility": features.get("volatility", 0.02),
+            }
 
         signal = self.agent.analyze(market_snapshot, features)
         self.logger.info(
