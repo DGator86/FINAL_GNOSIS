@@ -16,6 +16,17 @@ python main.py run-once --symbol SPY
 
 The CLI uses stub adapters that generate deterministic synthetic data for options, market, and news feeds. Replace them with production adapters by implementing the protocols in `engines/inputs/` and passing them to `build_pipeline`.
 
+## 3. Launch the Dynamic Trading Loop
+
+If you want to run the full dynamic-universe trading loop (the script the server log references), make sure you are inside the repository root before launching it. The repo is located at `/workspace/FINAL_GNOSIS` in the provided environment.
+
+```bash
+cd /workspace/FINAL_GNOSIS
+python start_dynamic_trading.py
+```
+
+The script sets `ENABLE_TRADING=true` internally and pulls configuration from `config/config.yaml`, so it needs to run from the project root to resolve those relative paths. If you see `python3: can't open file ... start_dynamic_trading.py`, double-check that you are in the correct directory.
+
 ## 3. Project Map
 
 - `schemas/core_schemas.py` – Canonical Pydantic models shared across engines and agents.
