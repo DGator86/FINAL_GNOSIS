@@ -34,7 +34,11 @@ app.add_middleware(
 )
 
 # Load UW token
-UW_TOKEN = os.getenv("UNUSUAL_WHALES_API_KEY") or os.getenv("UNUSUAL_WHALES_TOKEN")
+UW_TOKEN = (
+    os.getenv("UNUSUAL_WHALES_API_TOKEN")
+    or os.getenv("UNUSUAL_WHALES_API_KEY")
+    or os.getenv("UNUSUAL_WHALES_TOKEN")
+)
 
 # Initialize adapter safely
 uw_adapter: Optional[UnusualWhalesAdapter]

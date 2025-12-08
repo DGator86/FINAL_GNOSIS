@@ -74,7 +74,8 @@ class ConfigValidator:
         
         # Optional but recommended
         optional_vars = {
-            "UNUSUAL_WHALES_API_KEY": "Unusual Whales API for options data",
+            "UNUSUAL_WHALES_API_TOKEN": "Unusual Whales API for options data",
+            "UNUSUAL_WHALES_API_KEY": "Unusual Whales API (legacy env var)",
             "LOG_LEVEL": "Logging level",
         }
         

@@ -17,7 +17,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-token = os.getenv("UNUSUAL_WHALES_TOKEN") or os.getenv("UNUSUAL_WHALES_API_KEY")
+token = (
+    os.getenv("UNUSUAL_WHALES_API_TOKEN")
+    or os.getenv("UNUSUAL_WHALES_TOKEN")
+    or os.getenv("UNUSUAL_WHALES_API_KEY")
+)
 
 if not token:
     print("❌ No token found!")
