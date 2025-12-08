@@ -93,6 +93,16 @@ class DynamicUniverseManager:
         top_opportunities = qualified_opps[: self.top_n]
         new_universe = [opp.symbol for opp in top_opportunities]
 
+        # If nothing cleared the threshold but we have scores, fall back to best available
+        if not top_opportunities and scan_result.opportunities:
+            logger.warning(
+                "All symbols scored below min_score={threshold:.2f}; using best available {count} opportunities",
+                threshold=self.min_score_threshold,
+                count=min(len(scan_result.opportunities), self.top_n),
+            )
+            top_opportunities = scan_result.opportunities[: self.top_n]
+            new_universe = [opp.symbol for opp in top_opportunities]
+
         # Calculate changes
         added = list(set(new_universe) - set(self.active_universe))
         removed = list(set(self.active_universe) - set(new_universe))
@@ -112,6 +122,13 @@ class DynamicUniverseManager:
                 current=self.active_universe,
                 timestamp=datetime.now(),
                 opportunities=self.last_scan_results,
+            )
+
+        if not top_opportunities and not self.active_universe:
+            logger.warning(
+                "Universe scan returned no qualifying symbols and no active universe exists (scanned={scanned}, above_threshold={qualified})",
+                scanned=scan_result.symbols_scanned,
+                qualified=len(qualified_opps),
             )
 
         # Update state

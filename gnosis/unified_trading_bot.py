@@ -48,6 +48,7 @@ class UnifiedTradingBot:
         self.active_symbols: Set[str] = set()
         self.symbol_data: Dict[str, SymbolData] = {}
         self.running = False
+        self.stopping = False
 
         # Risk Management
         self.risk_per_trade_pct = config.get("risk", {}).get("risk_per_trade_pct", 0.02)
@@ -126,6 +127,9 @@ class UnifiedTradingBot:
 
     async def add_symbol(self, symbol: str):
         """Add a symbol to monitor and trade."""
+        if self.stopping:
+            logger.warning(f"Ignoring add_symbol({symbol}) during shutdown")
+            return
         if symbol in self.active_symbols:
             return
 
@@ -636,6 +640,7 @@ class UnifiedTradingBot:
     async def stop(self):
         """Stop the trading bot."""
         self.running = False
+        self.stopping = True
         if self.stream:
             try:
                 await self.stream.stop()

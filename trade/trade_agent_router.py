@@ -25,7 +25,7 @@ class TradeAgentRouter:
     def __init__(self, config: Dict, options_adapter=None):
         """Initialize Router."""
         self.config = config
-        self.use_options = config.get("enable_options", False)
+        self.use_options = config.get("enable_options", False) and options_adapter is not None
         self.options_adapter = options_adapter
 
         self.options_agent = OptionsTradeAgent(config)
@@ -35,6 +35,9 @@ class TradeAgentRouter:
         self.stock_agent = TradeAgentV3(
             config.get("agents", {}).get("trade_v3", {}), options_adapter
         )
+
+        if config.get("enable_options", False) and options_adapter is None:
+            logger.warning("TradeAgentRouter requested options but no adapter available; disabling options path")
 
         logger.info(f"TradeAgentRouter initialized (Options Enabled: {self.use_options})")
 

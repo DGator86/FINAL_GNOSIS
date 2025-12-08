@@ -263,6 +263,7 @@ class DynamicTradingSystem:
     async def run(self) -> None:
         """Main execution loop."""
 
+        tasks: list[asyncio.Task] = []
         try:
             # Initialize system
             await self.initialize()
@@ -294,12 +295,16 @@ Press Ctrl+C to stop gracefully.
 
         except KeyboardInterrupt:
             logger.warning("Shutdown signal received...")
+            for task in tasks:
+                task.cancel()
             await self.shutdown()
         except Exception as e:
             logger.error(f"Fatal error: {e}")
             import traceback
 
             traceback.print_exc()
+            for task in tasks:
+                task.cancel()
             await self.shutdown()
 
     async def shutdown(self) -> None:

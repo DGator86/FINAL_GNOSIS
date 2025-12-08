@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
+import os
 
 from loguru import logger
 
@@ -137,11 +138,28 @@ class TradeAgentV3:
         self.config = config or {}
         self.options_adapter = options_adapter
 
-        self.max_position_size_pct = self.config.get("max_position_size_pct", 0.10)  # 10% max
-        self.base_position_size_pct = self.config.get("base_position_size_pct", 0.05)  # 5% base
+        env_max_pct = os.getenv("MAX_POSITION_PCT_PER_TRADE")
+        env_base_pct = os.getenv("BASE_POSITION_PCT_PER_TRADE")
+        env_min_shares = os.getenv("MIN_SHARES_PER_TRADE")
+        env_min_dollars = os.getenv("MIN_DOLLARS_PER_TRADE")
+
+        self.max_position_size_pct = float(
+            env_max_pct
+            or self.config.get("max_position_size_pct")
+            or 0.02
+        )
+        self.base_position_size_pct = float(
+            env_base_pct
+            or self.config.get("base_position_size_pct")
+            or self.max_position_size_pct
+        )
         self.max_portfolio_risk_pct = self.config.get("max_portfolio_risk_pct", 0.02)  # 2% max risk
-        self.min_shares_per_trade = self.config.get("min_shares_per_trade", 1)
-        self.min_dollars_per_trade = self.config.get("min_dollars_per_trade", 0)
+        self.min_shares_per_trade = int(
+            env_min_shares or self.config.get("min_shares_per_trade", 1)
+        )
+        self.min_dollars_per_trade = float(
+            env_min_dollars or self.config.get("min_dollars_per_trade", 0)
+        )
 
         # Options configuration
         self.prefer_options = self.config.get("prefer_options", False)
@@ -208,6 +226,13 @@ class TradeAgentV3:
         )
 
         if quantity < 1:
+            logger.warning(
+                "Quantity < 1 for {symbol}: price={price}, equity={equity}, budget_pct={pct:.4f}",
+                symbol=composer_decision.symbol,
+                price=current_price,
+                equity=available_capital,
+                pct=position_size_pct,
+            )
             return None
 
         # Calculate entry and exit prices
@@ -469,6 +494,18 @@ class TradeAgentV3:
 
         raw_quantity = max_position_value / current_price
         quantity = max(self.min_shares_per_trade, int(raw_quantity))
+
+        if quantity < 1:
+            logger.warning(
+                "Calculated quantity < 1 for {symbol}: price=${price:.2f}, equity=${equity:.2f}, "
+                "budget=${budget:.2f}, pct={pct:.4f}",
+                symbol=symbol,
+                price=current_price,
+                equity=available_capital,
+                budget=max_position_value,
+                pct=position_size_pct,
+            )
+            return 0
 
         return quantity
 

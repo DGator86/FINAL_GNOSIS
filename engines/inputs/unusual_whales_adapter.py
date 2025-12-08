@@ -121,8 +121,9 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                 self.use_stub = True
             elif status_code == 404:
                 logger.warning(
-                    f"⚠️  Unusual Whales returned 404 for {symbol} | params={params} | detail={detail}"
+                    f"⚠️  Unusual Whales returned 404 for {symbol} | url={url} | params={params} | detail={detail}"
                 )
+                logger.info(f"Falling back to stub options chain for {symbol}")
             else:
                 logger.error(f"❌ Unusual Whales HTTP error {status_code}: {error} | detail={detail}")
             return self._get_stub_chain(symbol, timestamp)
