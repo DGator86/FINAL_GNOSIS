@@ -1,37 +1,41 @@
-"""Unusual Whales API adapter with corrected v2 endpoints and Bearer auth."""
+"""Unusual Whales API adapter with corrected endpoints and Bearer auth."""
 
 from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import httpx
 from loguru import logger
 
+from gnosis.utils.option_utils import OptionUtils
 from engines.inputs.options_chain_adapter import OptionContract, OptionsChainAdapter
 
 
 class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
-    """Options chain adapter for the Unusual Whales v2 API.
+    """Options chain adapter for the Unusual Whales API.
 
     Key details (verified Nov 2025):
     - Base URL: https://api.unusualwhales.com
     - Authentication: Bearer token via Authorization header
-    - Endpoint: /v2/options/contracts/{symbol}?expiration_date=YYYY-MM-DD (optional)
+    - Endpoint: /api/stock/{symbol}/option-contracts (full OCC symbols)
     """
 
     BASE_URL = "https://api.unusualwhales.com"
 
     def __init__(self, *, token: Optional[str] = None, client: Optional[httpx.Client] = None):
-        """Initialize the adapter with Bearer authentication.
-
-        Args:
-            token: Optional explicit token; otherwise read from env vars.
-        """
+        """Initialize the adapter with Bearer authentication."""
 
         self.api_token = token or os.getenv("UNUSUAL_WHALES_TOKEN") or os.getenv("UNUSUAL_WHALES_API_KEY")
         self.use_stub = False
+        self._warning_cache: Dict[str, datetime] = {}
+
+        if os.getenv("UNUSUAL_WHALES_DISABLED", "false").lower() in {"1", "true", "yes"}:
+            logger.info("Unusual Whales disabled via UNUSUAL_WHALES_DISABLED – using stub data")
+            self.client = None
+            self.use_stub = True
+            return
 
         if not self.api_token:
             logger.warning("⚠️  UNUSUAL_WHALES_TOKEN not set → using stub data fallback")
@@ -46,27 +50,19 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             logger.info("UnusualWhalesOptionsAdapter initialized with API token")
 
     def get_chain(self, symbol: str, timestamp: datetime, expiration: Optional[str] = None) -> List[OptionContract]:
-        """Get options chain for a symbol using the v2 contracts endpoint.
-
-        Args:
-            symbol: Underlying symbol.
-            timestamp: Data timestamp (used for stub fallback default expirations).
-            expiration: Optional expiration date (YYYY-MM-DD).
-
-        Returns:
-            List of :class:`OptionContract` entries with greeks populated when available.
-        """
+        """Get options chain for a symbol using the public contracts endpoint."""
 
         if not self.client or not self.api_token or self.use_stub:
             return self._get_stub_chain(symbol, timestamp)
 
-        url = f"{self.BASE_URL}/v2/options/contracts/{symbol}"
+        url = f"{self.BASE_URL}/api/stock/{symbol}/option-contracts"
         params = {"expiration_date": expiration} if expiration else {}
 
         try:
             response = self.client.get(url, params=params)
             response.raise_for_status()
-            contracts_data = response.json().get("contracts", [])
+            payload = response.json()
+            contracts_data = payload.get("data", []) or payload.get("contracts", [])
 
             if not contracts_data:
                 logger.warning(f"No options chain data for {symbol} - using stub")
@@ -75,31 +71,39 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             contracts: List[OptionContract] = []
             for option in contracts_data:
                 try:
-                    exp_str = option.get("expiration_date")
-                    exp_date = datetime.strptime(exp_str, "%Y-%m-%d") if exp_str else timestamp
-
-                    option_type = (option.get("type") or "").lower()
-                    if option_type not in {"call", "put"}:
+                    symbol_str = option.get("symbol") or option.get("occ_symbol")
+                    if not symbol_str:
                         continue
 
-                    greeks = option.get("greeks", {}) or {}
+                    parsed = OptionUtils.parse_occ_symbol(symbol_str.replace(" ", ""))
+                    exp_date = parsed["expiration"]
+                    option_type = parsed["option_type"]
+                    strike = float(parsed["strike"])
+
+                    bid = float(option.get("nbbo_bid", option.get("bid", 0)) or 0)
+                    ask = float(option.get("nbbo_ask", option.get("ask", 0)) or 0)
+                    last = float(option.get("last_price", option.get("last", 0)) or 0)
+                    volume = float(option.get("volume", 0) or 0)
+                    oi = float(option.get("open_interest", option.get("open_interest", 0)) or 0)
+                    iv = float(option.get("implied_volatility", option.get("iv", 0)) or 0)
+
                     contracts.append(
                         OptionContract(
-                            symbol=option.get("symbol") or f"{symbol}_{exp_date.strftime('%Y%m%d')}{option_type[0].upper()}{option.get('strike', 0)}",
-                            strike=float(option.get("strike", 0) or 0),
+                            symbol=symbol_str.strip(),
+                            strike=strike,
                             expiration=exp_date,
                             option_type=option_type,
-                            bid=float(option.get("bid", 0) or 0),
-                            ask=float(option.get("ask", 0) or 0),
-                            last=float(option.get("last", 0) or 0),
-                            volume=float(option.get("volume", 0) or 0),
-                            open_interest=float(option.get("open_interest", 0) or 0),
-                            implied_volatility=float(option.get("implied_volatility", 0) or 0),
-                            delta=float(greeks.get("delta", 0) or 0),
-                            gamma=float(greeks.get("gamma", 0) or 0),
-                            theta=float(greeks.get("theta", 0) or 0),
-                            vega=float(greeks.get("vega", 0) or 0),
-                            rho=float(greeks.get("rho", 0) or 0),
+                            bid=bid,
+                            ask=ask,
+                            last=last,
+                            volume=volume,
+                            open_interest=oi,
+                            implied_volatility=iv,
+                            delta=float(option.get("delta", 0) or 0),
+                            gamma=float(option.get("gamma", 0) or 0),
+                            theta=float(option.get("theta", 0) or 0),
+                            vega=float(option.get("vega", 0) or 0),
+                            rho=float(option.get("rho", 0) or 0),
                         )
                     )
                 except (ValueError, KeyError) as error:
@@ -116,6 +120,7 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
         except httpx.HTTPStatusError as error:
             status_code = error.response.status_code
             detail = error.response.text if error.response else ""
+            self._log_once(symbol, url, params, status_code, detail)
             if status_code in {401, 403}:
                 logger.error(
                     "❌ Unusual Whales auth/subscription error %s: %s - switching to stub mode",
@@ -123,11 +128,6 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                     detail,
                 )
                 self.use_stub = True
-            elif status_code == 404:
-                logger.warning(
-                    f"⚠️  Unusual Whales returned 404 for {symbol} | url={url} | params={params} | detail={detail}"
-                )
-                logger.info(f"Falling back to stub options chain for {symbol}")
             else:
                 logger.error(f"❌ Unusual Whales HTTP error {status_code}: {error} | detail={detail}")
             return self._get_stub_chain(symbol, timestamp)
@@ -137,6 +137,32 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
         except Exception as error:
             logger.error(f"Error getting options chain for {symbol}: {error}")
             return self._get_stub_chain(symbol, timestamp)
+
+    def _log_once(self, symbol: str, url: str, params: dict, status_code: int, detail: str) -> None:
+        """De-duplicate noisy warnings per symbol/status pair."""
+
+        cache_key = f"{symbol}:{status_code}:{url}"
+        last = self._warning_cache.get(cache_key)
+        now = datetime.utcnow()
+        if not last or (now - last).total_seconds() > 900:  # 15 minutes
+            if status_code == 404:
+                logger.warning(
+                    "⚠️  Unusual Whales returned 404 for {symbol} | url={url} | params={params} | detail={detail}",
+                    symbol=symbol,
+                    url=url,
+                    params=params,
+                    detail=(detail[:200] if detail else ""),
+                )
+            else:
+                logger.warning(
+                    "Unusual Whales non-2xx response for {symbol}: {status} | url={url} | params={params} | detail={detail}",
+                    symbol=symbol,
+                    status=status_code,
+                    url=url,
+                    params=params,
+                    detail=(detail[:200] if detail else ""),
+                )
+            self._warning_cache[cache_key] = now
 
     def _get_stub_chain(self, symbol: str, timestamp: datetime) -> List[OptionContract]:
         """Return deterministic stub data when the API is unavailable."""

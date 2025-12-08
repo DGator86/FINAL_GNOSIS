@@ -1,7 +1,5 @@
 from datetime import datetime
 
-from datetime import datetime
-
 import pytest
 
 pytest.importorskip("httpx")
@@ -25,19 +23,16 @@ class FakeUWClient:
 
 def response_with_contracts():
     data = {
-        "contracts": [
+        "data": [
             {
-                "symbol": "TEST200",
-                "strike": 200,
-                "expiration_date": "2024-12-20",
-                "type": "call",
-                "bid": 1.0,
-                "ask": 1.2,
-                "last": 1.1,
+                "symbol": "TEST241220C00200000",
+                "nbbo_bid": 1.0,
+                "nbbo_ask": 1.2,
+                "last_price": 1.1,
                 "volume": 500,
                 "open_interest": 1000,
                 "implied_volatility": 0.3,
-                "greeks": {"delta": 0.4},
+                "delta": 0.4,
             }
         ]
     }
