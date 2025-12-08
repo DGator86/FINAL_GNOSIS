@@ -3,6 +3,10 @@ from datetime import datetime
 import pytest
 
 pytest.importorskip("pydantic")
+from datetime import datetime, timezone, timedelta
+
+import pytest
+
 pytest.importorskip("loguru")
 
 from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
@@ -45,6 +49,19 @@ class RichClient(FakeClient):
         super().__init__(FakeResponse({"AAPL": bars}))
 
 
+class ItemResponse:
+    """Simulate Alpaca SDK object that supports __getitem__ instead of .data dict."""
+
+    def __init__(self, symbol, bars):
+        self._symbol = symbol
+        self._bars = bars
+
+    def __getitem__(self, key):
+        if key == self._symbol:
+            return self._bars
+        raise KeyError(key)
+
+
 def test_extracts_bars_from_dict_response(monkeypatch):
     adapter = AlpacaMarketDataAdapter(client=RichClient(), data_feed="IEX")
     bars = adapter.get_bars(
@@ -69,3 +86,40 @@ def test_empty_response_logs_and_returns_empty():
     )
 
     assert bars == []
+
+
+def test_extracts_bars_from_getitem_response():
+    bars = [
+        FakeBar(datetime(2024, 2, 1, 10, 0), 100, 101, 99, 100.5, 5000),
+    ]
+    adapter = AlpacaMarketDataAdapter(client=FakeClient(ItemResponse("SPY", bars)), data_feed="IEX")
+
+    result = adapter.get_bars(
+        symbol="SPY",
+        start=datetime(2024, 2, 1, 9, 30),
+        end=datetime(2024, 2, 1, 16, 0),
+        timeframe="1Day",
+    )
+
+    assert len(result) == 1
+    assert result[0].close == 100.5
+
+
+def test_naive_datetime_converted_to_utc(monkeypatch):
+    captured_request = {}
+
+    class InspectClient(FakeClient):
+        def get_stock_bars(self, request):
+            captured_request["start"] = request.start
+            captured_request["end"] = request.end
+            return super().get_stock_bars(request)
+
+    adapter = AlpacaMarketDataAdapter(client=InspectClient(RichClient().response), data_feed="IEX")
+
+    start = datetime(2024, 3, 1, 9, 30)  # naive
+    end = start + timedelta(hours=6)
+
+    adapter.get_bars(symbol="AAPL", start=start, end=end, timeframe="1Day")
+
+    assert captured_request["start"].tzinfo == timezone.utc
+    assert captured_request["end"].tzinfo == timezone.utc
