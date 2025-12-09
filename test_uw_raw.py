@@ -26,9 +26,9 @@ TOKEN = (
 )
 
 ENDPOINTS = [
-    "https://api.unusualwhales.com/api/options/contracts/SPY",
-    "https://api.unusualwhales.com/api/stock/SPY",
-    "https://api.unusualwhales.com/api/options/SPY",
+    "https://api.unusualwhales.com/api/market/top-net-impact?limit=5",
+    "https://api.unusualwhales.com/api/option-trades/flow-alerts?limit=5",
+    "https://api.unusualwhales.com/api/stock/SPY/option-contracts?limit=25",
 ]
 
 
