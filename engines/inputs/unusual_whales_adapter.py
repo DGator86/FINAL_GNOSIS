@@ -274,81 +274,97 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
 
     # The flow/IV helpers remain for compatibility with existing callers.
     def get_unusual_activity(self, symbol: Optional[str] = None) -> List[dict]:
+        """Fetch real flow alerts instead of the deprecated placeholder endpoints."""
+
         if not self.client or not self.api_token:
             logger.debug("No API token - skipping unusual activity")
             return []
 
         try:
-            endpoints = [
-                f"{self.base_url}/api/activity",
-                f"{self.base_url}/api/options/activity",
-            ]
+            urls = [f"{self.base_url}/api/option-trades/flow-alerts"]
+            if symbol:
+                urls.insert(0, f"{self.base_url}/api/stock/{symbol}/flow-alerts")
 
-            params = {"ticker": symbol} if symbol else {}
+            params = {"limit": 50}
 
-            for url in endpoints:
+            for url in urls:
                 try:
                     response = self.client.get(url, params=params)
                     response.raise_for_status()
                     data = response.json()
-                    activity = data.get("data", []) or data.get("activity", [])
+                    activity = data.get("data", []) or data.get("alerts", [])
                     if activity:
-                        logger.info(f"Retrieved {len(activity)} unusual activity records")
+                        logger.info("Retrieved %s flow alerts", len(activity))
                         return activity
-                except httpx.HTTPStatusError:
-                    continue
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code == 404:
+                        logger.debug("Flow alerts endpoint not available: %s", url)
+                        continue
+                    raise
 
-            logger.debug("No unusual activity endpoint working")
+            logger.debug("No flow alerts returned from Unusual Whales")
             return []
         except Exception as error:
             logger.error(f"Error getting unusual activity: {error}")
             return []
 
     def get_flow_summary(self, symbol: str) -> dict:
+        """Return the most recent flow items for the ticker."""
+
         if not self.client or not self.api_token:
             return {}
 
         try:
-            endpoints = [
-                f"{self.base_url}/api/flow/{symbol}",
-                f"{self.base_url}/api/options/flow/{symbol}",
-            ]
-
-            for url in endpoints:
-                try:
-                    response = self.client.get(url)
-                    response.raise_for_status()
-                    data = response.json()
-                    return data.get("data", {})
-                except httpx.HTTPStatusError:
-                    continue
-
+            url = f"{self.base_url}/api/stock/{symbol}/flow-recent"
+            params = {"limit": 50}
+            response = self.client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("data", {})
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                logger.info("No recent flow for %s (404)", symbol)
+                return {}
+            logger.error(
+                "Flow summary request for %s failed | status=%s | detail=%s",
+                symbol,
+                exc.response.status_code,
+                self._extract_detail(exc.response),
+            )
             return {}
         except Exception as error:
             logger.error(f"Error getting flow summary for {symbol}: {error}")
             return {}
 
     def get_implied_volatility(self, symbol: str) -> Optional[float]:
+        """Pull the 30-day implied volatility from the realized volatility endpoint."""
+
         if not self.client or not self.api_token:
             return None
 
         try:
-            endpoints = [
-                f"{self.base_url}/api/stock/{symbol}/iv",
-                f"{self.base_url}/api/options/{symbol}/iv",
-            ]
+            url = f"{self.base_url}/api/stock/{symbol}/volatility/realized"
+            response = self.client.get(url, params={"timeframe": "30d"})
+            response.raise_for_status()
+            data = response.json().get("data")
 
-            for url in endpoints:
-                try:
-                    response = self.client.get(url)
-                    response.raise_for_status()
-                    data = response.json()
-                    iv = data.get("data", {}).get("iv")
-                    if iv is not None:
-                        return float(iv)
-                except httpx.HTTPStatusError:
-                    continue
+            if isinstance(data, list) and data:
+                first = data[0]
+                iv_value = first.get("implied_volatility")
+                if iv_value is not None:
+                    return float(iv_value)
 
+            return None
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                logger.info("Volatility endpoint missing for %s (404)", symbol)
+                return None
+            logger.error(
+                "Failed to fetch implied volatility for %s | status=%s | detail=%s",
+                symbol,
+                exc.response.status_code,
+                self._extract_detail(exc.response),
+            )
             return None
         except Exception as error:
             logger.error(f"Error getting IV for {symbol}: {error}")
