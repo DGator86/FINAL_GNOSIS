@@ -118,7 +118,8 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             contracts: List[OptionContract] = []
             for option in contracts_data:
                 try:
-                    symbol_str = option.get("symbol") or option.get("occ_symbol")
+                    # Dec 2025: API returns "option_symbol" field (not "symbol" or "occ_symbol")
+                    symbol_str = option.get("option_symbol") or option.get("symbol") or option.get("occ_symbol")
                     if not symbol_str:
                         continue
 
@@ -127,12 +128,13 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                     option_type = parsed["option_type"]
                     strike = float(parsed["strike"])
 
-                    bid = float(option.get("nbbo_bid", option.get("bid", 0)) or 0)
-                    ask = float(option.get("nbbo_ask", option.get("ask", 0)) or 0)
-                    last = float(option.get("last_price", option.get("last", 0)) or 0)
-                    volume = float(option.get("volume", 0) or 0)
-                    oi = float(option.get("open_interest", option.get("open_interest", 0)) or 0)
-                    iv = float(option.get("implied_volatility", option.get("iv", 0)) or 0)
+                    # Dec 2025: API uses nbbo_bid/nbbo_ask (prioritize these over bid/ask)
+                    bid = float(option.get("nbbo_bid") or option.get("bid") or 0)
+                    ask = float(option.get("nbbo_ask") or option.get("ask") or 0)
+                    last = float(option.get("last_price") or option.get("last") or 0)
+                    volume = float(option.get("volume") or 0)
+                    oi = float(option.get("open_interest") or 0)
+                    iv = float(option.get("implied_volatility") or option.get("iv") or 0)
 
                     contracts.append(
                         OptionContract(
