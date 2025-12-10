@@ -370,6 +370,119 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             logger.error(f"Error getting IV for {symbol}: {error}")
             return None
 
+    def get_greek_exposure(self, symbol: str, date: Optional[str] = None) -> dict:
+        """Get Greek Exposure including Gamma, Delta, Vanna, and Charm.
+
+        Returns aggregate greek exposure that market makers are exposed to.
+        Includes higher-order greeks like Vanna and Charm for sophisticated analysis.
+
+        Response includes:
+        - call_gamma, put_gamma: Gamma exposure
+        - call_delta, put_delta: Delta exposure
+        - call_vanna, put_vanna: Vanna exposure (dDelta/dIV)
+        - call_charm, put_charm: Charm exposure (dDelta/dTime)
+        - call_vega, put_vega: Vega exposure
+        - call_theta, put_theta: Theta exposure
+        """
+        if not self.client or not self.api_token:
+            logger.debug("No API token - skipping greek exposure for %s", symbol)
+            return {}
+
+        try:
+            url = f"{self.base_url}/api/stock/{symbol}/greek-exposure"
+            params = {}
+            if date:
+                params["date"] = date
+
+            response = self.client.get(url, params=params if params else None)
+            response.raise_for_status()
+            data = response.json()
+
+            # Extract the latest data point
+            exposure_data = data.get("data", [])
+            if exposure_data and isinstance(exposure_data, list):
+                latest = exposure_data[0]
+                logger.info(
+                    "✅ Retrieved greek exposure for %s: GEX(calls)=%.2f, VEX=%.2f, Charm=%.2f",
+                    symbol,
+                    float(latest.get("call_gamma", 0)),
+                    float(latest.get("call_vanna", 0)),
+                    float(latest.get("call_charm", 0)),
+                )
+                return latest
+
+            return {}
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                logger.info("Greek exposure not available for %s (404)", symbol)
+                return {}
+            logger.error(
+                "Failed to fetch greek exposure for %s | status=%s | detail=%s",
+                symbol,
+                exc.response.status_code,
+                self._extract_detail(exc.response),
+            )
+            return {}
+        except Exception as error:
+            logger.error(f"Error getting greek exposure for {symbol}: {error}")
+            return {}
+
+    def get_dark_pool(self, symbol: str, min_premium: Optional[float] = None, limit: int = 100) -> List[dict]:
+        """Get dark pool trades for a ticker.
+
+        Returns recent dark pool (off-exchange) trades, useful for identifying
+        institutional block trades and large player positioning.
+
+        Args:
+            symbol: Stock ticker
+            min_premium: Minimum trade value (e.g., 1000000 for $1M+ trades)
+            limit: Max number of trades to return (default 100, max 500)
+
+        Returns:
+            List of dark pool trades with size, price, premium, timestamp
+        """
+        if not self.client or not self.api_token:
+            logger.debug("No API token - skipping dark pool for %s", symbol)
+            return []
+
+        try:
+            url = f"{self.base_url}/api/darkpool/{symbol}"
+            params = {"limit": min(limit, 500)}
+            if min_premium:
+                params["min_premium"] = min_premium
+
+            response = self.client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            trades = data.get("data", [])
+            if trades:
+                total_premium = sum(float(t.get("premium", 0)) for t in trades)
+                logger.info(
+                    "✅ Retrieved %d dark pool trades for %s (total premium: $%.2fM)",
+                    len(trades),
+                    symbol,
+                    total_premium / 1_000_000,
+                )
+                return trades
+
+            logger.debug("No dark pool trades for %s", symbol)
+            return []
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                logger.info("No dark pool data for %s (404)", symbol)
+                return []
+            logger.error(
+                "Failed to fetch dark pool for %s | status=%s | detail=%s",
+                symbol,
+                exc.response.status_code,
+                self._extract_detail(exc.response),
+            )
+            return []
+        except Exception as error:
+            logger.error(f"Error getting dark pool for {symbol}: {error}")
+            return []
+
     def close(self) -> None:
         if self.client:
             self.client.close()
