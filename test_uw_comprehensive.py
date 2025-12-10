@@ -32,7 +32,7 @@ print("🐋 COMPREHENSIVE UNUSUAL WHALES API TEST")
 print("="*80)
 print()
 print(f"Token: {token[:20]}... (length: {len(token)})")
-print(f"Type: {'JWT Bearer' if token.startswith('eyJ') else 'API Key'}")
+print(f"Format: UUID Bearer Token (not JWT)")
 print()
 
 # Test different authentication methods
