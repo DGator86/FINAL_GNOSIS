@@ -9,10 +9,16 @@ load_dotenv(dotenv_path=".env")
 
 BASE_URL = os.getenv("ALPACA_API_BASE_URL", "https://paper-api.alpaca.markets")
 KEY = os.getenv("ALPACA_API_KEY") or os.getenv("APCA_API_KEY_ID")
-SECRET = os.getenv("ALPACA_API_SECRET") or os.getenv("APCA_API_SECRET_KEY")
+SECRET = (
+    os.getenv("ALPACA_API_SECRET")
+    or os.getenv("ALPACA_SECRET_KEY")
+    or os.getenv("APCA_API_SECRET_KEY")
+)
 
 if not KEY or not SECRET:
-    print("ERROR: Missing Alpaca API keys in .env (ALPACA_API_KEY/APCA_API_KEY_ID or ALPACA_API_SECRET/APCA_API_SECRET_KEY)")
+    print(
+        "ERROR: Missing Alpaca API keys in .env (ALPACA_API_KEY/APCA_API_KEY_ID or ALPACA_API_SECRET/ALPACA_SECRET_KEY/APCA_API_SECRET_KEY)"
+    )
     raise SystemExit(1)
 
 HEADERS = {
