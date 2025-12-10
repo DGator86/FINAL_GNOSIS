@@ -45,8 +45,8 @@ from execution.broker_adapters.settings import get_alpaca_paper_setting
 from watchlist import AdaptiveWatchlist
 from universe.watchlist_loader import load_active_watchlist
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from the repository root (where this file resides)
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
 
 app = typer.Typer(help="Super Gnosis / DHPE Pipeline CLI")
 
