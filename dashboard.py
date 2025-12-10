@@ -6,11 +6,12 @@ Real-time tracking of positions, trades, and analytics
 
 import json
 import sys
-from datetime import datetime, timedelta
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
@@ -22,6 +23,7 @@ load_dotenv()
 from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
 from execution.broker_adapters.settings import get_alpaca_paper_setting
 from main import build_pipeline, load_config
+from schemas.core_schemas import PipelineResult
 
 # Page config
 st.set_page_config(
@@ -97,6 +99,108 @@ def load_ledger_data():
         return pd.DataFrame()
     
     return pd.DataFrame(records)
+
+
+def run_pipeline_with_trace(symbol: str) -> Tuple[PipelineResult, List[Dict[str, Any]]]:
+    """Run the pipeline with per-step tracing for UI visualization."""
+
+    trace: List[Dict[str, Any]] = []
+
+    def record_step(name: str, step_type: str, func):
+        start = time.perf_counter()
+        status = "success"
+        error: str | None = None
+        payload = None
+
+        try:
+            payload = func()
+        except Exception as exc:  # pragma: no cover - defensive for UI
+            status = "error"
+            error = str(exc)
+
+        duration = time.perf_counter() - start
+        trace.append({
+            "name": name,
+            "type": step_type,
+            "status": status,
+            "duration": duration,
+            "error": error,
+        })
+        return payload
+
+    try:
+        config = load_config()
+        runner = build_pipeline(symbol, config)
+    except Exception as exc:  # pragma: no cover - UI defensive guard
+        trace.append({
+            "name": "Pipeline Setup",
+            "type": "setup",
+            "status": "error",
+            "duration": 0.0,
+            "error": str(exc),
+        })
+        return PipelineResult(timestamp=datetime.now(timezone.utc), symbol=symbol), trace
+
+    timestamp = datetime.now(timezone.utc)
+    result = PipelineResult(timestamp=timestamp, symbol=symbol.upper())
+
+    # Engines
+    if "hedge" in runner.engines:
+        result.hedge_snapshot = record_step(
+            "Hedge Engine",
+            "engine",
+            lambda: runner.engines["hedge"].run(symbol, timestamp),
+        )
+
+    if "liquidity" in runner.engines:
+        result.liquidity_snapshot = record_step(
+            "Liquidity Engine",
+            "engine",
+            lambda: runner.engines["liquidity"].run(symbol, timestamp),
+        )
+
+    if "sentiment" in runner.engines:
+        result.sentiment_snapshot = record_step(
+            "Sentiment Engine",
+            "engine",
+            lambda: runner.engines["sentiment"].run(symbol, timestamp),
+        )
+
+    if "elasticity" in runner.engines:
+        result.elasticity_snapshot = record_step(
+            "Elasticity Engine",
+            "engine",
+            lambda: runner.engines["elasticity"].run(symbol, timestamp),
+        )
+
+    if runner.ml_engine:
+        result.ml_snapshot = record_step(
+            "ML Enhancement",
+            "engine",
+            lambda: runner.ml_engine.enhance(result, timestamp),
+        )
+
+    # Agents
+    for agent_name, agent in runner.primary_agents.items():
+        suggestion = record_step(
+            agent_name.replace("_", " ").title(),
+            "agent",
+            lambda a=agent: a.suggest(result, timestamp),
+        )
+        if suggestion:
+            result.suggestions.append(suggestion)
+
+    if runner.composer and result.suggestions:
+        result.consensus = record_step(
+            "Composer", "agent", lambda: runner.composer.compose(result.suggestions, timestamp)
+        )
+
+    if runner.trade_agent:
+        result.trade_ideas = record_step(
+            "Trade Agent", "agent", lambda: runner.trade_agent.generate_ideas(result, timestamp)
+        ) or []
+
+    return result, trace
 
 
 def format_currency(value):
@@ -431,23 +535,125 @@ def main():
         else:
             st.info("📭 No trade history yet. Run some analyses to populate this view.")
     
-    # TAB 5: Engine Metrics
+    # TAB 5: Engine + Agent Monitor
     with tab5:
-        st.markdown("## ⚙️ Engine Metrics")
-        
-        ledger_df = load_ledger_data()
-        
-        if not ledger_df.empty and len(ledger_df) > 0:
-            st.markdown("### 📊 Historical Engine Performance")
-            
-            # Extract metrics from ledger
-            st.info("Engine metrics tracking coming soon!")
+        st.markdown("## ⚙️ Engine & Agent Monitor")
+        st.write("Watch each engine and agent step as the pipeline processes market data.")
+
+        if "trace_events" not in st.session_state:
+            st.session_state.trace_events = []
+            st.session_state.trace_result = None
+            st.session_state.trace_symbol = symbol
+
+        monitor_symbol = st.text_input(
+            "Symbol to trace", value=st.session_state.trace_symbol, key="trace_symbol_input"
+        )
+
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            run_trace = st.button("▶️ Run traced pipeline", type="primary")
+        with col2:
+            st.caption(
+                "Uses the same pipeline configuration as the main system and shows durations per step."
+            )
+
+        if run_trace:
+            st.session_state.trace_result, st.session_state.trace_events = run_pipeline_with_trace(
+                monitor_symbol
+            )
+            st.session_state.trace_symbol = monitor_symbol
+
+        if st.session_state.trace_events:
+            events_df = pd.DataFrame(st.session_state.trace_events)
+            success_count = (events_df["status"] == "success").sum()
+            total_steps = len(events_df)
+            total_duration = events_df["duration"].sum()
+
+            st.markdown("### ⏱️ Run summary")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Steps completed", f"{success_count}/{total_steps}")
+            with col2:
+                st.metric("Total duration", f"{total_duration:.2f}s")
+            with col3:
+                st.metric("Latest symbol", st.session_state.trace_symbol.upper())
+
+            progress = success_count / total_steps if total_steps else 0
+            st.progress(progress, text=f"{progress:.0%} of steps succeeded")
+
+            st.markdown("### 🔍 Detailed timeline")
+            events_df = events_df.sort_values("type", ascending=False)
+            events_df["duration_ms"] = (events_df["duration"] * 1000).round(1)
+            events_df_display = events_df[["type", "name", "status", "duration_ms", "error"]]
+            events_df_display.rename(
+                columns={"type": "Component", "name": "Step", "duration_ms": "Duration (ms)"},
+                inplace=True,
+            )
+            st.dataframe(events_df_display, hide_index=True, use_container_width=True)
+
+            result = st.session_state.trace_result
+            if result:
+                st.markdown("### 🛰️ Latest snapshots")
+                snapshot_cols = st.columns(4)
+
+                with snapshot_cols[0]:
+                    if result.hedge_snapshot:
+                        st.metric("Elasticity", f"{result.hedge_snapshot.elasticity:.2f}")
+                        st.metric(
+                            "Energy Asymmetry",
+                            f"{result.hedge_snapshot.energy_asymmetry:+.2f}",
+                        )
+
+                with snapshot_cols[1]:
+                    if result.liquidity_snapshot:
+                        st.metric(
+                            "Liquidity Score", f"{result.liquidity_snapshot.liquidity_score:.3f}"
+                        )
+                        st.metric(
+                            "Bid/Ask Spread", f"{result.liquidity_snapshot.bid_ask_spread:.4f}%"
+                        )
+
+                with snapshot_cols[2]:
+                    if result.sentiment_snapshot:
+                        st.metric(
+                            "Sentiment Score", f"{result.sentiment_snapshot.sentiment_score:+.3f}"
+                        )
+                        st.metric(
+                            "Confidence", f"{result.sentiment_snapshot.confidence:.1%}"
+                        )
+
+                with snapshot_cols[3]:
+                    if result.elasticity_snapshot:
+                        st.metric("Volatility", f"{result.elasticity_snapshot.volatility:.2%}")
+                        st.metric("Trend", f"{result.elasticity_snapshot.trend_strength:.3f}")
+
+                if result.suggestions:
+                    st.markdown("### 🤖 Agent suggestions")
+                    for sug in result.suggestions:
+                        with st.expander(
+                            f"{sug.agent_name}: {sug.direction.value.upper()} ({sug.confidence:.1%})"
+                        ):
+                            st.write(sug.reasoning)
+
+                if result.consensus:
+                    st.markdown("### 🎯 Consensus")
+                    consensus_cols = st.columns(3)
+                    with consensus_cols[0]:
+                        st.metric("Direction", result.consensus.get("direction", "-"))
+                    with consensus_cols[1]:
+                        st.metric(
+                            "Confidence", f"{result.consensus.get('confidence', 0):.1%}"
+                        )
+                    with consensus_cols[2]:
+                        st.metric(
+                            "Consensus Value",
+                            f"{result.consensus.get('consensus_value', 0):+.3f}",
+                        )
         else:
-            st.info("📭 No engine metrics yet. Run analyses to collect data.")
+            st.info("Run a traced pipeline to visualize engine and agent activity.")
     
     # Auto-refresh
     if auto_refresh:
-        import time
         time.sleep(5)
         st.rerun()
 
