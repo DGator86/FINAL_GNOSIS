@@ -1,11 +1,32 @@
 #!/usr/bin/env python3
+import json
 import os
-from dotenv import load_dotenv
-import httpx
+import urllib.error
+import urllib.request
 from datetime import datetime
 
-# Load .env from repo root
-load_dotenv(dotenv_path=".env")
+
+def load_env_from_file(dotenv_path: str = ".env") -> None:
+    """
+    Minimal .env loader so the dashboard works even when python-dotenv isn't installed.
+
+    Only lines containing KEY=VALUE pairs are loaded; comments and blank lines are ignored.
+    """
+
+    try:
+        with open(dotenv_path, "r", encoding="utf-8") as env_file:
+            for line in env_file:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                os.environ[key] = value
+    except FileNotFoundError:
+        pass
+
+
+# Load .env from repo root without relying on external packages
+load_env_from_file(dotenv_path=".env")
 
 BASE_URL = os.getenv("ALPACA_API_BASE_URL", "https://paper-api.alpaca.markets")
 KEY = os.getenv("ALPACA_API_KEY") or os.getenv("APCA_API_KEY_ID")
@@ -27,13 +48,23 @@ HEADERS = {
 }
 
 def fetch_account_and_positions():
-    with httpx.Client(base_url=BASE_URL, headers=HEADERS, timeout=5.0) as client:
-        acct = client.get("/v2/account").json()
-        try:
-            positions = client.get("/v2/positions").json()
-        except httpx.HTTPStatusError as e:
-            print("Error getting positions:", e)
-            positions = []
+    def get_json(path: str):
+        req = urllib.request.Request(f"{BASE_URL}{path}", headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    try:
+        acct = get_json("/v2/account")
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+        print("Error fetching account:", exc)
+        raise SystemExit(1)
+
+    try:
+        positions = get_json("/v2/positions")
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+        print("Error getting positions:", exc)
+        positions = []
+
     return acct, positions
 
 def format_money(x):
