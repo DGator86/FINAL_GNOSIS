@@ -124,8 +124,8 @@ If you want actual Unusual Whales data instead of stubs:
 ### Option 1: Upgrade Unusual Whales Subscription
 1. Go to https://unusualwhales.com/settings/api
 2. Purchase API access tier (~$50-200/month depending on plan)
-3. Generate new JWT token (will look like `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`)
-4. Update `.env`: `UNUSUAL_WHALES_TOKEN=your_new_jwt_token`
+3. Generate new API token (UUID format like `8932cd23-72b3-4f74-9848-13f9103b9df5`)
+4. Update `.env`: `UNUSUAL_WHALES_API_TOKEN=your_new_api_token`
 5. Restart system - adapter will automatically use real API
 
 ### Option 2: Keep Using Stubs (Current Setup)
@@ -136,7 +136,7 @@ If you want actual Unusual Whales data instead of stubs:
 
 ## 🧭 Avoiding 404s from Fake Endpoints (Dec 2025 guidance)
 
-404s happen when the request path does not exist (often from AI-generated URLs). Use the official OpenAPI spec and a fresh JWT token to keep every call valid:
+404s happen when the request path does not exist (often from AI-generated URLs). Use the official OpenAPI spec and your API token to keep every call valid:
 
 1. **Refresh the official spec**
    ```bash
@@ -152,11 +152,12 @@ If you want actual Unusual Whales data instead of stubs:
    grep -i "authorization\|bearer\|token" api-spec.yaml | head -n 20
    ```
 
-3. **Regenerate your JWT** (legacy UUIDs will 401)
-   - Dashboard → My Account → Subscriptions → API Trial → “Regenerate Token”.
+3. **Get your UUID API token** (NOT JWT - Unusual Whales uses UUID format)
+   - Dashboard → My Account → Subscriptions → API Trial → "Regenerate Token".
+   - Token format: `8932cd23-72b3-4f74-9848-13f9103b9df5` (UUID, not JWT!)
    - Update `.env`:
      ```bash
-     UNUSUAL_WHALES_API_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+     UNUSUAL_WHALES_API_TOKEN=8932cd23-72b3-4f74-9848-13f9103b9df5
      ```
 
 4. **Validate endpoints in tests** to prevent hallucinations:
