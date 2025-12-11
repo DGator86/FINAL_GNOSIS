@@ -42,6 +42,14 @@ class UnifiedTradingBot:
     - Single-Leg Options: Manual stop loss & take profit monitoring based on premium price
     - Multi-Leg Options: Manual P&L-based stop loss & take profit (percentage of max risk)
 
+    Scale-Out Strategy (Tiered Take Profits):
+    - Level 1: 33% at 1.5R → Tighten trail to 1.5% → Move stop to breakeven
+    - Level 2: 33% at 3.0R → Tighten trail to 1.0%
+    - Level 3: 34% at 5.0R → Tighten trail to 0.5% → Let winners run
+
+    After each scale-out, the trailing stop tightens, and stop loss moves up to protect profits.
+    This allows taking partial profits while letting the best trades run for maximum gains.
+
     All positions are actively monitored and automatically closed when risk thresholds are hit.
     """
 
@@ -69,6 +77,19 @@ class UnifiedTradingBot:
         self.circuit_breaker_triggered = False
         self.trailing_stop_pct = config.get("risk", {}).get("trailing_stop_pct", 0.01)
         self.trailing_stop_activation = config.get("risk", {}).get("trailing_stop_activation", 0.02)
+
+        # Scale-Out Configuration (tiered take profits with trailing stops)
+        # Each level: (pct_of_position, reward_multiple, trailing_stop_pct_after)
+        # reward_multiple is in terms of risk (R): 1.5R = 1.5x the initial risk
+        self.enable_scale_outs = config.get("risk", {}).get("enable_scale_outs", True)
+        self.scale_out_levels = config.get("risk", {}).get(
+            "scale_out_levels",
+            [
+                {"pct": 0.33, "reward_multiple": 1.5, "trailing_stop_pct": 0.015},  # 33% at 1.5R, 1.5% trail
+                {"pct": 0.33, "reward_multiple": 3.0, "trailing_stop_pct": 0.01},   # 33% at 3R, 1% trail
+                {"pct": 0.34, "reward_multiple": 5.0, "trailing_stop_pct": 0.005},  # 34% at 5R, 0.5% trail
+            ],
+        )
 
         # Initialize adapters
         self.adapter = AlpacaBrokerAdapter(paper=paper_mode)
@@ -479,6 +500,9 @@ class UnifiedTradingBot:
                 asset_class="option_strategy",
                 option_symbol=primary_leg.symbol,
                 quantity=quantity,
+                original_quantity=quantity,
+                remaining_quantity=quantity,
+                scale_out_completed=0,
             )
             self.positions[symbol] = pos
             self.active_strategies[symbol] = strategy
@@ -523,6 +547,9 @@ class UnifiedTradingBot:
                 asset_class="option",
                 option_symbol=strategy.option_symbol,
                 quantity=strategy.quantity,
+                original_quantity=strategy.quantity,
+                remaining_quantity=strategy.quantity,
+                scale_out_completed=0,
             )
             self.positions[symbol] = pos
             self.active_strategies[symbol] = strategy
@@ -562,6 +589,9 @@ class UnifiedTradingBot:
             asset_class=strategy.asset_class,
             option_symbol=strategy.option_symbol if strategy.asset_class == "option" else None,
             quantity=strategy.quantity,
+            original_quantity=strategy.quantity,
+            remaining_quantity=strategy.quantity,
+            scale_out_completed=0,
         )
 
         self.positions[symbol] = pos
@@ -602,12 +632,20 @@ class UnifiedTradingBot:
 
             logger.debug(f"Managing option {pos.option_symbol}: Entry=${pos.entry_price:.2f}, Current=${option_price:.2f}")
 
+            # Check for scale-out opportunities on option premium
+            if await self.check_scale_outs(pos, option_price):
+                if symbol not in self.positions:
+                    return  # Position fully closed
+                pos = self.positions[symbol]
+
             # Check stop loss on option premium
             if await self.check_option_stop_loss(pos, option_price):
                 return
-            # Check take profit on option premium
-            if await self.check_option_take_profit(pos, option_price):
-                return
+
+            # Check take profit on option premium (full close if not scaling out)
+            if not self.enable_scale_outs:
+                if await self.check_option_take_profit(pos, option_price):
+                    return
 
             return
 
@@ -666,12 +704,22 @@ class UnifiedTradingBot:
 
             return
 
-        # Equities - only manage trailing stops (SL/TP handled by bracket orders)
+        # Equities - manage scale-outs and trailing stops (broker handles initial SL/TP)
         pos.update_highest_price(current_price)
 
+        # Check for scale-out opportunities (tiered take profits)
+        if await self.check_scale_outs(pos, current_price):
+            # Position may have been closed completely during scale-out
+            if symbol not in self.positions:
+                return
+            # Continue to manage remaining position
+            pos = self.positions[symbol]
+
+        # Check trailing stop
         if await self.check_trailing_stop(pos, current_price):
             return
 
+        # Update trailing stop level
         self.update_trailing_stop(pos, current_price)
 
     async def close_position(self, symbol: str, price: float, reason: str) -> None:
@@ -722,6 +770,93 @@ class UnifiedTradingBot:
         if symbol in self.active_strategies:
             del self.active_strategies[symbol]
 
+    async def scale_out_position(
+        self, symbol: str, price: float, pct_to_close: float, reason: str
+    ) -> bool:
+        """Partially close a position (scale-out).
+
+        Args:
+            symbol: Position symbol
+            price: Current price
+            pct_to_close: Percentage of ORIGINAL position to close (0.33 = 33%)
+            reason: Scale-out reason for logging
+
+        Returns:
+            True if scale-out executed successfully
+        """
+        if symbol not in self.positions:
+            return False
+
+        pos = self.positions[symbol]
+
+        # Calculate quantity to close based on original position size
+        close_qty = int(pos.original_quantity * pct_to_close)
+
+        if close_qty < 1:
+            logger.warning(f"Scale-out quantity < 1 for {symbol}, skipping")
+            return False
+
+        # Don't close more than remaining quantity
+        close_qty = min(close_qty, int(pos.remaining_quantity))
+
+        logger.info(
+            f"SCALE-OUT {symbol} @ ${price:.2f} | {reason} | "
+            f"Closing {close_qty} / {pos.remaining_quantity} (Level {pos.scale_out_completed + 1})"
+        )
+
+        if self.enable_trading:
+            # Handle Multi-Leg Option Strategy partial close
+            if pos.asset_class == "option_strategy" and symbol in self.active_strategies:
+                strategy = self.active_strategies[symbol]
+                if isinstance(strategy, OptionsOrderRequest):
+                    # Close proportional amount of each leg
+                    close_legs = []
+                    for leg in strategy.legs:
+                        close_side = "sell" if leg.side == "buy" else "buy"
+                        leg_qty = int(leg.ratio * close_qty)
+                        if leg_qty > 0:
+                            close_legs.append(
+                                {"symbol": leg.symbol, "side": close_side, "qty": leg_qty}
+                            )
+
+                    if self.options_adapter and close_legs:
+                        await self.options_adapter.place_multileg_order(
+                            legs=close_legs, note=f"Scale-out {strategy.strategy_name}"
+                        )
+
+            # Handle Single-Leg Option partial close
+            elif pos.asset_class == "option" and pos.option_symbol:
+                side = "sell" if pos.side == "long" else "buy"
+                self.adapter.place_order(
+                    symbol=pos.option_symbol,
+                    quantity=close_qty,
+                    side=side,
+                    order_type="market",
+                )
+
+            # Handle Equity partial close
+            else:
+                side = "sell" if pos.side == "long" else "buy"
+                self.adapter.place_order(symbol=symbol, quantity=close_qty, side=side)
+
+        # Update position tracking
+        pos.remaining_quantity -= close_qty
+        pos.quantity = pos.remaining_quantity
+        pos.scale_out_completed += 1
+
+        # If completely closed, remove position
+        if pos.remaining_quantity <= 0:
+            logger.info(f"Position {symbol} fully closed after scale-outs")
+            del self.positions[symbol]
+            if symbol in self.active_strategies:
+                del self.active_strategies[symbol]
+            return True
+
+        logger.info(
+            f"Position {symbol} scaled out | Remaining: {pos.remaining_quantity} / {pos.original_quantity}"
+        )
+        return True
+
     async def check_option_stop_loss(self, pos: Position, option_price: float) -> bool:
         """Check stop loss for option positions based on premium price."""
         if not pos.stop_loss_price:
@@ -756,6 +891,67 @@ class UnifiedTradingBot:
             )
             await self.close_position(pos.symbol, option_price, reason="Option Take-Profit")
             return True
+        return False
+
+    async def check_scale_outs(self, pos: Position, current_price: float) -> bool:
+        """Check if any scale-out levels have been hit.
+
+        Args:
+            pos: Position to check
+            current_price: Current price (underlying for equities, premium for options)
+
+        Returns:
+            True if a scale-out was executed
+        """
+        if not self.enable_scale_outs:
+            return False
+
+        # Check if all scale-outs completed
+        if pos.scale_out_completed >= len(self.scale_out_levels):
+            return False
+
+        # Calculate risk per share (distance from entry to stop loss)
+        risk_per_share = abs(pos.entry_price - pos.stop_loss_price)
+        if risk_per_share <= 0:
+            return False
+
+        # Check each configured scale-out level
+        for i in range(pos.scale_out_completed, len(self.scale_out_levels)):
+            level = self.scale_out_levels[i]
+            reward_multiple = level["reward_multiple"]
+            pct_to_close = level["pct"]
+            new_trail_pct = level["trailing_stop_pct"]
+
+            # Calculate target price for this reward multiple
+            if pos.side == "long":
+                target_price = pos.entry_price + (risk_per_share * reward_multiple)
+                reached = current_price >= target_price
+            else:  # short
+                target_price = pos.entry_price - (risk_per_share * reward_multiple)
+                reached = current_price <= target_price
+
+            if reached:
+                reason = f"{reward_multiple}R Scale-Out (Level {i + 1})"
+                await self.scale_out_position(pos.symbol, current_price, pct_to_close, reason)
+
+                # Tighten trailing stop after scale-out
+                self.trailing_stop_pct = new_trail_pct
+                pos.trailing_stop_active = True
+
+                logger.info(
+                    f"Trailing stop tightened to {new_trail_pct * 100:.1f}% after scale-out level {i + 1}"
+                )
+
+                # After first scale-out, move stop to breakeven
+                if i == 0:
+                    if pos.side == "long":
+                        pos.stop_loss_price = max(pos.stop_loss_price, pos.entry_price)
+                    else:
+                        pos.stop_loss_price = min(pos.stop_loss_price, pos.entry_price)
+                    logger.info(f"Stop loss moved to breakeven: ${pos.stop_loss_price:.2f}")
+
+                return True
+
         return False
 
     async def check_stop_loss(self, pos: Position, current_price: float) -> bool:

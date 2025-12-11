@@ -329,6 +329,11 @@ class Position(BaseModel):
     trailing_stop_price: Optional[float] = None
     trailing_stop_active: bool = False
 
+    # Scale-Out Management
+    original_quantity: Optional[float] = None  # Starting quantity before scale-outs
+    remaining_quantity: Optional[float] = None  # Current quantity after scale-outs
+    scale_out_completed: int = 0  # Number of scale-out levels completed (0, 1, 2, etc.)
+
     # Metadata
     asset_class: str = "equity"  # "equity", "option", "option_strategy"
     option_symbol: Optional[str] = None
