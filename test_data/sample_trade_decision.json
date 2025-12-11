@@ -1,0 +1,88 @@
+{
+  "timestamp": "2025-12-11T14:30:00Z",
+  "mode": "paper",
+  "symbol": "SPY",
+  "direction": "long",
+  "structure": "call_spread",
+  "config_version": "v1.0.0",
+  "universe_eligible": true,
+  "universe_reasons": ["adv_ok", "min_price_ok", "options_liq_ok"],
+  "price": 550.25,
+  "adv": 85000000.0,
+  "iv_rank": 0.65,
+  "realized_vol_30d": 0.18,
+  "options_liq_score": 0.85,
+  "dealer_features": {
+    "gex_pressure_score": 0.72,
+    "vanna_bias_score": 0.35,
+    "charm_bias_score": -0.15,
+    "spot_vs_gamma_pivot": 1.02,
+    "gamma_wall_above": 555.0,
+    "gamma_wall_below": 545.0,
+    "dealer_gamma_sign": -1.0,
+    "net_gamma": -15000,
+    "vanna_exposure": 5000,
+    "charm_exposure": -2000
+  },
+  "liquidity_features": {
+    "liquidity_stability_score": 0.88,
+    "dark_pool_activity_score": 0.45,
+    "recent_liquidity_shock_score": 0.12,
+    "nearest_hvn": 550.0,
+    "nearest_lvn": 552.5,
+    "distance_to_vwap": 0.0025,
+    "bid_ask_spread": 0.01,
+    "depth_score": 0.92
+  },
+  "sentiment_features": {
+    "wyckoff_phase": "markup",
+    "micro_regime": "bullish_trending",
+    "macro_regime": "risk_on",
+    "sentiment_score": 0.68,
+    "risk_on_off_score": 0.75,
+    "news_sentiment": 0.55,
+    "flow_sentiment": 0.72,
+    "technical_sentiment": 0.65
+  },
+  "hedge_agent_vote": {
+    "bias": "long_vol",
+    "direction_bias": "up",
+    "confidence": 0.78,
+    "reasoning": "Positive GEX pressure with dealers short gamma, expecting upside acceleration"
+  },
+  "liquidity_agent_vote": {
+    "zone": "breakout_zone",
+    "confidence": 0.82,
+    "reasoning": "Price approaching HVN resistance, strong liquidity shelf above"
+  },
+  "sentiment_agent_vote": {
+    "risk_posture": "aggressive",
+    "trend_alignment": "with_trend",
+    "confidence": 0.85,
+    "reasoning": "Markup phase confirmed, risk-on regime, strong bullish flow"
+  },
+  "composer_decision": {
+    "final_direction": "long",
+    "final_structure": "call_spread",
+    "sizing_hint": 0.05,
+    "invalidation_level": 548.0,
+    "target_level": 556.0,
+    "reason_codes": ["markup_phase", "positive_gex", "strong_liquidity_shelf", "risk_on_regime"]
+  },
+  "portfolio_context": {
+    "portfolio_gross_exposure_before": 0.45,
+    "portfolio_gross_exposure_after": 0.50,
+    "symbol_exposure_before": 0.0,
+    "symbol_exposure_after": 0.05,
+    "risk_per_trade_pct": 0.02,
+    "max_drawdown_limit_active": false,
+    "current_drawdown": 0.03,
+    "available_buying_power": 50000.0
+  },
+  "order_id": null,
+  "entry_price": null,
+  "target_price": null,
+  "stop_price": null,
+  "slippage_bps": null,
+  "status": null
+}
