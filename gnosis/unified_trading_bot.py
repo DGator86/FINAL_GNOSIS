@@ -36,6 +36,13 @@ class UnifiedTradingBot:
     """
     Unified trading bot that manages multiple symbols, handles both equity and options,
     and uses a router for strategy generation.
+
+    Risk Management:
+    - Equities: Broker-level bracket orders (stop loss & take profit) + manual trailing stops
+    - Single-Leg Options: Manual stop loss & take profit monitoring based on premium price
+    - Multi-Leg Options: Manual P&L-based stop loss & take profit (percentage of max risk)
+
+    All positions are actively monitored and automatically closed when risk thresholds are hit.
     """
 
     def __init__(self, config: dict, enable_trading: bool = False, paper_mode: bool = True):
@@ -450,34 +457,85 @@ class UnifiedTradingBot:
             else:
                 logger.info(f"DRY RUN: Would execute {strategy.strategy_name} x {quantity}")
 
+            # Calculate stop loss and take profit for multi-leg strategy
+            # Use percentage of max risk (BPR or max_loss)
+            stop_loss_pct = 0.50  # 50% loss on max risk
+            take_profit_pct = 0.30  # 30% gain on max risk (conservative for spreads)
+
+            entry_cost = strategy.bpr * quantity if strategy.bpr > 0 else strategy.max_loss * quantity
+            stop_loss_value = entry_cost * (1 + stop_loss_pct)  # Loss threshold (cost + additional loss)
+            take_profit_value = entry_cost * (1 - take_profit_pct)  # Profit threshold (cost - profit)
+
             # Track position
             primary_leg = strategy.legs[0]
             pos = Position(
                 symbol=symbol,
                 side="long",
-                size=strategy.bpr * quantity,
-                entry_price=current_price,
+                size=entry_cost,
+                entry_price=entry_cost,  # Use cost as "entry price" for P&L tracking
                 entry_time=datetime.now(),
+                stop_loss_price=stop_loss_value,
+                take_profit_price=take_profit_value,
                 asset_class="option_strategy",
                 option_symbol=primary_leg.symbol,
                 quantity=quantity,
             )
             self.positions[symbol] = pos
             self.active_strategies[symbol] = strategy
+
+            logger.info(
+                f"Multi-leg strategy tracking: Entry=${entry_cost:.2f}, "
+                f"SL=${stop_loss_value:.2f}, TP=${take_profit_value:.2f}"
+            )
             return
 
-        # Equity Logic
-        logger.info(f"Opening {strategy.direction} position in {symbol} ({strategy.asset_class})")
+        # Single-Leg Options Logic (Long Calls/Puts)
+        if strategy.asset_class == "option":
+            logger.info(f"Opening {strategy.direction} OPTION position: {strategy.option_symbol}")
 
-        trade_symbol = symbol
-        if strategy.asset_class == "option" and strategy.option_symbol:
-            trade_symbol = strategy.option_symbol
+            if self.enable_trading:
+                side = "buy" if strategy.direction == "LONG" else "sell"
+                # Options cannot use bracket orders - must use market orders and manual monitoring
+                self.adapter.place_order(
+                    symbol=strategy.option_symbol,
+                    quantity=strategy.quantity,
+                    side=side,
+                    order_type="market",
+                    time_in_force="gtc",
+                )
+            else:
+                logger.info(
+                    f"DRY RUN: Would open {strategy.direction} {strategy.option_symbol} "
+                    f"| Entry: ${strategy.entry_price:.2f} | SL: ${strategy.stop_loss_price:.2f} | TP: ${strategy.take_profit_price:.2f}"
+                )
+
+            pos = Position(
+                symbol=symbol,
+                side=strategy.direction.lower(),
+                size=strategy.quantity * strategy.entry_price * 100,  # Options are per 100 shares
+                entry_price=strategy.entry_price,
+                entry_time=datetime.now(),
+                highest_price=strategy.entry_price,
+                stop_loss_price=strategy.stop_loss_price,
+                take_profit_price=strategy.take_profit_price,
+                trailing_stop_price=None,  # Not using trailing for options
+                trailing_stop_active=False,
+                asset_class="option",
+                option_symbol=strategy.option_symbol,
+                quantity=strategy.quantity,
+            )
+            self.positions[symbol] = pos
+            self.active_strategies[symbol] = strategy
+            return
+
+        # Equity Logic (Stocks/ETFs)
+        logger.info(f"Opening {strategy.direction} EQUITY position in {symbol}")
 
         if self.enable_trading:
             side = "buy" if strategy.direction == "LONG" else "sell"
             # Use bracket orders to automatically set stop loss and take profit at broker level
             self.adapter.place_bracket_order(
-                symbol=trade_symbol,
+                symbol=symbol,
                 quantity=strategy.quantity,
                 side=side,
                 take_profit_price=strategy.take_profit_price,
@@ -486,7 +544,7 @@ class UnifiedTradingBot:
             )
         else:
             logger.info(
-                f"DRY RUN: Would open {strategy.direction} {trade_symbol} "
+                f"DRY RUN: Would open {strategy.direction} {symbol} "
                 f"| SL: ${strategy.stop_loss_price:.2f} | TP: ${strategy.take_profit_price:.2f}"
             )
 
@@ -509,21 +567,108 @@ class UnifiedTradingBot:
         self.positions[symbol] = pos
         self.active_strategies[symbol] = strategy
 
+    def get_option_price(self, option_symbol: str) -> Optional[float]:
+        """Fetch current option price (mid-price) for monitoring."""
+        try:
+            price = self.adapter._fetch_option_price(option_symbol)
+            if price and price > 0:
+                return price
+            logger.warning(f"Could not fetch valid price for option {option_symbol}")
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching option price for {option_symbol}: {e}")
+            return None
+
     async def manage_position(self, symbol: str, current_price: float) -> None:
         """Manage existing position with risk checks.
 
-        Note: Stop loss and take profit are now handled by broker-level bracket orders.
-        This method only manages trailing stops which must be handled manually.
+        For equities: Stop loss and take profit are handled by broker-level bracket orders.
+                     Only trailing stops are managed manually.
+        For options: All risk management (SL/TP) is handled manually via price monitoring.
         """
         pos = self.positions[symbol]
 
-        # Skip management for complex option strategies for now (handled by expiration/manual)
-        if pos.asset_class == "option_strategy":
+        # Options (single-leg) - monitor option premium price for stop loss and take profit
+        if pos.asset_class == "option":
+            if not pos.option_symbol:
+                logger.warning(f"Option position {symbol} missing option_symbol")
+                return
+
+            # Fetch current option price (premium)
+            option_price = self.get_option_price(pos.option_symbol)
+            if option_price is None:
+                logger.debug(f"Skipping option management for {symbol} - no price available")
+                return
+
+            logger.debug(f"Managing option {pos.option_symbol}: Entry=${pos.entry_price:.2f}, Current=${option_price:.2f}")
+
+            # Check stop loss on option premium
+            if await self.check_option_stop_loss(pos, option_price):
+                return
+            # Check take profit on option premium
+            if await self.check_option_take_profit(pos, option_price):
+                return
+
             return
 
+        # Multi-leg option strategies - monitor P&L based on strategy value
+        if pos.asset_class == "option_strategy":
+            if symbol not in self.active_strategies:
+                logger.warning(f"No active strategy found for {symbol}")
+                return
+
+            strategy = self.active_strategies[symbol]
+            if not isinstance(strategy, OptionsOrderRequest):
+                return
+
+            # Calculate current value of all legs
+            current_value = 0.0
+            legs_priced = 0
+
+            for leg in strategy.legs:
+                leg_price = self.get_option_price(leg.symbol)
+                if leg_price is not None:
+                    # Each leg contributes to value: buy legs are negative (cost), sell legs are positive (credit)
+                    leg_multiplier = -1 if leg.side == "buy" else 1
+                    leg_value = leg_price * 100 * (leg.ratio * pos.quantity) * leg_multiplier
+                    current_value += leg_value
+                    legs_priced += 1
+
+            if legs_priced < len(strategy.legs):
+                logger.debug(f"Could not price all legs for {symbol} ({legs_priced}/{len(strategy.legs)} priced)")
+                return
+
+            # Current cost = entry cost + current value (negative value = loss, positive = gain)
+            current_cost = pos.entry_price + current_value
+
+            logger.debug(
+                f"Managing multi-leg {symbol}: Entry=${pos.entry_price:.2f}, "
+                f"Current=${current_cost:.2f}, SL=${pos.stop_loss_price:.2f}, TP=${pos.take_profit_price:.2f}"
+            )
+
+            # Check stop loss (current cost exceeds stop loss threshold)
+            if current_cost >= pos.stop_loss_price:
+                logger.warning(
+                    f"Multi-leg STOP LOSS triggered for {symbol}: "
+                    f"Cost=${current_cost:.2f} >= SL=${pos.stop_loss_price:.2f}"
+                )
+                await self.close_position(symbol, current_cost, reason="Multi-Leg Stop-Loss")
+                return
+
+            # Check take profit (current cost below take profit threshold = profit taken)
+            if current_cost <= pos.take_profit_price:
+                logger.info(
+                    f"Multi-leg TAKE PROFIT triggered for {symbol}: "
+                    f"Cost=${current_cost:.2f} <= TP=${pos.take_profit_price:.2f}"
+                )
+                await self.close_position(symbol, current_cost, reason="Multi-Leg Take-Profit")
+                return
+
+            return
+
+        # Equities - only manage trailing stops (SL/TP handled by bracket orders)
         pos.update_highest_price(current_price)
 
-        # Only manage trailing stops - stop loss and take profit are handled by bracket orders
         if await self.check_trailing_stop(pos, current_price):
             return
 
@@ -537,7 +682,7 @@ class UnifiedTradingBot:
         logger.info(f"Closing {pos.side} {symbol} @ {price:.2f} | Reason: {reason}")
 
         if self.enable_trading:
-            # Handle Option Strategy Closing
+            # Handle Multi-Leg Option Strategy Closing
             if pos.asset_class == "option_strategy" and symbol in self.active_strategies:
                 strategy = self.active_strategies[symbol]
                 if isinstance(strategy, OptionsOrderRequest):
@@ -557,8 +702,18 @@ class UnifiedTradingBot:
                         await self.options_adapter.place_multileg_order(
                             legs=close_legs, note=f"Closing {strategy.strategy_name}"
                         )
+            # Handle Single-Leg Option Closing
+            elif pos.asset_class == "option" and pos.option_symbol:
+                side = "sell" if pos.side == "long" else "buy"
+                self.adapter.place_order(
+                    symbol=pos.option_symbol,
+                    quantity=pos.quantity,
+                    side=side,
+                    order_type="market",
+                )
+                logger.info(f"Closed option position {pos.option_symbol} x{pos.quantity}")
+            # Equity closing
             else:
-                # Equity closing
                 qty = round(pos.size / max(price, 1e-6), 2)
                 side = "sell" if pos.side == "long" else "buy"
                 self.adapter.place_order(symbol, qty, side=side)
@@ -566,6 +721,42 @@ class UnifiedTradingBot:
         del self.positions[symbol]
         if symbol in self.active_strategies:
             del self.active_strategies[symbol]
+
+    async def check_option_stop_loss(self, pos: Position, option_price: float) -> bool:
+        """Check stop loss for option positions based on premium price."""
+        if not pos.stop_loss_price:
+            return False
+
+        # For long options, stop loss triggers when price drops below threshold
+        # For short options (if supported), stop loss triggers when price rises above threshold
+        triggered = option_price <= pos.stop_loss_price if pos.side == "long" else option_price >= pos.stop_loss_price
+
+        if triggered:
+            logger.warning(
+                f"Option STOP LOSS triggered for {pos.symbol}: "
+                f"Entry=${pos.entry_price:.2f}, Current=${option_price:.2f}, SL=${pos.stop_loss_price:.2f}"
+            )
+            await self.close_position(pos.symbol, option_price, reason="Option Stop-Loss")
+            return True
+        return False
+
+    async def check_option_take_profit(self, pos: Position, option_price: float) -> bool:
+        """Check take profit for option positions based on premium price."""
+        if not pos.take_profit_price:
+            return False
+
+        # For long options, take profit triggers when price rises above threshold
+        # For short options (if supported), take profit triggers when price drops below threshold
+        triggered = option_price >= pos.take_profit_price if pos.side == "long" else option_price <= pos.take_profit_price
+
+        if triggered:
+            logger.info(
+                f"Option TAKE PROFIT triggered for {pos.symbol}: "
+                f"Entry=${pos.entry_price:.2f}, Current=${option_price:.2f}, TP=${pos.take_profit_price:.2f}"
+            )
+            await self.close_position(pos.symbol, option_price, reason="Option Take-Profit")
+            return True
+        return False
 
     async def check_stop_loss(self, pos: Position, current_price: float) -> bool:
         triggered = (pos.side == "long" and current_price <= pos.stop_loss_price) or (
