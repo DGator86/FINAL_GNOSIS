@@ -1,0 +1,35 @@
+[Unit]
+Description=GNOSIS Dynamic Trading System
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/FINAL_GNOSIS
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="ENABLE_TRADING=true"
+
+# Load environment variables from .env file
+EnvironmentFile=/root/FINAL_GNOSIS/.env
+
+# Run the trading system
+ExecStart=/usr/bin/python3 /root/FINAL_GNOSIS/start_dynamic_trading.py
+
+# Restart behavior
+Restart=always
+RestartSec=10
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Logging
+StandardOutput=append:/root/FINAL_GNOSIS/logs/trading-service.log
+StandardError=append:/root/FINAL_GNOSIS/logs/trading-service-error.log
+
+# Security (optional hardening)
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
