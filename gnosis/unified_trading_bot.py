@@ -400,7 +400,12 @@ class UnifiedTradingBot:
             logger.error(f"Error generating/executing strategy for {symbol}: {e}")
 
     async def open_position(self, symbol: str, strategy, current_price: float) -> None:
-        """Open a new position."""
+        """Open a new position.
+
+        For equity positions, uses bracket orders to set stop loss and take profit at broker level.
+        This ensures positions are protected even if the bot crashes or loses connection.
+        Trailing stops are still managed manually via manage_position().
+        """
 
         # Get account info for sizing
         try:
@@ -470,9 +475,20 @@ class UnifiedTradingBot:
 
         if self.enable_trading:
             side = "buy" if strategy.direction == "LONG" else "sell"
-            self.adapter.place_order(trade_symbol, strategy.quantity, side=side)
+            # Use bracket orders to automatically set stop loss and take profit at broker level
+            self.adapter.place_bracket_order(
+                symbol=trade_symbol,
+                quantity=strategy.quantity,
+                side=side,
+                take_profit_price=strategy.take_profit_price,
+                stop_loss_price=strategy.stop_loss_price,
+                time_in_force="gtc",
+            )
         else:
-            logger.info(f"DRY RUN: Would open {strategy.direction} {trade_symbol}")
+            logger.info(
+                f"DRY RUN: Would open {strategy.direction} {trade_symbol} "
+                f"| SL: ${strategy.stop_loss_price:.2f} | TP: ${strategy.take_profit_price:.2f}"
+            )
 
         pos = Position(
             symbol=symbol,
@@ -494,7 +510,11 @@ class UnifiedTradingBot:
         self.active_strategies[symbol] = strategy
 
     async def manage_position(self, symbol: str, current_price: float) -> None:
-        """Manage existing position with risk checks."""
+        """Manage existing position with risk checks.
+
+        Note: Stop loss and take profit are now handled by broker-level bracket orders.
+        This method only manages trailing stops which must be handled manually.
+        """
         pos = self.positions[symbol]
 
         # Skip management for complex option strategies for now (handled by expiration/manual)
@@ -503,10 +523,7 @@ class UnifiedTradingBot:
 
         pos.update_highest_price(current_price)
 
-        if await self.check_stop_loss(pos, current_price):
-            return
-        if await self.check_take_profit(pos, current_price):
-            return
+        # Only manage trailing stops - stop loss and take profit are handled by bracket orders
         if await self.check_trailing_stop(pos, current_price):
             return
 

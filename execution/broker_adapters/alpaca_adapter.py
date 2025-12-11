@@ -14,12 +14,14 @@ from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
 from alpaca.data.requests import OptionSnapshotRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
+from alpaca.trading.enums import OrderClass, OrderSide, OrderType, TimeInForce
 from alpaca.trading.requests import (
     MarketOrderRequest,
     LimitOrderRequest,
     StopOrderRequest,
     StopLimitOrderRequest,
+    TakeProfitRequest,
+    StopLossRequest,
 )
 from loguru import logger
 from pydantic import BaseModel
@@ -435,7 +437,78 @@ class AlpacaBrokerAdapter:
         except APIError as e:
             logger.error(f"Error placing order: {e}")
             return None
-    
+
+    def place_bracket_order(
+        self,
+        symbol: str,
+        quantity: float,
+        side: str,
+        take_profit_price: float,
+        stop_loss_price: float,
+        time_in_force: str = "gtc",
+    ) -> Optional[str]:
+        """
+        Place a bracket order with stop loss and take profit.
+
+        Args:
+            symbol: Trading symbol
+            quantity: Order quantity
+            side: "buy" or "sell"
+            take_profit_price: Take profit limit price
+            stop_loss_price: Stop loss price
+            time_in_force: "day", "gtc", "ioc", "fok"
+
+        Returns:
+            Order ID if successful, None otherwise
+        """
+        try:
+            # Risk management checks before placing order
+            if side.lower() == "buy":
+                # Check daily loss limit (circuit breaker)
+                self._check_daily_loss_limit()
+
+                # Validate position size
+                self._validate_position_size(symbol, quantity, None)
+
+            # Convert string enums
+            order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
+
+            # Convert time in force
+            tif_map = {
+                "day": TimeInForce.DAY,
+                "gtc": TimeInForce.GTC,
+                "ioc": TimeInForce.IOC,
+                "fok": TimeInForce.FOK,
+            }
+            tif = tif_map.get(time_in_force.lower(), TimeInForce.GTC)
+
+            # Create bracket order request
+            order_data = MarketOrderRequest(
+                symbol=symbol,
+                qty=quantity,
+                side=order_side,
+                time_in_force=tif,
+                order_class=OrderClass.BRACKET,
+                take_profit=TakeProfitRequest(limit_price=take_profit_price),
+                stop_loss=StopLossRequest(stop_price=stop_loss_price),
+            )
+
+            logger.info(
+                f"Submitting BRACKET order: {side.upper()} {quantity} {symbol} "
+                f"| TP: ${take_profit_price:.2f} | SL: ${stop_loss_price:.2f}"
+            )
+
+            # Submit order
+            order = self.trading_client.submit_order(order_data)
+
+            logger.info(f"Bracket order submitted successfully - Order ID: {order.id}")
+
+            return str(order.id)
+
+        except APIError as e:
+            logger.error(f"Error placing bracket order: {e}")
+            return None
+
     def cancel_order(self, order_id: str) -> bool:
         """Cancel an order."""
         try:
