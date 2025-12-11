@@ -20,6 +20,15 @@ try:
 except Exception:
     UnusualWhalesAdapter = None  # makes API still run if adapter missing
 
+# Import GNOSIS routers for trade decision tracking and ML
+try:
+    from routers.trade_decisions import router as trade_decisions_router
+    from routers.ml_trades import router as ml_trades_router
+    GNOSIS_ROUTERS_AVAILABLE = True
+except Exception as e:
+    logging.warning(f"GNOSIS routers not available: {e}")
+    GNOSIS_ROUTERS_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Gnosis Backend API")
@@ -32,6 +41,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include GNOSIS routers if available
+if GNOSIS_ROUTERS_AVAILABLE:
+    app.include_router(trade_decisions_router)
+    app.include_router(ml_trades_router)
+    logger.info("✓ GNOSIS trade decision tracking and ML routers loaded")
 
 # Load UW token
 UW_TOKEN = (
