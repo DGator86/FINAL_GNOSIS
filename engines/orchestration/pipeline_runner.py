@@ -90,9 +90,12 @@ class PipelineRunner:
             if "elasticity" in self.engines:
                 result.elasticity_snapshot = self.engines["elasticity"].run(self.symbol, timestamp)
 
+            # Run ML enhancement engine (e.g., LSTM lookahead predictions)
+            # Can be MLEnhancementEngine (composite) or LSTMPredictionEngine (specialized)
             if self.ml_engine:
                 try:
                     result.ml_snapshot = self.ml_engine.enhance(result, timestamp)
+                    logger.debug(f"ML enhancement completed for {self.symbol}")
                 except Exception as e:
                     logger.error(f"Error in ML enhancement engine: {e}")
             

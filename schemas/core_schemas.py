@@ -80,6 +80,20 @@ class ForecastSnapshot(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class LSTMLookaheadSnapshot(BaseModel):
+    """LSTM Lookahead prediction snapshot with multi-horizon forecasts."""
+
+    timestamp: datetime
+    symbol: str
+    horizons: List[int] = Field(default_factory=list)  # [1, 5, 15, 60] minutes
+    predictions: Dict[int, float] = Field(default_factory=dict)  # horizon -> predicted return %
+    uncertainties: Dict[int, float] = Field(default_factory=dict)  # horizon -> uncertainty
+    direction: str = "neutral"  # up, down, neutral
+    direction_probs: Dict[str, float] = Field(default_factory=dict)  # {up, down, neutral} -> probability
+    confidence: float = 0.0
+    model_version: str = "lstm_lookahead_v1"
+
+
 class RegimeSimilaritySnapshot(BaseModel):
     """Nearest-neighbor regime retrieval diagnostics."""
 
