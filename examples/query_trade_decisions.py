@@ -9,14 +9,14 @@ This shows common query patterns for:
 """
 
 import sys
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from crud.trade_decision import list_trade_decisions
 from db import SessionLocal
-from crud.trade_decision import list_trade_decisions, get_trade_decision_by_id
 
 
 def query_recent_decisions():

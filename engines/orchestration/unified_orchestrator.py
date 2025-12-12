@@ -5,16 +5,16 @@ Coordinates execution across stocks, single options, and multi-leg strategies
 This is the "conductor" that executes the strategy selector's decisions.
 """
 
-from typing import Dict, Any, Optional
 from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
+from engines.liquidity.options_execution_v2 import OptionsExecutionModule
 from engines.orchestration.strategy_selector import (
-    IntelligentStrategySelector,
     InstrumentDecision,
     InstrumentType,
+    IntelligentStrategySelector,
     StrategyType,
 )
-from engines.liquidity.options_execution_v2 import OptionsExecutionModule
 from models.options_contracts import EnhancedMarketData
 
 

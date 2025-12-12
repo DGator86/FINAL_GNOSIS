@@ -3,7 +3,6 @@ Phase 5 Integration Test: Advanced Broker Integration
 Tests multi-leg option orders and option snapshots
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -11,9 +10,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from loguru import logger
+
 from brokers.alpaca_client import AlpacaClient
 from engines.liquidity.options_execution_v2 import OptionsExecutionModule
-from loguru import logger
 
 
 def test_option_snapshot():

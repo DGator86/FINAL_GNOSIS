@@ -3,10 +3,11 @@ from __future__ import annotations
 """Lightweight base classes for agent implementations."""
 """Shared agent utilities for advanced trading agents."""
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, Optional
-import logging
+
 import numpy as np
 
 

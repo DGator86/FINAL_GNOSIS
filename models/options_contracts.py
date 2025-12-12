@@ -3,10 +3,10 @@ Unified data contracts for GNOSIS V2.0
 Fixes the dict vs list inconsistencies identified in feedback
 """
 
-from pydantic import BaseModel, Field, validator
-from typing import List, Dict, Optional, Literal
-from datetime import datetime, date
-import numpy as np
+from datetime import date, datetime
+from typing import Dict, List, Literal, Optional
+
+from pydantic import BaseModel, Field
 
 
 class OptionQuote(BaseModel):

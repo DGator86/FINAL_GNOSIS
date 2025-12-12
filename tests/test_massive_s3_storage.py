@@ -1,7 +1,5 @@
 """Tests for MASSIVE.COM S3 storage adapter."""
 
-import os
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

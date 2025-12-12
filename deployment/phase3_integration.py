@@ -2,11 +2,15 @@
 Phase 3: Full pipeline integration in shadow mode
 """
 
-import sys
-import os
-from datetime import datetime, date
 import logging
+import os
+import sys
+from datetime import date, datetime
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
+
+if TYPE_CHECKING:
+    from models.options_contracts import EnhancedMarketData
 
 # Add project root to path
 sys.path.append(os.getcwd())
@@ -16,15 +20,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def create_mock_market_data():
+def create_mock_market_data() -> "EnhancedMarketData":
     """Create sample data for testing"""
     from models.options_contracts import (
         EnhancedMarketData,
+        MacroVolatilityData,
+        OptionQuote,
         OptionsChain,
         VolatilityMetrics,
         VolatilityStructure,
-        MacroVolatilityData,
-        OptionQuote,
     )
 
     # Create quotes
@@ -65,13 +69,13 @@ def create_mock_market_data():
     )
 
 
-def test_pipeline_integration():
+def test_pipeline_integration() -> bool:
     """Test Enhanced Pipeline in Shadow Mode"""
     print("\nTesting Enhanced Pipeline Integration...")
 
     try:
-        from pipeline.options_pipeline_v2 import EnhancedGnosisPipeline
         from config.options_config_v2 import GNOSIS_V2_CONFIG
+        from pipeline.options_pipeline_v2 import EnhancedGnosisPipeline
 
         # Ensure Shadow Mode is ON
         GNOSIS_V2_CONFIG["enabled"] = False
@@ -82,7 +86,7 @@ def test_pipeline_integration():
         mock_base.process_ticker.return_value = {"base_metric": 100}
 
         # Mock VIX Provider
-        def mock_vix_history():
+        def mock_vix_history() -> list[float]:
             return [15.0] * 100
 
         # Initialize Pipeline

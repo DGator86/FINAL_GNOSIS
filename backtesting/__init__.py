@@ -1,5 +1,9 @@
 """Backtesting utilities for Gnosis."""
-from backtesting.composer_backtest import BacktestConfig, BacktestResult, run_composer_backtest
+from backtesting.composer_backtest import (
+    BacktestConfig,
+    BacktestResult,
+    run_composer_backtest,
+)
 
 # ML-enabled backtest engine imports (lazy to avoid import errors)
 try:

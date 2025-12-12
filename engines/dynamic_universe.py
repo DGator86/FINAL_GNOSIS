@@ -14,10 +14,9 @@ NO manual updates needed - stays current with market automatically.
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from datetime import datetime
+from typing import Dict, List
 
-import httpx
 from loguru import logger
 from pydantic import BaseModel, Field
 

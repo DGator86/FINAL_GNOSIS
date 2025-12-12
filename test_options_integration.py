@@ -1,13 +1,14 @@
 import asyncio
+import traceback
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
-from loguru import logger
-import traceback
 
-from trade.trade_agent_v3 import TradeAgentV3, TradeStrategy
+from loguru import logger
+
 from agents.composer.composer_agent_v2 import ComposerDecision
 from engines.inputs.options_chain_adapter import OptionContract
 from gnosis.utils.option_utils import OptionUtils
+from trade.trade_agent_v3 import TradeAgentV3
 
 
 async def test_options_generation():

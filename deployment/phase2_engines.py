@@ -2,10 +2,14 @@
 Phase 2: Implement and test engine modules in isolation
 """
 
-import sys
-import os
-from datetime import datetime, date
 import logging
+import os
+import sys
+from datetime import date, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from models.options_contracts import EnhancedMarketData
 
 # Add project root to path
 sys.path.append(os.getcwd())
@@ -15,15 +19,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def create_mock_market_data():
+def create_mock_market_data() -> "EnhancedMarketData":
     """Create sample data for testing"""
     from models.options_contracts import (
         EnhancedMarketData,
+        MacroVolatilityData,
+        OptionQuote,
         OptionsChain,
         VolatilityMetrics,
         VolatilityStructure,
-        MacroVolatilityData,
-        OptionQuote,
     )
 
     # Create quotes
@@ -64,22 +68,22 @@ def create_mock_market_data():
     )
 
 
-def test_volatility_intelligence():
+def test_volatility_intelligence() -> bool:
     """Test Volatility Intelligence Module logic"""
     print("\nTesting Volatility Intelligence Module...")
 
     try:
-        from engines.hedge.volatility_intel_v2 import VolatilityIntelligenceModule
         from config.options_config_v2 import GNOSIS_V2_CONFIG
+        from engines.hedge.volatility_intel_v2 import VolatilityIntelligenceModule
 
         # Mock dependencies
-        def mock_vix_history():
+        def mock_vix_history() -> list[float]:
             return [10.0] * 50 + [20.0] * 50  # Simple history
 
         module = VolatilityIntelligenceModule(
             garch_model=None,
             correlation_engine=None,
-            config=GNOSIS_V2_CONFIG["regime_config"],
+            config=GNOSIS_V2_CONFIG["regime_config"],  # type: ignore
             vix_history_provider=mock_vix_history,
             logger=logger,
         )
@@ -104,7 +108,8 @@ def test_volatility_intelligence():
         result = module.process_volatility_intelligence(market_data)
 
         print(
-            f"Full Processing Result: {result['regime_classification']}, Vol Edge: {result['vol_edge']:.4f}"
+            f"Full Processing Result: {result['regime_classification']}, "
+            f"Vol Edge: {result['vol_edge']:.4f}"
         )
         assert "regime_classification" in result
         assert "vol_edge" in result
@@ -120,15 +125,18 @@ def test_volatility_intelligence():
         return False
 
 
-def test_options_execution():
+def test_options_execution() -> bool:
     """Test Options Execution Module logic"""
     print("\nTesting Options Execution Module...")
 
     try:
-        from engines.liquidity.options_execution_v2 import OptionsExecutionModule
         from config.options_config_v2 import GNOSIS_V2_CONFIG
+        from engines.liquidity.options_execution_v2 import OptionsExecutionModule
 
-        module = OptionsExecutionModule(config=GNOSIS_V2_CONFIG["liquidity_config"], logger=logger)
+        module = OptionsExecutionModule(
+            config=GNOSIS_V2_CONFIG["liquidity_config"],  # type: ignore
+            logger=logger,
+        )
 
         market_data = create_mock_market_data()
 

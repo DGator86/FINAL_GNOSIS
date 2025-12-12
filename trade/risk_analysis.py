@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from trade.execution_mapper import OptionLeg, ProposedTrade
+
 """Risk analysis and sizing utilities for options trades."""
 
 from __future__ import annotations
@@ -332,9 +333,9 @@ def build_risk_adjusted_trade_from_cone(
     """
 
     from trade.cone_metrics import compute_cone_metrics
+    from trade.execution_mapper import build_proposed_trade_from_structure
     from trade.regime_classifier import classify_trade_regime
     from trade.structure_selector import select_structure_from_cone
-    from trade.execution_mapper import build_proposed_trade_from_structure
 
     metrics = compute_cone_metrics(spot=spot, cone=cone)
     regime = classify_trade_regime(metrics)

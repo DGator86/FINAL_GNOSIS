@@ -10,13 +10,15 @@ Tests the enhanced Composer and Trade Agent to ensure they properly:
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from datetime import datetime
+
+
 from agents.composer.composer_agent_v2 import ComposerAgentV2
-from trade.trade_agent_v3 import TradeAgentV3
 from agents.confidence_builder import TimeframeSignal
-from loguru import logger
+from trade.trade_agent_v3 import TradeAgentV3
 
 
 def test_phase45_composer_and_trade():

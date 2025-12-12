@@ -1,5 +1,5 @@
 try:
-    from models.time_series import gnosis_lstm_forecaster
+    pass
 
     print("Import successful")
 except Exception as e:

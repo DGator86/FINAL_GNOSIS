@@ -9,19 +9,18 @@ This model captures the full decision context for every trade:
 - Execution outcome
 """
 
-from datetime import datetime
 import uuid
 
 from sqlalchemy import (
-    Column,
-    String,
+    ARRAY,
     Boolean,
+    Column,
     DateTime,
     Numeric,
+    String,
     Text,
-    ARRAY,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 
 from db import Base

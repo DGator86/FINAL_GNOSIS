@@ -3,8 +3,9 @@ Enhanced pipeline with V2 options intelligence.
 Safely integrates with existing pipeline via feature flags.
 """
 
-from typing import Optional, Dict, Any, List
 import logging
+from typing import Any, Dict, Optional
+
 from config.options_config_v2 import GNOSIS_V2_CONFIG
 from models.options_contracts import EnhancedMarketData, OptionsIntelligenceOutput
 
@@ -47,7 +48,9 @@ class EnhancedGnosisPipeline:
             self.vol_intel_v2 = None
             self.options_execution_v2 = None
 
-    def _initialize_v2_modules(self, garch_model, correlation_engine, vix_history_provider):
+    def _initialize_v2_modules(
+        self, garch_model: Any, correlation_engine: Any, vix_history_provider: Any
+    ) -> None:
         """Initialize V2 modules with proper dependency injection"""
 
         try:
@@ -56,7 +59,7 @@ class EnhancedGnosisPipeline:
                 self.vol_intel_v2 = VolatilityIntelligenceModule(
                     garch_model=garch_model,
                     correlation_engine=correlation_engine,
-                    config=GNOSIS_V2_CONFIG["regime_config"],
+                    config=GNOSIS_V2_CONFIG["regime_config"],  # type: ignore
                     vix_history_provider=vix_history_provider,
                     logger=self.logger,
                 )
@@ -66,7 +69,8 @@ class EnhancedGnosisPipeline:
             # Options Execution Module
             if GNOSIS_V2_CONFIG["slippage_modeling"]:
                 self.options_execution_v2 = OptionsExecutionModule(
-                    config=GNOSIS_V2_CONFIG["liquidity_config"], logger=self.logger
+                    config=GNOSIS_V2_CONFIG["liquidity_config"],  # type: ignore
+                    logger=self.logger,
                 )
             else:
                 self.options_execution_v2 = None
@@ -78,7 +82,7 @@ class EnhancedGnosisPipeline:
             self.options_execution_v2 = None
 
     def process_ticker(
-        self, ticker: str, current_positions: Optional[List] = None
+        self, ticker: str, current_positions: Optional[list[Any]] = None
     ) -> Dict[str, Any]:
         """
         Main processing function with V2 enhancement.
@@ -117,7 +121,7 @@ class EnhancedGnosisPipeline:
             return self.base_pipeline.process_ticker(ticker)
 
     def _process_v2_enhancement(
-        self, ticker: str, current_positions: Optional[List]
+        self, ticker: str, current_positions: Optional[list[Any]]
     ) -> Dict[str, Any]:
         """
         Process V2 enhancements with error handling.
@@ -129,7 +133,7 @@ class EnhancedGnosisPipeline:
         if not market_data:
             return {}
 
-        v2_results = {}
+        v2_results: dict[str, Any] = {}
 
         # Volatility Intelligence (Feeds Hedge Agent)
         if self.vol_intel_v2:
@@ -168,7 +172,7 @@ class EnhancedGnosisPipeline:
             self.logger.error(f"Enhanced market data retrieval failed for {ticker}: {e}")
             return None
 
-    def _standardize_v2_outputs(self, v2_results: Dict) -> OptionsIntelligenceOutput:
+    def _standardize_v2_outputs(self, v2_results: dict[str, Any]) -> OptionsIntelligenceOutput:
         """
         Convert V2 engine outputs to standardized format.
         """
@@ -205,7 +209,7 @@ class EnhancedGnosisPipeline:
             risk_score=risk_score,
         )
 
-    def _calculate_opportunity_score(self, vol_intel: Dict) -> float:
+    def _calculate_opportunity_score(self, vol_intel: dict[str, Any]) -> float:
         """Calculate unified opportunity score 0-100"""
         vol_edge = vol_intel.get("vol_edge", 0.0)
         regime_conf = vol_intel.get("regime_confidence", 0.5)
@@ -216,7 +220,7 @@ class EnhancedGnosisPipeline:
 
         return min(100, edge_score + confidence_bonus)
 
-    def _calculate_risk_score(self, vol_intel: Dict, execution: Dict) -> float:
+    def _calculate_risk_score(self, vol_intel: dict[str, Any], execution: dict[str, Any]) -> float:
         """Calculate unified risk score 0-100"""
         vega_util = vol_intel.get("vega_utilization", 0.0)
         regime = vol_intel.get("regime_classification", "R2")
@@ -229,7 +233,7 @@ class EnhancedGnosisPipeline:
 
         return min(100, portfolio_risk + regime_risk + execution_risk)
 
-    def _log_shadow_mode_decisions(self, enhanced_result: Dict):
+    def _log_shadow_mode_decisions(self, enhanced_result: dict[str, Any]) -> None:
         """Log V2 decisions for validation during shadow mode"""
 
         v2_data = enhanced_result.get("gnosis_v2")
@@ -244,10 +248,9 @@ class EnhancedGnosisPipeline:
             f"Risk={v2_data.risk_score:.1f}"
         )
 
-    def _fetch_options_data(self, ticker: str) -> Optional[Dict]:
+    def _fetch_options_data(self, ticker: str) -> Optional[dict[str, Any]]:
         """
         Placeholder for options data fetching.
         Implementation depends on your data providers.
         """
         # This would integrate with your existing data infrastructure
-        pass

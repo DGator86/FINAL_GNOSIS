@@ -4,10 +4,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from alpaca.data.timeframe import TimeFrame
 from flask import Flask, jsonify, render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
-from alpaca.data.timeframe import TimeFrame
 
 from execution.broker_adapters.alpaca_trader import AlpacaConfig, AlpacaTrader
 from gnosis.trading.live_trading_engine import GnosisLiveTradingEngine

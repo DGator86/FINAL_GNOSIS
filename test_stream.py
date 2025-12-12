@@ -1,6 +1,7 @@
 import asyncio
-import os
 import logging
+import os
+
 from alpaca.data.live import StockDataStream
 from dotenv import load_dotenv
 

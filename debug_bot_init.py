@@ -2,7 +2,6 @@
 Debug script to isolate UnifiedTradingBot initialization.
 """
 
-import os
 import sys
 from pathlib import Path
 

@@ -1,8 +1,9 @@
 """Database configuration for GNOSIS trade decision tracking."""
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
 import os
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # Database URL from environment or default to local Postgres
 DATABASE_URL = os.getenv(

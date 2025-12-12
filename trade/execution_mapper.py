@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional
 
-from trade.structures import StructureType
 from trade.structure_selector import StructureSpec
+from trade.structures import StructureType
 
 
 @dataclass

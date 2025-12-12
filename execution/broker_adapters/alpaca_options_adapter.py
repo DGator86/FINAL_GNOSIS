@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Dict, Any
-from datetime import datetime
-import asyncio
+from typing import Any, Dict, List, Optional
 
-from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, StopOrderRequest
-from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
-from alpaca.common.exceptions import APIError
 from loguru import logger
 
 from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter, Position

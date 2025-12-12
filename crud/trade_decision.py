@@ -9,8 +9,8 @@ These functions handle all database interactions for trade decisions:
 from typing import List, Optional
 from uuid import UUID
 
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
-from sqlalchemy import select, desc
 
 from db_models.trade_decision import TradeDecision
 from schemas.trade_decision import (

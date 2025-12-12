@@ -1,11 +1,11 @@
 """Integration tests for order execution and risk management."""
 
-import pytest
 import os
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from unittest.mock import Mock, patch
 
-from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter, Account
+import pytest
+
+from execution.broker_adapters.alpaca_adapter import Account, AlpacaBrokerAdapter
 
 
 class TestOrderExecutionIntegration:

@@ -6,11 +6,9 @@ Supports uploading/downloading files, feature versioning, ledger archiving, and 
 
 from __future__ import annotations
 
-import io
 import os
-from datetime import datetime
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import boto3
 from botocore.client import Config

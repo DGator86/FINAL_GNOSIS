@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
-from typing import Literal
+from typing import Any, Dict, Literal
 
 import numpy as np
 
 from agents.composer.prediction_cone import PredictionCone
-
 
 DirectionBias = Literal["bull", "bear", "neutral"]
 VolRegime = Literal["low", "medium", "high"]

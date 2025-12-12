@@ -2,23 +2,24 @@
 Tests for LSTM Lookahead Model and Engine
 """
 
+from datetime import datetime
+from unittest.mock import Mock, patch
+
 import numpy as np
 import pandas as pd
 import pytest
 import torch
-from datetime import datetime, timedelta
-from unittest.mock import Mock, MagicMock, patch
 
+from engines.ml.lstm_engine import LSTMPredictionEngine
 from models.lstm_lookahead import (
     BidirectionalLSTMLookahead,
     LookaheadConfig,
     LSTMLookaheadPredictor,
 )
-from engines.ml.lstm_engine import LSTMPredictionEngine
 from schemas.core_schemas import (
     ForecastSnapshot,
-    PipelineResult,
     HedgeSnapshot,
+    PipelineResult,
 )
 
 
@@ -365,7 +366,7 @@ class TestLSTMPredictionEngine:
 
         # Clear cache and try again
         engine.clear_cache(symbol)
-        features3 = engine._get_recent_features(symbol, timestamp)
+        engine._get_recent_features(symbol, timestamp)
         assert mock_market_adapter.get_historical_bars.call_count == 2  # New call after cache clear
 
 

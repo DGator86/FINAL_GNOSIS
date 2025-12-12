@@ -7,8 +7,8 @@ from the database with filters optimized for ML training.
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from db_models.trade_decision import TradeDecision
 

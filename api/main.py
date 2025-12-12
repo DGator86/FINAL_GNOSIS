@@ -22,8 +22,8 @@ except Exception:
 
 # Import GNOSIS routers for trade decision tracking and ML
 try:
-    from routers.trade_decisions import router as trade_decisions_router
     from routers.ml_trades import router as ml_trades_router
+    from routers.trade_decisions import router as trade_decisions_router
     GNOSIS_ROUTERS_AVAILABLE = True
 except Exception as e:
     logging.warning(f"GNOSIS routers not available: {e}")

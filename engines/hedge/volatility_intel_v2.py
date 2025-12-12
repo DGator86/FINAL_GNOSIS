@@ -5,10 +5,12 @@ Volatility Intelligence Module - Addresses all feedback issues
 - Implemented correlation-adjusted Greeks properly
 """
 
-import numpy as np
-from typing import Dict, List, Optional, Protocol, Tuple
 import logging
-from models.options_contracts import EnhancedMarketData, OptionsIntelligenceOutput
+from typing import Dict, List, Optional, Protocol, Tuple
+
+import numpy as np
+
+from models.options_contracts import EnhancedMarketData
 
 
 class GARCHModel(Protocol):

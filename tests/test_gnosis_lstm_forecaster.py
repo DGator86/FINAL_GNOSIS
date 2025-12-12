@@ -108,9 +108,9 @@ class TestGnosisLSTMForecaster:
 
 def test_no_warnings_import():
     """Test that warnings module is not imported."""
-    import sys
     import importlib
-    
+    import sys
+
     # Clear the module cache if already loaded
     if 'models.time_series.gnosis_lstm_forecaster' in sys.modules:
         del sys.modules['models.time_series.gnosis_lstm_forecaster']
@@ -124,9 +124,9 @@ def test_no_warnings_import():
 
 def test_spelling_corrections():
     """Test that British spelling has been corrected to American spelling."""
-    import models.time_series.base_model as base_model
     import models.time_series.attention_mechanism as attention_mechanism
-    
+    import models.time_series.base_model as base_model
+
     # Check base_model docstring
     assert 'standardize' in base_model.BaseGnosisModel.__doc__
     assert 'behavior' in base_model.BaseGnosisModel.__doc__

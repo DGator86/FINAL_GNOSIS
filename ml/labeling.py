@@ -5,10 +5,9 @@ from trade decisions by analyzing price evolution after the trade.
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Callable, List
+from typing import Callable, Dict, List
 
 from db_models.trade_decision import TradeDecision
-
 
 # Type alias for price series provider
 # Signature: (symbol, start_time, end_time) -> List[float]
@@ -87,7 +86,7 @@ def compute_trade_labels(
         return direction_sign * (px - entry_price) / entry_price
 
     horizon_return = dir_return(final_price)
-    best_return = dir_return(max_price if direction_sign > 0 else min_price)
+    dir_return(max_price if direction_sign > 0 else min_price)
     worst_return = dir_return(min_price if direction_sign > 0 else max_price)
 
     # Compute R-multiple

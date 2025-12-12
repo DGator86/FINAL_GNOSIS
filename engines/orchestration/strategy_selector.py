@@ -5,11 +5,11 @@ Automatically decides between stocks and options based on market conditions
 This is the "brain" that makes Gnosis trade like a professional quant firm.
 """
 
-from typing import Dict, List, Literal, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Dict, Literal, Optional
 
-from models.options_contracts import EnhancedMarketData, OptionsChain
+from models.options_contracts import EnhancedMarketData
 
 
 class InstrumentType(Enum):

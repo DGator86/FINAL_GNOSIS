@@ -5,9 +5,9 @@ Tests automatic selection between stocks and options
 This demonstrates the "quant firm" behavior - choosing optimal instruments
 """
 
-import os
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -17,11 +17,12 @@ load_dotenv()
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from engines.orchestration import UnifiedOrchestrator, InstrumentType
-from brokers.alpaca_client import AlpacaClient
-from models.options_contracts import EnhancedMarketData, OptionsChain, OptionQuote
-from config.options_config_v2 import GNOSIS_V2_CONFIG
 from loguru import logger
+
+from brokers.alpaca_client import AlpacaClient
+from config.options_config_v2 import GNOSIS_V2_CONFIG
+from engines.orchestration import UnifiedOrchestrator
+from models.options_contracts import EnhancedMarketData, OptionQuote, OptionsChain
 
 
 def create_mock_market_data(ticker: str, iv_level: str = "moderate") -> EnhancedMarketData:

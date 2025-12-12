@@ -11,7 +11,6 @@ class Dashboard:
     
     def __init__(self):
         """Initialize dashboard."""
-        pass
     
     def run(self):
         """Run dashboard - placeholder for future Flask/FastAPI implementation."""

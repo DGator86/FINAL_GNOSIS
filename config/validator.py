@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Tuple
 
 import yaml
 from loguru import logger
@@ -15,7 +15,6 @@ from loguru import logger
 
 class ConfigurationError(Exception):
     """Raised when configuration validation fails."""
-    pass
 
 
 class ConfigValidator:

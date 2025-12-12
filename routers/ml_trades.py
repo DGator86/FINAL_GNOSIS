@@ -7,13 +7,12 @@ This router exposes the ML dataset generation API:
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from db import get_db
-from ml.schemas import TradeMLExample
 from ml.dataset_builder import build_ml_examples_from_trades
-
+from ml.schemas import TradeMLExample
 
 router = APIRouter(prefix="/ml/trades", tags=["ml-trades"])
 

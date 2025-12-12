@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
@@ -75,7 +75,7 @@ class TimeframeManager:
         self.max_bars = max_bars
 
         # Storage for each timeframe (deque for efficient append/pop)
-        self.bars: Dict[str, deque] = {tf: deque(maxlen=max_bars) for tf in self.TIMEFRAMES}
+        self.bars: Dict[str, deque[OHLCV]] = {tf: deque(maxlen=max_bars) for tf in self.TIMEFRAMES}
 
         # Track last aggregation time for each timeframe
         self.last_aggregation: Dict[str, Optional[datetime]] = {tf: None for tf in self.TIMEFRAMES}
@@ -87,11 +87,12 @@ class TimeframeManager:
 
         logger.info(f"TimeframeManager initialized | max_bars={max_bars}")
 
-    def update(self, bar) -> None:
+    def update(self, bar: Any) -> None:
         """Add bar from Alpaca stream (handles both live and historical bars).
 
         Args:
-            bar: Alpaca Bar object with attributes: symbol, timestamp, open, high, low, close, volume
+            bar: Alpaca Bar object with attributes:
+                symbol, timestamp, open, high, low, close, volume
         """
         # Convert Alpaca bar to internal format
         bar_dict = {
@@ -104,7 +105,7 @@ class TimeframeManager:
         }
         self.add_1min_bar(bar_dict)
 
-    def add_1min_bar(self, bar_dict: Dict) -> None:
+    def add_1min_bar(self, bar_dict: Dict[str, Any]) -> None:
         """Add 1-minute bar and trigger aggregations.
 
         Args:
@@ -219,7 +220,7 @@ class TimeframeManager:
         Returns:
             Latest OHLCV bar or None if no bars available
         """
-        bars = self.bars.get(timeframe, [])
+        bars: deque[OHLCV] = self.bars.get(timeframe, deque())
         return bars[-1] if bars else None
 
     def get_bar_counts(self) -> Dict[str, int]:

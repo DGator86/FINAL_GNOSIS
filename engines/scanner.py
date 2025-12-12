@@ -9,7 +9,6 @@ from typing import Any, Dict, List
 from loguru import logger
 from pydantic import BaseModel
 
-
 # Legacy default universe - kept for backwards compatibility
 # BUT: New behavior uses dynamic_universe.py to get current top N
 DEFAULT_UNIVERSE = [
@@ -216,10 +215,10 @@ class OpportunityScanner:
             logger.warning(f"{name} failed for {symbol}: {exc} — using neutral snapshot")
             # Import locally to avoid cycles
             from schemas.core_schemas import (
+                ElasticitySnapshot,
                 HedgeSnapshot,
                 LiquiditySnapshot,
                 SentimentSnapshot,
-                ElasticitySnapshot,
             )
 
             fallback_map = {

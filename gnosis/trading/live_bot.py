@@ -12,9 +12,9 @@ previously missing ``gnosis`` package.
 from __future__ import annotations
 
 import asyncio
+import inspect
 from dataclasses import dataclass
 from datetime import datetime
-import inspect
 from typing import Callable, Dict, List, Optional
 
 from alpaca.data.live import StockDataStream

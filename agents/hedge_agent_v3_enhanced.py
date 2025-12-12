@@ -3,26 +3,27 @@ Enhanced Hedge Agent v3.0+ with ML capabilities, memory, and tool calling
 Integrates with episodic/semantic memory and uses RL for continuous improvement
 """
 
-from typing import Dict, List, Optional, Any, Tuple
-import numpy as np
-from dataclasses import dataclass
 import logging
-from datetime import datetime
 import uuid
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
 import pandas as pd
 
-# Import existing GNOSIS components
-from schemas.core_schemas import AgentSuggestion
-from agents.base import Agent
 from agents.hedge_agent_v3 import HedgeAgentV3
 
 # Import memory systems
-from agents.memory.episodic_memory import EpisodicMemory, Episode
+from agents.memory.episodic_memory import Episode, EpisodicMemory
 from agents.memory.semantic_memory import SemanticMemory
 
 # Import ML models
 from models.ensemble.xgboost_model import XGBoostEnsemble
 from models.time_series.lstm_forecaster import LSTMForecastModel
+
+# Import existing GNOSIS components
+from schemas.core_schemas import AgentSuggestion
 
 logger = logging.getLogger(__name__)
 

@@ -3,13 +3,12 @@ Enhanced Feature Builder for FINAL_GNOSIS
 Integrates with Hedge Engine v3.0 and other engines to create comprehensive feature matrix
 """
 
-from typing import Dict, List, Optional, Tuple
-import pandas as pd
-import numpy as np
-from dataclasses import dataclass
 import logging
-from datetime import datetime
-from functools import lru_cache
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
+import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -492,7 +491,7 @@ class EnhancedFeatureBuilder:
         
         # Trend regime
         sma_50 = df['close'].rolling(50).mean()
-        sma_200 = df['close'].rolling(200).mean()
+        df['close'].rolling(200).mean()
         
         # Strong uptrend: price > SMA50 > SMA200
         # Weak uptrend: price > SMA50, SMA50 < SMA200

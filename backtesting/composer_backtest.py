@@ -7,7 +7,11 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import numpy as np
 
-from backtesting.metrics import compute_directional_accuracy, compute_sharpe_ratio, max_drawdown
+from backtesting.metrics import (
+    compute_directional_accuracy,
+    compute_sharpe_ratio,
+    max_drawdown,
+)
 
 
 @dataclass

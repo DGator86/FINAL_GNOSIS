@@ -10,8 +10,8 @@ from typing import Dict, List, Optional
 import httpx
 from loguru import logger
 
-from gnosis.utils.option_utils import OptionUtils
 from engines.inputs.options_chain_adapter import OptionContract, OptionsChainAdapter
+from gnosis.utils.option_utils import OptionUtils
 
 
 @dataclass

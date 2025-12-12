@@ -8,7 +8,7 @@ from trade.execution_mapper import ProposedTrade, build_proposed_trade_from_stru
 from trade.regime_classifier import classify_trade_regime
 from trade.risk_analysis import TradeRiskProfile, scale_trade_to_risk_budget
 from trade.strategy_tags import attach_tags_to_trade, build_strategy_tags
-from trade.structure_selector import StructureSpec, select_structure_from_cone
+from trade.structure_selector import select_structure_from_cone
 
 
 def build_risk_adjusted_trade_from_cone(

@@ -1,7 +1,7 @@
-import os
+import asyncio
 import sys
 from pathlib import Path
-import asyncio
+
 from dotenv import load_dotenv
 
 # Add project to path
@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 load_dotenv()
 
 from gnosis.trading.live_bot import LiveTradingBot
+
 
 async def main():
     try:

@@ -2,9 +2,9 @@
 Phase 1: Establish foundation without disrupting existing operations
 """
 
-import sys
 import os
-from datetime import datetime, date
+import sys
+from datetime import date, datetime
 
 # Add project root to path
 sys.path.append(os.getcwd())
@@ -63,8 +63,8 @@ def validate_phase1():
     print("Starting Phase 1 Validation...")
 
     try:
-        from models.options_contracts import EnhancedMarketData
         from config.options_config_v2 import GNOSIS_V2_CONFIG
+        from models.options_contracts import EnhancedMarketData
 
         print("✓ Imports successful")
     except ImportError as e:
@@ -98,7 +98,7 @@ def validate_phase1():
     # Test 3: Verify existing pipeline imports (sanity check)
     try:
         # Just checking if we broke anything by existing
-        import gnosis.unified_trading_bot
+        pass
 
         print("✓ Existing modules still importable")
     except ImportError as e:

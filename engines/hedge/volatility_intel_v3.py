@@ -1,10 +1,11 @@
 """Volatility Intelligence Module V3 - Enhanced with GEX calculations."""
 
-import numpy as np
-from typing import Dict, List, Optional, Protocol, Tuple
 import logging
-from datetime import datetime
-from models.options_contracts import EnhancedMarketData, OptionsIntelligenceOutput
+from typing import Dict, List, Optional, Protocol, Tuple
+
+import numpy as np
+
+from models.options_contracts import EnhancedMarketData
 
 
 class GARCHModel(Protocol):

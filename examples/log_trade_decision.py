@@ -7,14 +7,14 @@ with full context before submitting orders to the broker.
 """
 
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from db import SessionLocal
 from crud.trade_decision import create_trade_decision
+from db import SessionLocal
 from schemas.trade_decision import TradeDecisionCreate
 
 

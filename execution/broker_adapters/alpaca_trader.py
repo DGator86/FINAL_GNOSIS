@@ -28,6 +28,7 @@ from alpaca.trading.requests import (
     StopLossRequest,
     TakeProfitRequest,
 )
+
 from execution.broker_adapters.settings import (
     get_alpaca_paper_setting,
     get_required_options_level,

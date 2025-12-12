@@ -3,14 +3,15 @@ Regime Detection Agent for GNOSIS Trading System
 Detects market regimes and adjusts strategy accordingly.
 """
 
+from datetime import datetime
+from typing import Any, Dict, Optional
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Optional
-from datetime import datetime
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 
-from .base_agent import BaseAgent, AgentSignal
+from .base_agent import AgentSignal, BaseAgent
 
 
 class RegimeDetectionAgent(BaseAgent):

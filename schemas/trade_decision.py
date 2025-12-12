@@ -12,7 +12,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
 Mode = Literal["live", "paper", "backtest"]
 Direction = Literal["long", "short", "neutral"]
 

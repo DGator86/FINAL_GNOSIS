@@ -21,9 +21,10 @@ from dotenv import load_dotenv
 # Load environment
 load_dotenv()
 
-from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
 from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
 from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
+
 
 def test_alpaca_trading():
     """Test Alpaca trading API."""

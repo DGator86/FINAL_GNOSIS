@@ -35,15 +35,19 @@ from engines.ml import (
     MLEnhancementEngine,
 )
 from engines.orchestration.pipeline_runner import PipelineRunner
-from engines.sentiment.processors import FlowSentimentProcessor, NewsSentimentProcessor, TechnicalSentimentProcessor
+from engines.sentiment.processors import (
+    FlowSentimentProcessor,
+    NewsSentimentProcessor,
+    TechnicalSentimentProcessor,
+)
 from engines.sentiment.sentiment_engine_v1 import SentimentEngineV1
-from ledger.ledger_store import LedgerStore
+from execution.broker_adapters.settings import get_alpaca_paper_setting
 from feedback.adaptation_agent import AdaptationAgent
 from feedback.tracking_agent import TrackingAgent
+from ledger.ledger_store import LedgerStore
 from trade.trade_agent_v1 import TradeAgentV1
-from execution.broker_adapters.settings import get_alpaca_paper_setting
-from watchlist import AdaptiveWatchlist
 from universe.watchlist_loader import load_active_watchlist
+from watchlist import AdaptiveWatchlist
 
 # Load environment variables
 load_dotenv()
@@ -327,11 +331,16 @@ def scan_opportunities(
         # Save to file
         python main.py scan-opportunities --output opportunities.json
     """
-    from engines.scanner import OpportunityScanner, DEFAULT_UNIVERSE, get_dynamic_universe
     import json
+
+    from engines.scanner import (
+        DEFAULT_UNIVERSE,
+        OpportunityScanner,
+        get_dynamic_universe,
+    )
     
     config = load_config()
-    paper_mode = get_alpaca_paper_setting()
+    get_alpaca_paper_setting()
 
     # Determine universe
     if universe == "default":
@@ -490,7 +499,10 @@ def multi_symbol_loop(
         # Dry-run mode
         python main.py multi-symbol-loop --dry-run
     """
-    from engines.scanner import OpportunityScanner, DEFAULT_UNIVERSE, get_dynamic_universe
+    from engines.scanner import (
+        OpportunityScanner,
+        get_dynamic_universe,
+    )
     
     config = load_config()
     paper_mode = get_alpaca_paper_setting()

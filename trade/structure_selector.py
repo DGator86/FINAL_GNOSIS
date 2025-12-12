@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from trade.cone_metrics import ConeMetrics
-from trade.regime_classifier import TradeRegime
-from trade.structures import StructureType
 from typing import Literal, Optional
 
 from trade.cone_metrics import ConeMetrics
 from trade.regime_classifier import TradeRegime
-
+from trade.structures import StructureType
 
 StructureType = Literal[
     "long_call",

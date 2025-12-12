@@ -6,12 +6,12 @@ import os
 import time
 from typing import Any, Dict, List, Optional, Union
 
-from alpaca_trade_api import REST
-from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest, OptionLegRequest
-from alpaca.trading.enums import OrderClass, OrderSide, OrderType, TimeInForce
 from alpaca.data.historical.option import OptionHistoricalDataClient
 from alpaca.data.requests import OptionSnapshotRequest
+from alpaca.trading.client import TradingClient
+from alpaca.trading.enums import OrderClass, OrderSide, OrderType, TimeInForce
+from alpaca.trading.requests import MarketOrderRequest, OptionLegRequest
+from alpaca_trade_api import REST
 
 
 class AlpacaClient:

@@ -9,14 +9,16 @@ Tests the new multi-timeframe agents to ensure they properly:
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from datetime import datetime
+
+
+from agents.confidence_builder import ConfidenceBuilder
 from agents.hedge_agent_v4 import HedgeAgentV4
 from agents.liquidity_agent_v2 import LiquidityAgentV2
 from agents.sentiment_agent_v2 import SentimentAgentV2
-from agents.confidence_builder import ConfidenceBuilder, TimeframeSignal
-from loguru import logger
 
 
 # Mock HedgeSnapshot

@@ -3,9 +3,7 @@ LSTM Lookahead Model for Short-Term Price Predictions
 Optimized for real-time trading with bidirectional processing and uncertainty quantification
 """
 
-import json
 import logging
-import pickle
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple

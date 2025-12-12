@@ -5,16 +5,16 @@ to produce ML-ready training examples and DataFrames.
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from sqlalchemy.orm import Session
 
 from db_models.trade_decision import TradeDecision
+from ml.feature_extractor import extract_features_from_trade
+from ml.labeling import PriceSeriesProvider, compute_trade_labels
 from ml.schemas import TradeMLExample
 from ml.trade_fetcher import fetch_trade_decisions_for_ml
-from ml.labeling import compute_trade_labels, PriceSeriesProvider
-from ml.feature_extractor import extract_features_from_trade
 
 
 def build_ml_examples_from_trades(

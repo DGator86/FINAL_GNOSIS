@@ -4,10 +4,9 @@ from typing import Any, Dict, Optional
 
 from trade.cone_metrics import ConeMetrics
 from trade.regime_classifier import TradeRegime
-from trade.structure_selector import StructureSpec
 from trade.risk_analysis import TradeRiskProfile
-from trade.execution_mapper import ProposedTrade
 from trade.strategy_tags import build_strategy_tags
+from trade.structure_selector import StructureSpec
 
 
 def build_cone_trade_feature_row(

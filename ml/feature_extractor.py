@@ -4,7 +4,7 @@ This module flattens JSONB engine/agent snapshots into
 ML-ready flat dictionaries.
 """
 
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def flatten_dict(

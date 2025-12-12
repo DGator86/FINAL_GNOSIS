@@ -14,14 +14,14 @@ Environment Variables:
                    Default: postgresql+psycopg2://gnosis:gnosis@localhost:5432/gnosis
 """
 
-import sys
 import logging
+import sys
 from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from db import Base, engine, DATABASE_URL
+from db import DATABASE_URL, Base, engine
 
 # Configure logging
 logging.basicConfig(
@@ -42,7 +42,6 @@ def init_db():
     try:
         # Import all models to ensure they're registered with Base
         logger.info("Importing database models...")
-        from db_models.trade_decision import TradeDecision
         logger.info(f"  ✓ TradeDecision model loaded")
 
         # Create all tables

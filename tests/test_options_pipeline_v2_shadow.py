@@ -1,11 +1,12 @@
-import unittest
-from unittest.mock import MagicMock, patch
 import logging
+import unittest
 from datetime import datetime
+from unittest.mock import MagicMock, patch
+
+from models.options_contracts import EnhancedMarketData, OptionsChain
 
 # Import the pipeline to test
 from pipeline.options_pipeline_v2 import EnhancedGnosisPipeline
-from models.options_contracts import EnhancedMarketData, OptionQuote, OptionsChain
 
 
 class TestEnhancedGnosisPipeline(unittest.TestCase):

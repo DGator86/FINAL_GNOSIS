@@ -4,10 +4,11 @@ Enhanced Web Dashboard for 30-Symbol Scanner
 Shows all tickers with Composer Agent statuses in real-time
 """
 
-from flask import Flask, render_template_string, jsonify
 import json
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+from flask import Flask, jsonify, render_template_string
 
 app = Flask(__name__)
 

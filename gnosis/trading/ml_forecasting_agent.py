@@ -8,10 +8,10 @@ scores that reflect model agreement and predictive uncertainty.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-import logging
 
 import numpy as np
 import pandas as pd

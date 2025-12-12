@@ -7,9 +7,9 @@ Usage:
     python scripts/get_option_greeks.py SPY241220C00600000 SPY241220P00600000
 """
 
-import os
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -19,8 +19,9 @@ load_dotenv()
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from brokers.alpaca_client import AlpacaClient
 from loguru import logger
+
+from brokers.alpaca_client import AlpacaClient
 
 
 def display_option_snapshot(symbol: str, snapshot: dict):

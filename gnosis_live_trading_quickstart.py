@@ -3,8 +3,8 @@ GNOSIS Quick Start - Live Trading with Alpaca
 Run this script to start trading!
 """
 
-import sys
 import signal
+import sys
 from datetime import datetime
 
 from live_trading_engine import GnosisLiveTradingEngine

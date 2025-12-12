@@ -13,13 +13,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from db import get_db
 from crud.trade_decision import (
     create_trade_decision,
     get_trade_decision_by_id,
     list_trade_decisions,
     update_trade_execution,
 )
+from db import get_db
 from schemas.trade_decision import (
     TradeDecisionCreate,
     TradeDecisionRead,

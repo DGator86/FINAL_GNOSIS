@@ -1,8 +1,9 @@
 """Integration tests for Hedge Engine v3."""
 
-import pytest
 from datetime import datetime, timezone
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
+
+import pytest
 
 from engines.hedge.hedge_engine_v3 import HedgeEngineV3
 from schemas.core_schemas import HedgeSnapshot

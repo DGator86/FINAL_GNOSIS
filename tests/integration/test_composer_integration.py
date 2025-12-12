@@ -1,14 +1,11 @@
 """Integration tests for Composer Agent."""
 
-import pytest
 from datetime import datetime, timezone
-from unittest.mock import Mock
+
+import pytest
 
 from agents.composer.composer_agent_v1 import ComposerAgentV1
 from schemas.core_schemas import (
-    HedgeSnapshot,
-    LiquiditySnapshot,
-    SentimentSnapshot,
     AgentSignal,
 )
 

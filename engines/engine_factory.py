@@ -1,17 +1,21 @@
 """Engine Factory - centralized initialization of all engines for OpportunityScanner."""
 from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Any, Dict
+
 from loguru import logger
 
-from engines.hedge import HedgeEngineV3
-from engines.liquidity import LiquidityEngineV1
-from engines.sentiment import SentimentEngineV1
 from engines.elasticity import ElasticityEngineV1
-from engines.inputs.options_chain_adapter import OptionsChainAdapter
+from engines.hedge import HedgeEngineV3
+from engines.inputs.adapter_factory import (
+    create_market_data_adapter,
+    create_options_adapter,
+)
 from engines.inputs.market_data_adapter import MarketDataAdapter
-from engines.inputs.adapter_factory import create_market_data_adapter, create_options_adapter
+from engines.inputs.options_chain_adapter import OptionsChainAdapter
+from engines.liquidity import LiquidityEngineV1
 from engines.scanner import OpportunityScanner
+from engines.sentiment import SentimentEngineV1
 
 
 class EngineFactory:

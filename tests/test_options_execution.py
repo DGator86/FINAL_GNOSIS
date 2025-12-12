@@ -1,9 +1,8 @@
-import asyncio
 import unittest
-from unittest.mock import MagicMock, AsyncMock
-from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
+
 from gnosis.unified_trading_bot import UnifiedTradingBot
-from schemas.core_schemas import OptionsOrderRequest, OptionsLeg
+from schemas.core_schemas import OptionsLeg, OptionsOrderRequest
 
 
 class TestOptionsExecution(unittest.IsolatedAsyncioTestCase):

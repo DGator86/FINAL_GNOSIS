@@ -1,16 +1,12 @@
 import asyncio
 from datetime import datetime
-import asyncio
-
-import asyncio
-from datetime import datetime
 
 import pytest
 
 pytest.importorskip("loguru")
 
-from gnosis.dynamic_universe_manager import DynamicUniverseManager
 from engines.scanner import Opportunity, ScanResult
+from gnosis.dynamic_universe_manager import DynamicUniverseManager
 
 
 class StubScanner:

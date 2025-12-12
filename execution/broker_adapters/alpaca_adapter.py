@@ -9,19 +9,19 @@ from typing import List, Optional
 from alpaca.common.exceptions import APIError
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.historical.option import OptionHistoricalDataClient
-from alpaca.data.live import StockDataStream
-from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
-from alpaca.data.requests import OptionSnapshotRequest
-from alpaca.data.timeframe import TimeFrame
+from alpaca.data.requests import (
+    OptionSnapshotRequest,
+    StockLatestQuoteRequest,
+)
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderClass, OrderSide, OrderType, TimeInForce
+from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
 from alpaca.trading.requests import (
-    MarketOrderRequest,
     LimitOrderRequest,
-    StopOrderRequest,
+    MarketOrderRequest,
     StopLimitOrderRequest,
-    TakeProfitRequest,
     StopLossRequest,
+    StopOrderRequest,
+    TakeProfitRequest,
 )
 from loguru import logger
 from pydantic import BaseModel
@@ -31,8 +31,12 @@ from execution.broker_adapters.settings import (
     get_alpaca_paper_setting,
     get_required_options_level,
 )
+from execution.risk_utils import (
+    assert_within_max,
+    calculate_order_value,
+    is_option_symbol,
+)
 from gnosis.utils.option_utils import OptionUtils
-from execution.risk_utils import assert_within_max, calculate_order_value, is_option_symbol
 
 
 class Account(BaseModel):

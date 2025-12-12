@@ -1,7 +1,8 @@
 """Tests for strategy analysis functionality (PoP, breakevens, profit zones)."""
 
-import pytest
 import numpy as np
+import pytest
+
 from gnosis.utils.greeks_calculator import GreeksCalculator
 
 

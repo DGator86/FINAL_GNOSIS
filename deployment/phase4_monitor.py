@@ -3,13 +3,12 @@ Phase 4: Live Deployment Monitor
 Validates V2 system health, regime stability, and risk metrics.
 """
 
-import sys
-import os
-import time
 import logging
-from datetime import datetime, date
-from typing import Dict, Any, List
-import random
+import os
+import sys
+import time
+from datetime import date, datetime
+from typing import Dict
 
 # Add project root to path
 sys.path.append(os.getcwd())
@@ -28,11 +27,11 @@ def create_mock_market_data(ticker: str, regime_scenario: str = "normal"):
     """Create sample data for testing different scenarios"""
     from models.options_contracts import (
         EnhancedMarketData,
+        MacroVolatilityData,
+        OptionQuote,
         OptionsChain,
         VolatilityMetrics,
         VolatilityStructure,
-        MacroVolatilityData,
-        OptionQuote,
     )
 
     # Base values
@@ -94,8 +93,8 @@ class V2HealthMonitor:
     def initialize(self):
         """Initialize the pipeline with V2 enabled"""
         try:
-            from pipeline.options_pipeline_v2 import EnhancedGnosisPipeline
             from config.options_config_v2 import GNOSIS_V2_CONFIG
+            from pipeline.options_pipeline_v2 import EnhancedGnosisPipeline
 
             # Force enable for monitoring (even if config file says otherwise for safety)
             # In real deployment, we'd read the actual config

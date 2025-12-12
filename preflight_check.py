@@ -13,8 +13,8 @@ PROJECT_ROOT = Path(__file__).parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
 from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
+from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
 
 
 def run_preflight_check(paper: bool | None = None) -> bool:

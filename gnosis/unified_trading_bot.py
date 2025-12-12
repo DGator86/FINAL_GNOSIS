@@ -4,26 +4,26 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Set, Any
-from loguru import logger
+from typing import Any, Dict, Set
 
 from alpaca.data.live import StockDataStream
+from loguru import logger
 
-from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
-from execution.broker_adapters.alpaca_options_adapter import AlpacaOptionsAdapter
-from execution.broker_adapters.settings import get_required_options_level
-from gnosis.timeframe_manager import TimeframeManager
-from gnosis.dynamic_universe_manager import UniverseUpdate
+from agents.composer.composer_agent_v2 import ComposerAgentV2
 from agents.hedge_agent_v4 import HedgeAgentV4
 from agents.liquidity_agent_v2 import LiquidityAgentV2
 from agents.sentiment_agent_v2 import SentimentAgentV2
-from agents.composer.composer_agent_v2 import ComposerAgentV2
-from trade.trade_agent_router import TradeAgentRouter
+from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
+from execution.broker_adapters.alpaca_options_adapter import AlpacaOptionsAdapter
+from execution.broker_adapters.settings import get_required_options_level
+from gnosis.dynamic_universe_manager import UniverseUpdate
+from gnosis.timeframe_manager import TimeframeManager
 from schemas.core_schemas import OptionsOrderRequest, Position
+from trade.trade_agent_router import TradeAgentRouter
 
 
 @dataclass
@@ -144,10 +144,11 @@ class UnifiedTradingBot:
 
         # Fetch historical bars to populate initial data
         try:
+            from datetime import datetime, timedelta
+
             from alpaca.data.historical import StockHistoricalDataClient
             from alpaca.data.requests import StockBarsRequest
             from alpaca.data.timeframe import TimeFrame
-            from datetime import datetime, timedelta
 
             # Initialize historical data client
             hist_client = StockHistoricalDataClient(

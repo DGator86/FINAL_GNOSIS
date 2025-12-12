@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from scipy import stats
 from loguru import logger
+from scipy import stats
 
 
 class GreeksCalculator:

@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import List
 
 from trade.cone_metrics import ConeMetrics
+from trade.execution_mapper import ProposedTrade
 from trade.regime_classifier import TradeRegime
 from trade.structure_selector import StructureSpec
-from trade.execution_mapper import ProposedTrade
 
 
 def build_strategy_tags(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Protocol
+from typing import Protocol
 
 from schemas.core_schemas import EngineSnapshot
 

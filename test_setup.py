@@ -6,6 +6,7 @@ Test the complete trading system setup
 import os
 import sys
 from pathlib import Path
+
 import pytest
 
 dotenv = pytest.importorskip("dotenv")

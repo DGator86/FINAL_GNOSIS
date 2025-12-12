@@ -5,8 +5,10 @@ Options Execution Module - Addresses slippage model feedback
 - Realistic execution cost modeling
 """
 
+from typing import Any, Dict, List, Literal
+
 import numpy as np
-from typing import Dict, List, Literal, Any
+
 from models.options_contracts import EnhancedMarketData, OptionsChain
 
 

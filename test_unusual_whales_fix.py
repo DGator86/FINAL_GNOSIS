@@ -18,11 +18,13 @@ pytest.skip(
 
 import os
 from datetime import datetime
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+
 
 def main():
     print("="*80)

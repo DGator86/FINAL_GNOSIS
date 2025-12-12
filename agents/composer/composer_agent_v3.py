@@ -17,7 +17,11 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from agents.confidence_builder import ConfidenceBuilder, ConfidenceScore, TimeframeSignal
+from agents.confidence_builder import (
+    ConfidenceBuilder,
+    ConfidenceScore,
+    TimeframeSignal,
+)
 from schemas.core_schemas import AgentSuggestion, DirectionEnum
 
 

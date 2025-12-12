@@ -6,9 +6,9 @@ import argparse
 from datetime import datetime, timezone
 from typing import List
 
+from brokers.alpaca_client import AlpacaClient
 from pipeline.full_pipeline import run_full_pipeline_for_symbol
 from trade.trade_agent_v2 import TradeAgent
-from brokers.alpaca_client import AlpacaClient
 from universe.watchlist_loader import load_active_watchlist
 
 

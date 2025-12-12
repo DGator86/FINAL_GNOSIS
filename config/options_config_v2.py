@@ -62,7 +62,7 @@ GNOSIS_V2_CONFIG = {
         "concentration_limits": {"max_sector_vega_pct": 0.25, "max_single_position_pct": 0.05},
     },
     # ML Adaptation (Shadow mode with safety constraints)
-    "ml_adaptation": {
+    "ml_adaptation_config": {
         "shadow_mode": True,  # Critical: log but don't apply changes
         "min_trades_for_adaptation": 20,
         "adaptation_rate": 0.10,  # 10% adjustment per cycle
