@@ -509,40 +509,227 @@ class EnhancedFeatureBuilder:
         return features
     
     def _build_options_features(self, options_df: pd.DataFrame) -> pd.DataFrame:
-        """Build options-specific features"""
+        """Build comprehensive options-specific features with multi-timeframe support.
+
+        Supports both legacy format and enhanced MASSIVE options data format.
+        """
         features = pd.DataFrame(index=range(len(options_df)))
-        
-        # Put-Call Ratio
+
+        # =====================================================================
+        # Core Put-Call Ratio Features
+        # =====================================================================
         if 'put_volume' in options_df.columns and 'call_volume' in options_df.columns:
             features['pcr_volume'] = (
                 options_df['put_volume'] / (options_df['call_volume'] + 1e-8)
             )
-        
+            # PCR moving averages
+            for period in [5, 10, 20]:
+                features[f'pcr_volume_ma_{period}'] = features['pcr_volume'].rolling(period).mean()
+            # PCR momentum
+            features['pcr_volume_momentum'] = features['pcr_volume'].diff()
+            features['pcr_volume_momentum_5'] = features['pcr_volume'].diff(5)
+            # PCR z-score
+            pcr_mean = features['pcr_volume'].rolling(20).mean()
+            pcr_std = features['pcr_volume'].rolling(20).std()
+            features['pcr_volume_zscore'] = (features['pcr_volume'] - pcr_mean) / (pcr_std + 1e-8)
+
         if 'put_oi' in options_df.columns and 'call_oi' in options_df.columns:
             features['pcr_oi'] = (
                 options_df['put_oi'] / (options_df['call_oi'] + 1e-8)
             )
-        
-        # IV Skew
+            for period in [5, 10, 20]:
+                features[f'pcr_oi_ma_{period}'] = features['pcr_oi'].rolling(period).mean()
+            features['pcr_oi_momentum'] = features['pcr_oi'].diff()
+
+        # PCR divergence (volume vs OI)
+        if 'pcr_volume' in features.columns and 'pcr_oi' in features.columns:
+            features['pcr_divergence'] = features['pcr_volume'] - features['pcr_oi']
+
+        # =====================================================================
+        # Implied Volatility Features
+        # =====================================================================
+        # IV Skew (legacy format)
         if 'iv_otm_put' in options_df.columns and 'iv_otm_call' in options_df.columns:
-            features['iv_skew'] = (
-                options_df['iv_otm_put'] - options_df['iv_otm_call']
+            features['iv_skew'] = options_df['iv_otm_put'] - options_df['iv_otm_call']
+
+        # IV Skew (MASSIVE format)
+        if 'iv_25d_put' in options_df.columns and 'iv_25d_call' in options_df.columns:
+            features['iv_skew'] = options_df['iv_25d_put'] - options_df['iv_25d_call']
+            features['iv_25d_put'] = options_df['iv_25d_put']
+            features['iv_25d_call'] = options_df['iv_25d_call']
+
+        # ATM IV and derivatives
+        if 'atm_iv' in options_df.columns:
+            features['atm_iv'] = options_df['atm_iv']
+            for period in [5, 10, 20]:
+                features[f'atm_iv_ma_{period}'] = features['atm_iv'].rolling(period).mean()
+            features['iv_momentum'] = features['atm_iv'].diff()
+            features['iv_momentum_5'] = features['atm_iv'].diff(5)
+            features['iv_acceleration'] = features['iv_momentum'].diff()
+            # IV percentile rank
+            features['iv_percentile'] = features['atm_iv'].rolling(60).apply(
+                lambda x: pd.Series(x).rank(pct=True).iloc[-1] if len(x) > 0 else 0.5
             )
-        
-        # Max Pain (strike with max OI)
+            # IV regime classification
+            features['iv_regime'] = pd.cut(
+                features['iv_percentile'],
+                bins=[0, 0.25, 0.75, 1.0],
+                labels=[0, 1, 2]  # Low, Normal, High
+            ).astype(float)
+
+        # IV Term Structure
+        if 'iv_term_slope' in options_df.columns:
+            features['iv_term_slope'] = options_df['iv_term_slope']
+            # Contango (positive) vs backwardation (negative)
+            features['iv_term_structure'] = np.sign(features['iv_term_slope'])
+
+        # =====================================================================
+        # Max Pain Features
+        # =====================================================================
         if 'max_pain_strike' in options_df.columns:
             features['max_pain'] = options_df['max_pain_strike']
-            
+        elif 'max_pain' in options_df.columns:
+            features['max_pain'] = options_df['max_pain']
+
+        if 'max_pain' in features.columns:
             if 'current_price' in options_df.columns:
                 features['price_to_max_pain'] = (
-                    options_df['current_price'] / options_df['max_pain_strike']
+                    options_df['current_price'] / (features['max_pain'] + 1e-8)
                 )
-        
-        # Gamma Exposure (GEX)
-        if 'total_gamma' in options_df.columns:
-            features['gex'] = options_df['total_gamma']
-            features['gex_ma_5'] = features['gex'].rolling(5).mean()
-        
+                # Distance to max pain (normalized)
+                features['max_pain_distance'] = (
+                    (options_df['current_price'] - features['max_pain']) /
+                    options_df['current_price']
+                )
+                # Max pain attraction (inverse distance)
+                features['max_pain_attraction'] = 1.0 / (
+                    np.abs(features['max_pain_distance']) + 0.01
+                )
+
+        # =====================================================================
+        # Gamma Exposure (GEX) Features
+        # =====================================================================
+        gex_col = 'total_gamma' if 'total_gamma' in options_df.columns else 'gex_total'
+        if gex_col in options_df.columns:
+            features['gex'] = options_df[gex_col]
+            for period in [5, 10, 20]:
+                features[f'gex_ma_{period}'] = features['gex'].rolling(period).mean()
+            features['gex_momentum'] = features['gex'].diff()
+            features['gex_momentum_5'] = features['gex'].diff(5)
+            # GEX sign (positive = dealer long gamma = stabilizing)
+            features['gex_sign'] = np.sign(features['gex'])
+            # GEX flip indicator
+            features['gex_flip'] = (
+                features['gex_sign'] != features['gex_sign'].shift()
+            ).astype(int)
+            # GEX z-score
+            gex_mean = features['gex'].rolling(20).mean()
+            gex_std = features['gex'].rolling(20).std()
+            features['gex_zscore'] = (features['gex'] - gex_mean) / (gex_std + 1e-8)
+
+        # GEX breakdown (calls vs puts)
+        if 'gex_calls' in options_df.columns and 'gex_puts' in options_df.columns:
+            features['gex_calls'] = options_df['gex_calls']
+            features['gex_puts'] = options_df['gex_puts']
+            features['gex_ratio'] = features['gex_calls'] / (np.abs(features['gex_puts']) + 1e-8)
+
+        # =====================================================================
+        # Greeks Aggregates (Net Exposure)
+        # =====================================================================
+        if 'net_delta' in options_df.columns:
+            features['net_delta'] = options_df['net_delta']
+            features['net_delta_ma_5'] = features['net_delta'].rolling(5).mean()
+            features['delta_momentum'] = features['net_delta'].diff()
+
+        if 'net_gamma' in options_df.columns:
+            features['net_gamma'] = options_df['net_gamma']
+            features['net_gamma_ma_5'] = features['net_gamma'].rolling(5).mean()
+
+        if 'net_vega' in options_df.columns:
+            features['net_vega'] = options_df['net_vega']
+            features['vega_momentum'] = features['net_vega'].diff()
+
+        if 'net_theta' in options_df.columns:
+            features['net_theta'] = options_df['net_theta']
+
+        # =====================================================================
+        # Dealer Positioning Features
+        # =====================================================================
+        if 'dealer_gamma_exposure' in options_df.columns:
+            features['dealer_gamma'] = options_df['dealer_gamma_exposure']
+            features['dealer_gamma_sign'] = np.sign(features['dealer_gamma'])
+            # Dealer gamma flip
+            features['dealer_gamma_flip'] = (
+                features['dealer_gamma_sign'] != features['dealer_gamma_sign'].shift()
+            ).astype(int)
+
+        if 'dealer_delta_exposure' in options_df.columns:
+            features['dealer_delta'] = options_df['dealer_delta_exposure']
+
+        # =====================================================================
+        # Strike Distribution Features
+        # =====================================================================
+        if 'high_gamma_strike' in options_df.columns:
+            features['high_gamma_strike'] = options_df['high_gamma_strike']
+            if 'current_price' in options_df.columns:
+                features['price_to_high_gamma'] = (
+                    options_df['current_price'] / (features['high_gamma_strike'] + 1e-8)
+                )
+
+        if 'high_oi_call_strike' in options_df.columns:
+            features['high_oi_call_strike'] = options_df['high_oi_call_strike']
+
+        if 'high_oi_put_strike' in options_df.columns:
+            features['high_oi_put_strike'] = options_df['high_oi_put_strike']
+
+        # Strike clustering (call vs put)
+        if 'high_oi_call_strike' in features.columns and 'high_oi_put_strike' in features.columns:
+            features['oi_strike_spread'] = (
+                features['high_oi_call_strike'] - features['high_oi_put_strike']
+            )
+
+        # =====================================================================
+        # Multi-Timeframe Features (if available from MASSIVE)
+        # =====================================================================
+        for tf_suffix in ['_1min', '_5min', '_15min', '_1hour', '_1day']:
+            pcr_col = f'pcr_volume{tf_suffix}'
+            if pcr_col in options_df.columns:
+                features[pcr_col] = options_df[pcr_col]
+
+            gex_col = f'gex{tf_suffix}'
+            if gex_col in options_df.columns:
+                features[gex_col] = options_df[gex_col]
+
+            iv_col = f'atm_iv{tf_suffix}'
+            if iv_col in options_df.columns:
+                features[iv_col] = options_df[iv_col]
+
+        # =====================================================================
+        # Composite / Interaction Features
+        # =====================================================================
+        # PCR × IV (high PCR + high IV = fear)
+        if 'pcr_volume' in features.columns and 'atm_iv' in features.columns:
+            features['fear_index'] = features['pcr_volume'] * features['atm_iv']
+
+        # GEX × IV interaction
+        if 'gex' in features.columns and 'atm_iv' in features.columns:
+            features['gex_iv_product'] = features['gex'] * features['atm_iv']
+
+        # Options sentiment score (composite)
+        sentiment_score = 0
+        n_components = 0
+        if 'pcr_volume_zscore' in features.columns:
+            sentiment_score -= features['pcr_volume_zscore']  # High PCR = bearish
+            n_components += 1
+        if 'gex_zscore' in features.columns:
+            sentiment_score += features['gex_zscore']  # High GEX = bullish
+            n_components += 1
+        if 'iv_percentile' in features.columns:
+            sentiment_score -= (features['iv_percentile'] - 0.5) * 2  # High IV = bearish
+            n_components += 1
+        if n_components > 0:
+            features['options_sentiment'] = sentiment_score / n_components
+
         return features
     
     def _post_process_features(self, features: pd.DataFrame) -> pd.DataFrame:

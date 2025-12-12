@@ -52,29 +52,71 @@ def create_market_data_adapter(prefer_real: bool = True, provider: Optional[str]
     return StaticMarketDataAdapter()
 
 
-def create_options_adapter(prefer_real: bool = True) -> Any:
+def create_options_adapter(prefer_real: bool = True, provider: Optional[str] = None) -> Any:
     """
     Create options chain adapter with fallback.
-    
+
     Args:
         prefer_real: Try real adapter first
-        
+        provider: Preferred provider ("massive", "unusual_whales", or None for auto)
+
     Returns:
         Options chain adapter instance
     """
+    # Check for preferred provider from environment
+    if provider is None:
+        provider = os.getenv("OPTIONS_DATA_PROVIDER", "auto").lower()
+
     if prefer_real:
-        try:
-            from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
-            adapter = UnusualWhalesAdapter()
-            logger.info("Using UnusualWhalesAdapter (real)")
-            return adapter
-        except Exception as e:
-            logger.warning(f"Failed to initialize Unusual Whales adapter: {e}")
-            logger.info("Falling back to StaticOptionsAdapter")
-    
+        # Try MASSIVE first if enabled or preferred (comprehensive options data)
+        if provider in ("massive", "auto") and os.getenv("MASSIVE_API_ENABLED", "false").lower() == "true":
+            try:
+                from engines.inputs.massive_options_adapter import MassiveOptionsAdapter
+                adapter = MassiveOptionsAdapter()
+                logger.info("Using MassiveOptionsAdapter (real)")
+                return adapter
+            except Exception as e:
+                logger.warning(f"Failed to initialize MASSIVE options adapter: {e}")
+                if provider == "massive":
+                    logger.info("Falling back to Unusual Whales adapter")
+
+        # Try Unusual Whales
+        if provider in ("unusual_whales", "auto"):
+            try:
+                from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+                adapter = UnusualWhalesAdapter()
+                logger.info("Using UnusualWhalesAdapter (real)")
+                return adapter
+            except Exception as e:
+                logger.warning(f"Failed to initialize Unusual Whales adapter: {e}")
+                logger.info("Falling back to StaticOptionsAdapter")
+
     from engines.inputs.stub_adapters import StaticOptionsAdapter
     logger.info("Using StaticOptionsAdapter (stub)")
     return StaticOptionsAdapter()
+
+
+def create_massive_options_adapter() -> Any:
+    """
+    Create MASSIVE options adapter for comprehensive historical options data.
+
+    Provides multi-timeframe options data for ML training.
+
+    Returns:
+        MassiveOptionsAdapter instance or None if not configured
+    """
+    if os.getenv("MASSIVE_API_ENABLED", "false").lower() != "true":
+        logger.warning("MASSIVE API not enabled. Set MASSIVE_API_ENABLED=true in .env")
+        return None
+
+    try:
+        from engines.inputs.massive_options_adapter import MassiveOptionsAdapter
+        adapter = MassiveOptionsAdapter()
+        logger.info("MassiveOptionsAdapter created successfully")
+        return adapter
+    except Exception as e:
+        logger.error(f"Failed to create MASSIVE options adapter: {e}")
+        return None
 
 
 def create_news_adapter(prefer_real: bool = True) -> Any:
