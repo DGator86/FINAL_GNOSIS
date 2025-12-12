@@ -2,75 +2,166 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Optional
 
 from loguru import logger
 
 
-def create_market_data_adapter(prefer_real: bool = True) -> Any:
+def create_market_data_adapter(prefer_real: bool = True, provider: Optional[str] = None) -> Any:
     """
     Create market data adapter with fallback.
-    
+
     Args:
         prefer_real: Try real adapter first
-        
+        provider: Preferred provider ("massive", "alpaca", or None for auto)
+
     Returns:
         Market data adapter instance
     """
+    # Check for preferred provider from environment
+    if provider is None:
+        provider = os.getenv("MARKET_DATA_PROVIDER", "auto").lower()
+
     if prefer_real:
-        try:
-            from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
-            adapter = AlpacaMarketDataAdapter()
-            logger.info("Using AlpacaMarketDataAdapter (real)")
-            return adapter
-        except Exception as e:
-            logger.warning(f"Failed to initialize Alpaca market data adapter: {e}")
-            logger.info("Falling back to StaticMarketDataAdapter")
-    
+        # Try MASSIVE first if enabled or preferred
+        if provider in ("massive", "auto") and os.getenv("MASSIVE_API_ENABLED", "false").lower() == "true":
+            try:
+                from engines.inputs.massive_market_adapter import MassiveMarketDataAdapter
+                adapter = MassiveMarketDataAdapter()
+                logger.info("Using MassiveMarketDataAdapter (real)")
+                return adapter
+            except Exception as e:
+                logger.warning(f"Failed to initialize MASSIVE market data adapter: {e}")
+                if provider == "massive":
+                    logger.info("Falling back to Alpaca adapter")
+
+        # Try Alpaca
+        if provider in ("alpaca", "auto"):
+            try:
+                from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
+                adapter = AlpacaMarketDataAdapter()
+                logger.info("Using AlpacaMarketDataAdapter (real)")
+                return adapter
+            except Exception as e:
+                logger.warning(f"Failed to initialize Alpaca market data adapter: {e}")
+                logger.info("Falling back to StaticMarketDataAdapter")
+
     from engines.inputs.stub_adapters import StaticMarketDataAdapter
     logger.info("Using StaticMarketDataAdapter (stub)")
     return StaticMarketDataAdapter()
 
 
-def create_options_adapter(prefer_real: bool = True) -> Any:
+def create_options_adapter(prefer_real: bool = True, provider: Optional[str] = None) -> Any:
     """
     Create options chain adapter with fallback.
-    
+
     Args:
         prefer_real: Try real adapter first
-        
+        provider: Preferred provider ("massive", "unusual_whales", or None for auto)
+
     Returns:
         Options chain adapter instance
     """
+    # Check for preferred provider from environment
+    if provider is None:
+        provider = os.getenv("OPTIONS_DATA_PROVIDER", "auto").lower()
+
     if prefer_real:
-        try:
-            from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
-            adapter = UnusualWhalesAdapter()
-            logger.info("Using UnusualWhalesAdapter (real)")
-            return adapter
-        except Exception as e:
-            logger.warning(f"Failed to initialize Unusual Whales adapter: {e}")
-            logger.info("Falling back to StaticOptionsAdapter")
-    
+        # Try MASSIVE first if enabled or preferred (comprehensive options data)
+        if provider in ("massive", "auto") and os.getenv("MASSIVE_API_ENABLED", "false").lower() == "true":
+            try:
+                from engines.inputs.massive_options_adapter import MassiveOptionsAdapter
+                adapter = MassiveOptionsAdapter()
+                logger.info("Using MassiveOptionsAdapter (real)")
+                return adapter
+            except Exception as e:
+                logger.warning(f"Failed to initialize MASSIVE options adapter: {e}")
+                if provider == "massive":
+                    logger.info("Falling back to Unusual Whales adapter")
+
+        # Try Unusual Whales
+        if provider in ("unusual_whales", "auto"):
+            try:
+                from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+                adapter = UnusualWhalesAdapter()
+                logger.info("Using UnusualWhalesAdapter (real)")
+                return adapter
+            except Exception as e:
+                logger.warning(f"Failed to initialize Unusual Whales adapter: {e}")
+                logger.info("Falling back to StaticOptionsAdapter")
+
     from engines.inputs.stub_adapters import StaticOptionsAdapter
     logger.info("Using StaticOptionsAdapter (stub)")
     return StaticOptionsAdapter()
 
 
+def create_massive_options_adapter() -> Any:
+    """
+    Create MASSIVE options adapter for comprehensive historical options data.
+
+    Provides multi-timeframe options data for ML training.
+
+    Returns:
+        MassiveOptionsAdapter instance or None if not configured
+    """
+    if os.getenv("MASSIVE_API_ENABLED", "false").lower() != "true":
+        logger.warning("MASSIVE API not enabled. Set MASSIVE_API_ENABLED=true in .env")
+        return None
+
+    try:
+        from engines.inputs.massive_options_adapter import MassiveOptionsAdapter
+        adapter = MassiveOptionsAdapter()
+        logger.info("MassiveOptionsAdapter created successfully")
+        return adapter
+    except Exception as e:
+        logger.error(f"Failed to create MASSIVE options adapter: {e}")
+        return None
+
+
 def create_news_adapter(prefer_real: bool = True) -> Any:
     """
     Create news adapter with fallback.
-    
+
     Args:
         prefer_real: Try real adapter first
-        
+
     Returns:
         News adapter instance
     """
-    # For now, always use stub (can add real news adapter later)
+    if prefer_real and os.getenv("MASSIVE_API_ENABLED", "false").lower() == "true":
+        try:
+            from engines.inputs.massive_market_adapter import MassiveMarketDataAdapter
+            adapter = MassiveMarketDataAdapter()
+            logger.info("Using MassiveMarketDataAdapter for news (real)")
+            return adapter
+        except Exception as e:
+            logger.warning(f"Failed to initialize MASSIVE adapter for news: {e}")
+
     from engines.inputs.stub_adapters import StaticNewsAdapter
     logger.info("Using StaticNewsAdapter (stub)")
     return StaticNewsAdapter()
+
+
+def create_massive_adapter() -> Any:
+    """
+    Create MASSIVE market data adapter for comprehensive data access.
+
+    Returns:
+        MassiveMarketDataAdapter instance or None if not configured
+    """
+    if os.getenv("MASSIVE_API_ENABLED", "false").lower() != "true":
+        logger.warning("MASSIVE API not enabled. Set MASSIVE_API_ENABLED=true in .env")
+        return None
+
+    try:
+        from engines.inputs.massive_market_adapter import MassiveMarketDataAdapter
+        adapter = MassiveMarketDataAdapter()
+        logger.info("MassiveMarketDataAdapter created successfully")
+        return adapter
+    except Exception as e:
+        logger.error(f"Failed to create MASSIVE adapter: {e}")
+        return None
 
 
 def create_broker_adapter(paper: Optional[bool] = None, prefer_real: bool = True) -> Any:
