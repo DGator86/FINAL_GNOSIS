@@ -6,10 +6,10 @@ Test the complete trading system setup
 import os
 import sys
 from pathlib import Path
-from dotenv import load_dotenv
-import asyncio
-from datetime import datetime
 import pytest
+
+dotenv = pytest.importorskip("dotenv")
+load_dotenv = dotenv.load_dotenv
 
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -17,51 +17,56 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Load environment
 load_dotenv()
 
+ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
+ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
+ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL")
+
+
+def _require_alpaca_credentials() -> None:
+    """Skip tests that need Alpaca credentials when none are configured."""
+
+    if not (ALPACA_API_KEY and ALPACA_SECRET_KEY):
+        pytest.skip("Alpaca credentials are not configured; skipping live Alpaca tests")
+
 
 def test_environment():
-    """Test environment variables"""
-    print("\n" + "="*60)
+    """Assert that critical environment variables are present when required."""
+
+    print("\n" + "=" * 60)
     print("1. TESTING ENVIRONMENT VARIABLES")
-    print("="*60)
-    
-    # Check Alpaca credentials
-    api_key = os.getenv("ALPACA_API_KEY")
-    secret_key = os.getenv("ALPACA_SECRET_KEY")
-    base_url = os.getenv("ALPACA_BASE_URL")
-    
-    if api_key and secret_key:
+    print("=" * 60)
+
+    if ALPACA_API_KEY and ALPACA_SECRET_KEY:
         print("✅ Alpaca credentials found")
-        print(f"   API Key: {api_key[:10]}...")
-        print(f"   Base URL: {base_url}")
+        print(f"   API Key: {ALPACA_API_KEY[:10]}...")
+        print(f"   Base URL: {ALPACA_BASE_URL}")
     else:
-        print("❌ Alpaca credentials missing!")
-        return False
-    
+        pytest.skip("Alpaca credentials missing; skipping environment-dependent checks")
+
     # Check Unusual Whales
     uw_key = os.getenv("UNUSUAL_WHALES_API_KEY")
     if uw_key and uw_key != "your_unusual_whales_key_here":
         print("✅ Unusual Whales API key found")
     else:
         print("⚠️  Unusual Whales API key not configured (will use test key)")
-    
-    return True
+
+    assert True
 
 
 def test_alpaca_connection():
     """Test Alpaca API connection"""
+    _require_alpaca_credentials()
+
     print("\n" + "="*60)
     print("2. TESTING ALPACA CONNECTION")
     print("="*60)
-    
+
     try:
         from alpaca.trading.client import TradingClient
-        
-        api_key = os.getenv("ALPACA_API_KEY")
-        secret_key = os.getenv("ALPACA_SECRET_KEY")
-        
+
         # Create client
-        client = TradingClient(api_key, secret_key, paper=True)
-        
+        client = TradingClient(ALPACA_API_KEY, ALPACA_SECRET_KEY, paper=True)
+
         # Get account info
         account = client.get_account()
         
@@ -82,28 +87,25 @@ def test_alpaca_connection():
         print(f"   Next Open: {clock.next_open}")
         print(f"   Next Close: {clock.next_close}")
         
-        return True
-        
     except Exception as e:
         print(f"❌ Failed to connect to Alpaca: {e}")
-        return False
+        pytest.fail("Alpaca connection failed")
 
 
 def test_data_fetch():
     """Test fetching market data"""
+    _require_alpaca_credentials()
+
     print("\n" + "="*60)
     print("3. TESTING MARKET DATA FETCH")
     print("="*60)
-    
+
     try:
         from alpaca.data.historical import StockHistoricalDataClient
         from alpaca.data.requests import StockLatestQuoteRequest
-        
-        api_key = os.getenv("ALPACA_API_KEY")
-        secret_key = os.getenv("ALPACA_SECRET_KEY")
-        
+
         # Create data client
-        client = StockHistoricalDataClient(api_key, secret_key)
+        client = StockHistoricalDataClient(ALPACA_API_KEY, ALPACA_SECRET_KEY)
         
         # Test symbols
         symbols = ["SPY", "AAPL", "NVDA"]
@@ -120,11 +122,9 @@ def test_data_fetch():
                 print(f"   {symbol}: ${quote.ask_price:.2f} (ask) / ${quote.bid_price:.2f} (bid)")
                 print(f"          Size: {quote.ask_size} x {quote.bid_size}")
         
-        return True
-        
     except Exception as e:
         print(f"❌ Failed to fetch market data: {e}")
-        return False
+        pytest.fail("Alpaca data fetch failed")
 
 
 def test_watchlist():
@@ -132,16 +132,15 @@ def test_watchlist():
     print("\n" + "="*60)
     print("4. TESTING WATCHLIST CONFIGURATION")
     print("="*60)
-    
+
     try:
         import yaml
         
         config_path = Path(__file__).parent / "config" / "watchlist.yaml"
         
         if not config_path.exists():
-            print(f"❌ Watchlist config not found at {config_path}")
-            return False
-        
+            pytest.fail(f"Watchlist config not found at {config_path}")
+
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
         
@@ -165,11 +164,9 @@ def test_watchlist():
         for tf in config['timeframes']:
             print(f"   {tf['interval']:8} - {tf['bars']} bars - Priority: {tf['priority']}")
         
-        return True
-        
     except Exception as e:
         print(f"❌ Failed to load watchlist: {e}")
-        return False
+        pytest.fail("Watchlist configuration invalid")
 
 
 @pytest.mark.asyncio
@@ -215,10 +212,13 @@ def test_unusual_whales():
     print("\n" + "="*60)
     print("6. TESTING UNUSUAL WHALES API")
     print("="*60)
-    
+
+    if not os.getenv("RUN_UW_LIVE"):
+        pytest.skip("Unusual Whales live test disabled; set RUN_UW_LIVE=1 to enable")
+
     try:
         from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
-        
+
         # Try with configured key or test key
         uw_key = os.getenv("UNUSUAL_WHALES_API_KEY")
         if uw_key and uw_key != "your_unusual_whales_key_here":
@@ -236,11 +236,9 @@ def test_unusual_whales():
         else:
             print("⚠️  Unusual Whales returned empty data")
         
-        return True
-        
     except Exception as e:
-        print(f"⚠️  Unusual Whales test failed (non-critical): {e}")
-        return True  # Non-critical, can continue
+        print(f"⚠️  Unusual Whales test failed: {e}")
+        pytest.fail("Unusual Whales live test failed")
 
 
 async def main():
