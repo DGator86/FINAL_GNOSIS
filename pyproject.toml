@@ -11,6 +11,8 @@ dependencies = [
     "pyyaml>=6.0",
     "typer>=0.9",
     "boto3>=1.35.0",
+    "python-dotenv>=1.0",
+    "httpx>=0.25",
 ]
 
 [project.optional-dependencies]
