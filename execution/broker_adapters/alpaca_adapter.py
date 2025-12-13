@@ -26,6 +26,7 @@ from alpaca.trading.requests import (
 from loguru import logger
 from pydantic import BaseModel
 
+from config.credentials import get_alpaca_credentials
 from execution.broker_adapters.settings import (
     get_alpaca_base_url,
     get_alpaca_paper_setting,
@@ -72,11 +73,6 @@ class Position(BaseModel):
 class AlpacaBrokerAdapter:
     """Alpaca broker adapter for paper/live trading."""
 
-    # Hardcoded API credentials
-    ALPACA_API_KEY = "PKDGAH5CJM4G3RZ2NP5WQNH22U"
-    ALPACA_SECRET_KEY = "EfW43tDsmhWgvJkucKhJL3bsXmKyu5Kt1B3WxTFcuHEq"
-
-    def __init__(self, paper: Optional[bool] = None):
     def __init__(
         self,
         paper: Optional[bool] = None,
@@ -92,11 +88,10 @@ class AlpacaBrokerAdapter:
         """
         # Allow explicit override or fall back to environment flag
         self.paper = get_alpaca_paper_setting() if paper is None else paper
-        self.api_key = os.getenv("ALPACA_API_KEY") or self.ALPACA_API_KEY
-        self.secret_key = os.getenv("ALPACA_SECRET_KEY") or self.ALPACA_SECRET_KEY
-        self.api_key = api_key or os.getenv("ALPACA_API_KEY")
-        self.secret_key = secret_key or os.getenv("ALPACA_SECRET_KEY")
-        self.base_url = get_alpaca_base_url(self.paper)
+        creds = get_alpaca_credentials(api_key=api_key, secret_key=secret_key, base_url=get_alpaca_base_url(self.paper))
+        self.api_key = creds.api_key
+        self.secret_key = creds.secret_key
+        self.base_url = creds.base_url
 
         if not self.api_key or not self.secret_key:
             raise ValueError("Alpaca credentials not found in environment. Set ALPACA_API_KEY and ALPACA_SECRET_KEY.")

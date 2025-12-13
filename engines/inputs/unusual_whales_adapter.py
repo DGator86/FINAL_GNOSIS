@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 import httpx
 from loguru import logger
 
+from config.credentials import get_unusual_whales_token
 from engines.inputs.options_chain_adapter import OptionContract, OptionsChainAdapter
 from gnosis.utils.option_utils import OptionUtils
 
@@ -17,11 +18,6 @@ from gnosis.utils.option_utils import OptionUtils
 @dataclass
 class UnusualWhalesConfig:
     """Runtime configuration for the Unusual Whales adapter."""
-
-    # Hardcoded API token
-    UNUSUAL_WHALES_API_TOKEN = "8932cd23-72b3-4f74-9848-13f9103b9df5"
-    # Hardcoded API token with environment override
-    DEFAULT_TOKEN: str = "8932cd23-72b3-4f74-9848-13f9103b9df5"
 
     base_url: str
     timeout: float
@@ -32,13 +28,7 @@ class UnusualWhalesConfig:
     def from_env(cls, token: Optional[str] = None) -> "UnusualWhalesConfig":
         """Build configuration using environment variables and optional override."""
 
-        api_token = token or os.getenv("UNUSUAL_WHALES_API_TOKEN") or cls.UNUSUAL_WHALES_API_TOKEN
-        if not api_token:
-            api_token = (
-                os.getenv("UNUSUAL_WHALES_TOKEN")
-                or os.getenv("UNUSUAL_WHALES_API_KEY")
-                or cls.DEFAULT_TOKEN
-            )
+        api_token = get_unusual_whales_token(token)
 
         if not api_token:
             raise ValueError("Unusual Whales API token is required for historical data")
