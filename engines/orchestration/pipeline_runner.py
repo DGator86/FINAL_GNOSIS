@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any, Dict, Optional, Set
 
@@ -77,18 +78,33 @@ class PipelineRunner:
         )
         
         try:
-            # Run engines
-            if "hedge" in self.engines:
-                result.hedge_snapshot = self.engines["hedge"].run(self.symbol, timestamp)
-            
-            if "liquidity" in self.engines:
-                result.liquidity_snapshot = self.engines["liquidity"].run(self.symbol, timestamp)
-            
-            if "sentiment" in self.engines:
-                result.sentiment_snapshot = self.engines["sentiment"].run(self.symbol, timestamp)
+            engine_fns = {
+                "hedge": lambda: self.engines["hedge"].run(self.symbol, timestamp),
+                "liquidity": lambda: self.engines["liquidity"].run(self.symbol, timestamp),
+                "sentiment": lambda: self.engines["sentiment"].run(self.symbol, timestamp),
+                "elasticity": lambda: self.engines["elasticity"].run(self.symbol, timestamp),
+            }
 
-            if "elasticity" in self.engines:
-                result.elasticity_snapshot = self.engines["elasticity"].run(self.symbol, timestamp)
+            with ThreadPoolExecutor(max_workers=len(self.engines)) as executor:
+                futures = {
+                    executor.submit(fn): name
+                    for name, fn in engine_fns.items()
+                    if name in self.engines
+                }
+                for future in as_completed(futures):
+                    name = futures[future]
+                    try:
+                        snapshot = future.result()
+                        if name == "hedge":
+                            result.hedge_snapshot = snapshot
+                        elif name == "liquidity":
+                            result.liquidity_snapshot = snapshot
+                        elif name == "sentiment":
+                            result.sentiment_snapshot = snapshot
+                        elif name == "elasticity":
+                            result.elasticity_snapshot = snapshot
+                    except Exception as exc:
+                        logger.error(f"Error running {name} engine: {exc}")
 
             # Run ML enhancement engine (e.g., LSTM lookahead predictions)
             # Can be MLEnhancementEngine (composite) or LSTMPredictionEngine (specialized)

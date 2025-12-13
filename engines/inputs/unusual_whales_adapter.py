@@ -185,6 +185,32 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             logger.error(f"Error getting options chain for {symbol}: {error}")
             raise
 
+    def get_flow_snapshot(self, symbol: str, timestamp: datetime) -> Dict[str, float]:
+        """Retrieve aggregated options flow for sentiment scoring."""
+
+        if not self.client:
+            raise RuntimeError("Unusual Whales client not initialized")
+
+        params = {"start": timestamp.strftime("%Y-%m-%d"), "end": timestamp.strftime("%Y-%m-%d")}
+        url = f"{self.base_url}/api/stock/{symbol}/flow"
+
+        try:
+            response = self.client.get(url, params=params)
+            response.raise_for_status()
+            payload = response.json() or {}
+            data = payload.get("data", {}) or payload
+
+            return {
+                "call_volume": float(data.get("call_volume", 0) or 0),
+                "put_volume": float(data.get("put_volume", 0) or 0),
+                "call_premium": float(data.get("call_premium", 0) or 0),
+                "put_premium": float(data.get("put_premium", 0) or 0),
+                "sweep_ratio": float(data.get("sweep_ratio", data.get("sweep_percentage", 0)) or 0),
+            }
+        except httpx.HTTPError as error:
+            logger.error(f"Error fetching Unusual Whales flow for {symbol}: {error}")
+            return {}
+
     def _log_once(self, symbol: str, url: str, params: dict, status_code: int, detail: str) -> None:
         """De-duplicate noisy warnings per symbol/status pair."""
 
