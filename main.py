@@ -3,7 +3,7 @@ from __future__ import annotations
 """Command line entrypoint for Super Gnosis pipeline."""
 
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -45,6 +45,8 @@ from execution.broker_adapters.settings import get_alpaca_paper_setting
 from feedback.adaptation_agent import AdaptationAgent
 from feedback.tracking_agent import TrackingAgent
 from ledger.ledger_store import LedgerStore
+from models.features.feature_builder import EnhancedFeatureBuilder, FeatureConfig
+from models.lookahead_model import LookaheadModel
 from trade.trade_agent_v1 import TradeAgentV1
 from universe.watchlist_loader import load_active_watchlist
 from watchlist import AdaptiveWatchlist
@@ -69,6 +71,14 @@ def build_pipeline(
     options_adapter: OptionsChainAdapter = adapters.get("options") or create_options_adapter(prefer_real=True)
     market_adapter: MarketDataAdapter = adapters.get("market") or create_market_data_adapter(prefer_real=True)
     news_adapter: NewsAdapter = adapters.get("news") or create_news_adapter(prefer_real=False)
+    flow_adapter = adapters.get("flow")
+    if not flow_adapter and config.data_sources.unusual_whales_enabled:
+        try:
+            from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+
+            flow_adapter = UnusualWhalesAdapter()
+        except Exception:
+            flow_adapter = None
 
     engines = {
         "hedge": HedgeEngineV3(options_adapter, config.engines.hedge.model_dump()),
@@ -76,7 +86,7 @@ def build_pipeline(
         "sentiment": SentimentEngineV1(
             [
                 NewsSentimentProcessor(news_adapter, config.engines.sentiment.model_dump()),
-                FlowSentimentProcessor(config.engines.sentiment.model_dump()),
+                FlowSentimentProcessor(config.engines.sentiment.model_dump(), flow_adapter=flow_adapter),
                 TechnicalSentimentProcessor(market_adapter, config.engines.sentiment.model_dump()),
             ],
             config.engines.sentiment.model_dump(),
@@ -650,7 +660,69 @@ def multi_symbol_loop(
             except Exception as e:
                 logger.warning(f"Could not fetch final portfolio info: {e}")
         
-        typer.echo("="*80)
+    typer.echo("="*80)
+
+
+@app.command("download-data")
+def cli_download_data(
+    symbols: str = typer.Option("SPY,QQQ", help="Comma separated symbols"),
+    start: str = typer.Option("2020-01-01", help="Start date for downloads"),
+    end: str = typer.Option(datetime.utcnow().strftime("%Y-%m-%d"), help="End date"),
+    cache_dir: Path = typer.Option(Path("data/historical"), help="Cache root"),
+) -> None:
+    """Download historical data using Massive.com REST client."""
+
+    from scripts.download_historical import download_bars, download_options
+
+    start_dt = datetime.fromisoformat(start)
+    end_dt = datetime.fromisoformat(end)
+    symbols_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    for sym in symbols_list:
+        download_bars(sym, start_dt, end_dt, cache_dir)
+        download_options(sym, cache_dir)
+
+
+@app.command("backtest-full")
+def backtest_full(
+    symbol: str = typer.Option("SPY", help="Symbol to backtest"),
+    start: str = typer.Option("2020-01-01", help="Start date"),
+    end: str = typer.Option(datetime.utcnow().strftime("%Y-%m-%d"), help="End date"),
+) -> None:
+    """Run full backtest across all engines/agents using cached or live data."""
+
+    config = load_config()
+    adapters: Dict[str, object] = {}
+    runner = build_pipeline(symbol, config, adapters)
+
+    start_dt = datetime.fromisoformat(start)
+    end_dt = datetime.fromisoformat(end)
+    day = start_dt
+    while day <= end_dt:
+        ts = datetime.combine(day.date(), datetime.min.time()).replace(tzinfo=timezone.utc)
+        typer.echo(f"Running pipeline for {symbol} on {ts.date()}")
+        runner.run_once(ts)
+        day += timedelta(days=1)
+
+    typer.echo("Backtest complete; results appended to ledger")
+
+
+@app.command("train-ml")
+def cli_train_ml(
+    ledger: Path = typer.Option(Path("data/ledger.jsonl"), help="Ledger path"),
+    model_path: Path = typer.Option(Path("data/models/lookahead.pkl"), help="Where to save the model"),
+) -> None:
+    """Train lookahead model from ledger and persist artifact."""
+
+    builder = EnhancedFeatureBuilder(FeatureConfig())
+    df = builder.build_from_ledger(ledger)
+    if df.empty:
+        typer.echo("Ledger is empty; nothing to train")
+        raise typer.Exit(1)
+
+    model = LookaheadModel()
+    train_score, test_score = model.train(df)
+    model.save(model_path)
+    typer.echo(f"Saved model to {model_path} (train={train_score:.3f}, test={test_score:.3f})")
 
 
 if __name__ == "__main__":

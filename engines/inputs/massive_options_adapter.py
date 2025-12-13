@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, date, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
+import polars as pl
 from loguru import logger
 
 from config.credentials import get_massive_api_keys, massive_api_enabled
@@ -126,6 +128,8 @@ class MassiveOptionsAdapter:
         primary_key, secondary_key = get_massive_api_keys(primary=api_key)
         self.api_key = primary_key or secondary_key
         self.enabled = massive_api_enabled(default=True)
+        self.cache_enabled = os.getenv("MASSIVE_CACHE_ENABLED", "true").lower() == "true"
+        self.cache_path = Path(os.getenv("MASSIVE_CACHE_PATH", "data/historical"))
 
         if not self.enabled:
             logger.info("MASSIVE API disabled for options")
@@ -161,6 +165,11 @@ class MassiveOptionsAdapter:
         Returns:
             List of option contracts
         """
+        if self.cache_enabled:
+            cached = self._load_cached_chain(symbol)
+            if cached:
+                return cached
+
         if not self.client:
             logger.warning("MASSIVE client not initialized")
             return []
@@ -214,6 +223,8 @@ class MassiveOptionsAdapter:
             self._chain_cache[cache_key] = (datetime.now(timezone.utc), result)
 
             logger.debug(f"Retrieved {len(result)} options contracts for {symbol}")
+            if self.cache_enabled and result:
+                self._save_chain_cache(symbol, result)
             return result
 
         except Exception as e:
@@ -727,6 +738,30 @@ class MassiveOptionsAdapter:
 
         recent = snapshots[0]
         return recent.pcr_volume - recent.pcr_oi
+
+    def _chain_cache_path(self, symbol: str) -> Path:
+        return self.cache_path / symbol / "options" / "contracts.parquet"
+
+    def _load_cached_chain(self, symbol: str) -> List[OptionContract]:
+        path = self._chain_cache_path(symbol)
+        if not path.exists():
+            return []
+
+        try:
+            df = pl.read_parquet(path)
+            return [
+                OptionContract(**row)
+                for row in df.to_dicts()
+            ]
+        except Exception as exc:
+            logger.warning(f"Failed to read cached options chain for {symbol}: {exc}")
+            return []
+
+    def _save_chain_cache(self, symbol: str, contracts: List[OptionContract]) -> None:
+        path = self._chain_cache_path(symbol)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        df = pl.DataFrame([c.model_dump() for c in contracts])
+        df.write_parquet(path)
 
     def _parse_expiration(self, exp_str: str) -> datetime:
         """Parse expiration date string to datetime."""

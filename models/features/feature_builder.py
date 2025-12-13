@@ -3,8 +3,10 @@ Enhanced Feature Builder for FINAL_GNOSIS
 Integrates with Hedge Engine v3.0 and other engines to create comprehensive feature matrix
 """
 
+import json
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -50,6 +52,63 @@ class EnhancedFeatureBuilder:
         self.feature_names: List[str] = []
         self.scaler = None  # Will be StandardScaler
         self._feature_stats = {}  # For monitoring drift
+
+    @staticmethod
+    def build_from_ledger(ledger_path: Path) -> pd.DataFrame:
+        """Create a feature dataframe from ledger.jsonl records."""
+
+        if not ledger_path.exists():
+            raise FileNotFoundError(f"Ledger not found at {ledger_path}")
+
+        rows: List[Dict] = []
+        with open(ledger_path, "r") as handle:
+            for line in handle:
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                hedge = payload.get("hedge_snapshot") or {}
+                liquidity = payload.get("liquidity_snapshot") or {}
+                sentiment = payload.get("sentiment_snapshot") or {}
+                elasticity = payload.get("elasticity_snapshot") or {}
+                consensus = payload.get("consensus") or {}
+                trade_ideas = payload.get("trade_ideas") or []
+
+                rows.append(
+                    {
+                        "timestamp": payload.get("timestamp"),
+                        "symbol": payload.get("symbol"),
+                        "hedge_elasticity": hedge.get("elasticity"),
+                        "movement_energy": hedge.get("movement_energy"),
+                        "energy_asymmetry": hedge.get("energy_asymmetry"),
+                        "pressure_net": hedge.get("pressure_net"),
+                        "dealer_gamma_sign": hedge.get("dealer_gamma_sign"),
+                        "hedge_confidence": hedge.get("confidence"),
+                        "liquidity_score": liquidity.get("liquidity_score"),
+                        "bid_ask_spread": liquidity.get("bid_ask_spread"),
+                        "volume": liquidity.get("volume"),
+                        "sentiment_score": sentiment.get("sentiment_score"),
+                        "flow_sentiment": sentiment.get("flow_sentiment"),
+                        "news_sentiment": sentiment.get("news_sentiment"),
+                        "technical_sentiment": sentiment.get("technical_sentiment"),
+                        "elasticity_vol": elasticity.get("volatility"),
+                        "volatility_regime": elasticity.get("volatility_regime"),
+                        "trend_strength": elasticity.get("trend_strength"),
+                        "consensus_confidence": consensus.get("confidence"),
+                        "consensus_direction": consensus.get("direction"),
+                        "trade_count": len(trade_ideas),
+                    }
+                )
+
+        if not rows:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(rows)
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df = df.sort_values("timestamp")
+        df["target_regime"] = df["consensus_direction"].shift(-1)
+        return df.dropna(subset=["timestamp"])
         
     def build(
         self,

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -168,6 +170,25 @@ class StorageConfig(BaseModel):
     sync_models: bool = False  # Sync ML models to S3
 
 
+class BacktestConfig(BaseModel):
+    """Configuration for backtesting runs."""
+
+    use_all_components: bool = True
+    use_real_data: bool = True
+    cache_enabled: bool = True
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+
+class DataSourcesConfig(BaseModel):
+    """Primary data source selection and feature flags."""
+
+    primary: str = "massive"
+    options_provider: str = "massive"
+    unusual_whales_enabled: bool = True
+    cache_path: str = "data/historical"
+
+
 class AppConfig(BaseModel):
     """Main application configuration."""
 
@@ -178,3 +199,5 @@ class AppConfig(BaseModel):
     tracking: TrackingConfig = Field(default_factory=TrackingConfig)
     adaptation: AdaptationConfig = Field(default_factory=AdaptationConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
+    backtest: BacktestConfig = Field(default_factory=BacktestConfig)
+    data_sources: DataSourcesConfig = Field(default_factory=DataSourcesConfig)

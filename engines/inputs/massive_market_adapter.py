@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, date, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
+import polars as pl
 
 from config.credentials import get_massive_api_keys, massive_api_enabled
 from engines.inputs.market_data_adapter import OHLCV, Quote
@@ -38,6 +40,8 @@ class MassiveMarketDataAdapter:
         primary_key, secondary_key = get_massive_api_keys(primary=api_key)
         self.api_key = primary_key or secondary_key
         self.enabled = massive_api_enabled(default=True)
+        self.cache_enabled = os.getenv("MASSIVE_CACHE_ENABLED", "true").lower() == "true"
+        self.cache_path = Path(os.getenv("MASSIVE_CACHE_PATH", "data/historical"))
 
         if not self.enabled:
             logger.info("MASSIVE API disabled (MASSIVE_API_ENABLED=false)")
@@ -80,6 +84,11 @@ class MassiveMarketDataAdapter:
         Returns:
             List of OHLCV bars
         """
+        if self.cache_enabled:
+            cached = self._load_cached_bars(symbol, start, end, timeframe)
+            if cached:
+                return cached
+
         if not self.client:
             logger.warning("MASSIVE client not initialized")
             return []
@@ -134,6 +143,8 @@ class MassiveMarketDataAdapter:
                 )
 
             logger.debug(f"Retrieved {len(result)} bars for {symbol} from MASSIVE")
+            if self.cache_enabled and result:
+                self._save_bars_cache(symbol, timeframe, result)
             return result
 
         except Exception as e:
@@ -175,6 +186,68 @@ class MassiveMarketDataAdapter:
         except Exception as e:
             logger.error(f"Error getting quote for {symbol}: {e}")
             return self._empty_quote(symbol)
+
+    def _bars_cache_path(self, symbol: str, timeframe: str) -> Path:
+        return self.cache_path / symbol / f"bars_{timeframe.lower()}.parquet"
+
+    def _load_cached_bars(
+        self, symbol: str, start: datetime, end: datetime, timeframe: str
+    ) -> List[OHLCV]:
+        path = self._bars_cache_path(symbol, timeframe)
+        if not path.exists():
+            return []
+
+        try:
+            df = pl.read_parquet(path)
+            df = df.filter(
+                (pl.col("timestamp") >= start)
+                & (pl.col("timestamp") <= end)
+            ).sort("timestamp")
+            return [
+                OHLCV(
+                    timestamp=ts,
+                    open=row["open"],
+                    high=row["high"],
+                    low=row["low"],
+                    close=row["close"],
+                    volume=row["volume"],
+                )
+                for ts, row in zip(df["timestamp"].to_list(), df.to_dicts())
+            ]
+        except Exception as exc:
+            logger.warning(f"Failed to read cached bars for {symbol}: {exc}")
+            return []
+
+    def _save_bars_cache(self, symbol: str, timeframe: str, bars: List[OHLCV]) -> None:
+        path = self._bars_cache_path(symbol, timeframe)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        new_df = pl.DataFrame(
+            [
+                {
+                    "timestamp": bar.timestamp,
+                    "open": bar.open,
+                    "high": bar.high,
+                    "low": bar.low,
+                    "close": bar.close,
+                    "volume": bar.volume,
+                }
+                for bar in bars
+            ]
+        )
+
+        if path.exists():
+            try:
+                existing = pl.read_parquet(path)
+                new_df = (
+                    pl.concat([existing, new_df])
+                    .unique(subset=["timestamp"], keep="last")
+                    .sort("timestamp")
+                )
+            except Exception as exc:
+                logger.warning(f"Could not merge cached bars for {symbol}: {exc}")
+
+        new_df.write_parquet(path)
 
     def get_previous_close(self, symbol: str) -> Optional[OHLCV]:
         """Get previous day's close for a symbol.
