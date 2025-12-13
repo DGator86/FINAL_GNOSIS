@@ -45,7 +45,15 @@ class GnosisLiveTradingEngine:
             assert self._loop is not None
             asyncio.set_event_loop(self._loop)
             self._tasks = [self._loop.create_task(bot.run()) for bot in self.bots]
-            self._loop.run_until_complete(asyncio.gather(*self._tasks))
+            self._loop.run_forever()
+
+            # Ensure all tasks are awaited before closing the loop
+            if self._tasks:
+                self._loop.run_until_complete(
+                    asyncio.gather(*self._tasks, return_exceptions=True)
+                )
+
+            self._loop.close()
 
         self._thread = threading.Thread(target=runner, daemon=True)
         self._thread.start()
@@ -58,7 +66,7 @@ class GnosisLiveTradingEngine:
                 task.cancel()
             self._loop.call_soon_threadsafe(self._loop.stop)
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2)
+            self._thread.join(timeout=5)
 
     def get_performance_summary(self) -> Dict:
         """Return a simple account snapshot from the first bot adapter."""
