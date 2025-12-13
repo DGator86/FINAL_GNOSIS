@@ -128,6 +128,7 @@ class MassiveOptionsAdapter:
         Args:
             api_key: MASSIVE API key (reads from MASSIVE_API_KEY if not provided)
         """
+        self.api_key = api_key or os.getenv("MASSIVE_API_KEY") or os.getenv("MASSIVE_API_KEY_SECONDARY")
         self.api_key = (
             api_key
             or os.getenv("MASSIVE_API_KEY")
@@ -142,7 +143,9 @@ class MassiveOptionsAdapter:
             return
 
         if not self.api_key:
-            raise ValueError("MASSIVE API key not found. Set MASSIVE_API_KEY environment variable.")
+            raise ValueError(
+                "MASSIVE API key not found. Set MASSIVE_API_KEY or MASSIVE_API_KEY_SECONDARY."
+            )
 
         try:
             from massive import RESTClient
