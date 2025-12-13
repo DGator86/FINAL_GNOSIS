@@ -19,15 +19,12 @@ from engines.inputs.market_data_adapter import OHLCV, Quote
 class AlpacaMarketDataAdapter:
     """Alpaca market data adapter using official Alpaca SDK."""
 
-    # Hardcoded credentials with environment override
-    ALPACA_API_KEY = "PKDGAH5CJM4G3RZ2NP5WQNH22U"
-    ALPACA_SECRET_KEY = "EfW43tDsmhWgvJkucKhJL3bsXmKyu5Kt1B3WxTFcuHEq"
     DEFAULT_DATA_FEED = "IEX"
 
     def __init__(self, *, client: StockHistoricalDataClient | None = None, data_feed: str | None = None) -> None:
         """Initialize Alpaca market data adapter."""
-        self.api_key = os.getenv("ALPACA_API_KEY") or self.ALPACA_API_KEY
-        self.secret_key = os.getenv("ALPACA_SECRET_KEY") or self.ALPACA_SECRET_KEY
+        self.api_key = os.getenv("ALPACA_API_KEY")
+        self.secret_key = os.getenv("ALPACA_SECRET_KEY")
 
         if not self.api_key or not self.secret_key:
             raise ValueError(
