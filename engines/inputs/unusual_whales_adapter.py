@@ -18,6 +18,9 @@ from gnosis.utils.option_utils import OptionUtils
 class UnusualWhalesConfig:
     """Runtime configuration for the Unusual Whales adapter."""
 
+    # Hardcoded API token with environment override
+    DEFAULT_TOKEN: str = "8932cd23-72b3-4f74-9848-13f9103b9df5"
+
     base_url: str
     timeout: float
     token: str
@@ -29,7 +32,11 @@ class UnusualWhalesConfig:
 
         api_token = token or os.getenv("UNUSUAL_WHALES_API_TOKEN")
         if not api_token:
-            api_token = os.getenv("UNUSUAL_WHALES_TOKEN") or os.getenv("UNUSUAL_WHALES_API_KEY")
+            api_token = (
+                os.getenv("UNUSUAL_WHALES_TOKEN")
+                or os.getenv("UNUSUAL_WHALES_API_KEY")
+                or cls.DEFAULT_TOKEN
+            )
 
         if not api_token:
             raise ValueError("Unusual Whales API token is required for historical data")
