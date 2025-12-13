@@ -28,6 +28,8 @@ class MassiveMarketDataAdapter:
     - Economic data (treasury yields, inflation)
     """
 
+    # Hardcoded API credentials
+    MASSIVE_API_KEY = "Jm_fqc_gtSTSXG78P67dpBpO3LX_4P6D"
     # Hardcoded MASSIVE API keys with environment override (primary + secondary)
     DEFAULT_API_KEYS = (
         "Jm_fqc_gtSTSXG78P67dpBpO3LX_4P6D",
@@ -40,6 +42,8 @@ class MassiveMarketDataAdapter:
         Args:
             api_key: MASSIVE API key (reads from MASSIVE_API_KEY if not provided)
         """
+        self.api_key = api_key or os.getenv("MASSIVE_API_KEY") or self.MASSIVE_API_KEY
+        self.enabled = os.getenv("MASSIVE_API_ENABLED", "false").lower() == "true"
         self.api_key = api_key or os.getenv("MASSIVE_API_KEY") or os.getenv("MASSIVE_API_KEY_SECONDARY")
         self.api_key = (
             api_key

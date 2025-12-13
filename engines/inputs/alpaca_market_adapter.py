@@ -19,6 +19,9 @@ from engines.inputs.market_data_adapter import OHLCV, Quote
 class AlpacaMarketDataAdapter:
     """Alpaca market data adapter using official Alpaca SDK."""
 
+    # Hardcoded API credentials
+    ALPACA_API_KEY = "PKDGAH5CJM4G3RZ2NP5WQNH22U"
+    ALPACA_SECRET_KEY = "EfW43tDsmhWgvJkucKhJL3bsXmKyu5Kt1B3WxTFcuHEq"
     # Hardcoded credentials with environment override
     ALPACA_API_KEY = "PKDGAH5CJM4G3RZ2NP5WQNH22U"
     ALPACA_SECRET_KEY = "EfW43tDsmhWgvJkucKhJL3bsXmKyu5Kt1B3WxTFcuHEq"

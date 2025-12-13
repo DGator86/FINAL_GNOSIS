@@ -1046,13 +1046,13 @@ class MLBacktestEngine:
 
             trades_path = output_dir / f"{tag}_trades.json"
             with open(trades_path, 'w') as f:
-                json.dump(trades_data, f, indent=2)
+                json.dump(trades_data, f, indent=2, default=str)
 
         # Save equity curve
         if self.config.save_equity_curve and results.equity_curve:
             equity_path = output_dir / f"{tag}_equity.json"
             with open(equity_path, 'w') as f:
-                json.dump(results.equity_curve, f, indent=2)
+                json.dump(results.equity_curve, f, indent=2, default=str)
 
 
 def run_ml_backtest(

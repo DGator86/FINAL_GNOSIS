@@ -72,6 +72,11 @@ class Position(BaseModel):
 class AlpacaBrokerAdapter:
     """Alpaca broker adapter for paper/live trading."""
 
+    # Hardcoded API credentials
+    ALPACA_API_KEY = "PKDGAH5CJM4G3RZ2NP5WQNH22U"
+    ALPACA_SECRET_KEY = "EfW43tDsmhWgvJkucKhJL3bsXmKyu5Kt1B3WxTFcuHEq"
+
+    def __init__(self, paper: Optional[bool] = None):
     def __init__(
         self,
         paper: Optional[bool] = None,
@@ -87,6 +92,8 @@ class AlpacaBrokerAdapter:
         """
         # Allow explicit override or fall back to environment flag
         self.paper = get_alpaca_paper_setting() if paper is None else paper
+        self.api_key = os.getenv("ALPACA_API_KEY") or self.ALPACA_API_KEY
+        self.secret_key = os.getenv("ALPACA_SECRET_KEY") or self.ALPACA_SECRET_KEY
         self.api_key = api_key or os.getenv("ALPACA_API_KEY")
         self.secret_key = secret_key or os.getenv("ALPACA_SECRET_KEY")
         self.base_url = get_alpaca_base_url(self.paper)
