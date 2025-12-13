@@ -28,14 +28,25 @@ class MassiveMarketDataAdapter:
     - Economic data (treasury yields, inflation)
     """
 
+    # Hardcoded MASSIVE API keys with environment override (primary + secondary)
+    DEFAULT_API_KEYS = (
+        "Jm_fqc_gtSTSXG78P67dpBpO3LX_4P6D",
+        "22265906-ec01-4a42-928a-0037ccadbde3",
+    )
+
     def __init__(self, *, api_key: Optional[str] = None) -> None:
         """Initialize MASSIVE market data adapter.
 
         Args:
             api_key: MASSIVE API key (reads from MASSIVE_API_KEY if not provided)
         """
-        self.api_key = api_key or os.getenv("MASSIVE_API_KEY")
-        self.enabled = os.getenv("MASSIVE_API_ENABLED", "false").lower() == "true"
+        self.api_key = (
+            api_key
+            or os.getenv("MASSIVE_API_KEY")
+            or os.getenv("MASSIVE_API_KEY_SECONDARY")
+            or self._get_default_api_key()
+        )
+        self.enabled = os.getenv("MASSIVE_API_ENABLED", "true").lower() == "true"
 
         if not self.enabled:
             logger.info("MASSIVE API disabled (MASSIVE_API_ENABLED=false)")
@@ -58,6 +69,15 @@ class MassiveMarketDataAdapter:
         except Exception as e:
             logger.error(f"Failed to initialize MASSIVE client: {e}")
             raise
+
+    @classmethod
+    def _get_default_api_key(cls) -> Optional[str]:
+        """Return the first available hardcoded MASSIVE API key."""
+
+        for key in cls.DEFAULT_API_KEYS:
+            if key:
+                return key
+        return None
 
     def get_bars(
         self,
