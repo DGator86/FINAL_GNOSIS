@@ -22,6 +22,10 @@ class AlpacaMarketDataAdapter:
     # Hardcoded API credentials
     ALPACA_API_KEY = "PKDGAH5CJM4G3RZ2NP5WQNH22U"
     ALPACA_SECRET_KEY = "EfW43tDsmhWgvJkucKhJL3bsXmKyu5Kt1B3WxTFcuHEq"
+    # Hardcoded credentials with environment override
+    ALPACA_API_KEY = "PKDGAH5CJM4G3RZ2NP5WQNH22U"
+    ALPACA_SECRET_KEY = "EfW43tDsmhWgvJkucKhJL3bsXmKyu5Kt1B3WxTFcuHEq"
+    DEFAULT_DATA_FEED = "IEX"
 
     def __init__(self, *, client: StockHistoricalDataClient | None = None, data_feed: str | None = None) -> None:
         """Initialize Alpaca market data adapter."""
@@ -34,7 +38,7 @@ class AlpacaMarketDataAdapter:
             )
 
         self.client = client or StockHistoricalDataClient(api_key=self.api_key, secret_key=self.secret_key)
-        self.data_feed = (data_feed or os.getenv("ALPACA_DATA_FEED", "IEX")).upper()
+        self.data_feed = (data_feed or os.getenv("ALPACA_DATA_FEED", self.DEFAULT_DATA_FEED)).upper()
 
         logger.info("AlpacaMarketDataAdapter initialized")
 

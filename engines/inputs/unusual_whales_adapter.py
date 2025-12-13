@@ -20,10 +20,12 @@ class UnusualWhalesConfig:
 
     # Hardcoded API token
     UNUSUAL_WHALES_API_TOKEN = "8932cd23-72b3-4f74-9848-13f9103b9df5"
+    # Hardcoded API token with environment override
+    DEFAULT_TOKEN: str = "8932cd23-72b3-4f74-9848-13f9103b9df5"
 
     base_url: str
     timeout: float
-    token: Optional[str]
+    token: str
     use_stub: bool
 
     @classmethod
@@ -32,13 +34,20 @@ class UnusualWhalesConfig:
 
         api_token = token or os.getenv("UNUSUAL_WHALES_API_TOKEN") or cls.UNUSUAL_WHALES_API_TOKEN
         if not api_token:
-            api_token = os.getenv("UNUSUAL_WHALES_TOKEN") or os.getenv("UNUSUAL_WHALES_API_KEY")
+            api_token = (
+                os.getenv("UNUSUAL_WHALES_TOKEN")
+                or os.getenv("UNUSUAL_WHALES_API_KEY")
+                or cls.DEFAULT_TOKEN
+            )
+
+        if not api_token:
+            raise ValueError("Unusual Whales API token is required for historical data")
 
         base_url = os.getenv("UNUSUAL_WHALES_BASE_URL", "https://api.unusualwhales.com").rstrip("/")
         timeout = float(os.getenv("UNUSUAL_WHALES_TIMEOUT", "30.0"))
-        use_stub = os.getenv("UNUSUAL_WHALES_DISABLED", "false").lower() in {"1", "true", "yes"}
 
-        return cls(base_url=base_url, timeout=timeout, token=api_token, use_stub=use_stub)
+        # Backtesting must use real data, so stubs are never allowed
+        return cls(base_url=base_url, timeout=timeout, token=api_token, use_stub=False)
 
 
 class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
@@ -62,20 +71,10 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
         self._disabled_reason: Optional[str] = None
 
         if self.use_stub:
-            self.client = None
-            self._disabled_reason = "disabled-via-env"
-            logger.info(
-                "Unusual Whales disabled via UNUSUAL_WHALES_DISABLED – using stub data"
-            )
-            return
+            raise RuntimeError("Unusual Whales stubs are disabled – real data required")
 
         if not self.api_token:
-            self.client = None
-            self._disabled_reason = "missing-token"
-            logger.error(
-                "🚫 UNUSUAL_WHALES_API_TOKEN is not set – Unusual Whales data will be skipped"
-            )
-            return
+            raise RuntimeError("Unusual Whales API token is required for real data")
 
         self.headers = {
             "Accept": "application/json",
@@ -92,15 +91,7 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
         """Get options chain for a symbol using the public contracts endpoint."""
 
         if not self.client:
-            if self.use_stub:
-                return self._get_stub_chain(symbol, timestamp)
-
-            logger.info(
-                "⏭️  Skipping Unusual Whales for %s (adapter disabled: %s)",
-                symbol,
-                self._disabled_reason or "unknown",
-            )
-            return []
+            raise RuntimeError("Unusual Whales client not initialized; real data is required")
 
         url = f"{self.base_url}/api/stock/{symbol}/option-contracts"
         params = {"expiration_date": expiration, "limit": 500} if expiration else {"limit": 500}
@@ -175,52 +166,34 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             self._log_once(symbol, url, params, status_code, detail)
 
             if status_code in {401, 403}:
-                self._disabled_reason = f"auth-{status_code}"
-                self.client = None
                 logger.error(
-                    "❌ Unusual Whales authentication/subscription error %s - check UNUSUAL_WHALES_API_TOKEN",
+                    "❌ Unusual Whales authentication/subscription error %s - real data required",
                     status_code,
                 )
-                return []
+                raise RuntimeError("Unusual Whales auth/subscription error") from error
 
             if status_code == 404:
-                logger.info(
-                    "⏭️  Unusual Whales has no data for %s (404) - skipping without stub",
-                    symbol,
-                )
-                return []
+                raise RuntimeError(f"Unusual Whales has no data for {symbol} (404)")
 
             if status_code in {400, 422}:
-                logger.error(
-                    "❌ Unusual Whales rejected request for %s | status=%s | detail=%s",
-                    symbol,
-                    status_code,
-                    detail,
+                raise RuntimeError(
+                    f"Unusual Whales rejected request for {symbol} | status={status_code} | detail={detail}"
                 )
-                return []
 
             if status_code == 429 or status_code >= 500:
-                logger.warning(
-                    "⚠️  Unusual Whales transient error for %s | status=%s | detail=%s",
-                    symbol,
-                    status_code,
-                    detail,
+                raise RuntimeError(
+                    f"Unusual Whales transient/unavailable for {symbol} | status={status_code} | detail={detail}"
                 )
-                return self._get_stub_chain(symbol, timestamp)
 
-            logger.error(
-                "❌ Unexpected Unusual Whales response for %s | status=%s | detail=%s",
-                symbol,
-                status_code,
-                detail,
+            raise RuntimeError(
+                f"Unexpected Unusual Whales response for {symbol} | status={status_code} | detail={detail}"
             )
-            return []
         except httpx.HTTPError as error:
-            logger.warning(f"HTTP error getting options chain for {symbol}: {error}")
-            return self._get_stub_chain(symbol, timestamp)
+            logger.error(f"HTTP error getting options chain for {symbol}: {error}")
+            raise
         except Exception as error:
             logger.error(f"Error getting options chain for {symbol}: {error}")
-            return self._get_stub_chain(symbol, timestamp)
+            raise
 
     def _log_once(self, symbol: str, url: str, params: dict, status_code: int, detail: str) -> None:
         """De-duplicate noisy warnings per symbol/status pair."""

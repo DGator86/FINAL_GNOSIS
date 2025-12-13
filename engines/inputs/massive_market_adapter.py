@@ -30,6 +30,11 @@ class MassiveMarketDataAdapter:
 
     # Hardcoded API credentials
     MASSIVE_API_KEY = "Jm_fqc_gtSTSXG78P67dpBpO3LX_4P6D"
+    # Hardcoded MASSIVE API keys with environment override (primary + secondary)
+    DEFAULT_API_KEYS = (
+        "Jm_fqc_gtSTSXG78P67dpBpO3LX_4P6D",
+        "22265906-ec01-4a42-928a-0037ccadbde3",
+    )
 
     def __init__(self, *, api_key: Optional[str] = None) -> None:
         """Initialize MASSIVE market data adapter.
@@ -39,6 +44,14 @@ class MassiveMarketDataAdapter:
         """
         self.api_key = api_key or os.getenv("MASSIVE_API_KEY") or self.MASSIVE_API_KEY
         self.enabled = os.getenv("MASSIVE_API_ENABLED", "false").lower() == "true"
+        self.api_key = api_key or os.getenv("MASSIVE_API_KEY") or os.getenv("MASSIVE_API_KEY_SECONDARY")
+        self.api_key = (
+            api_key
+            or os.getenv("MASSIVE_API_KEY")
+            or os.getenv("MASSIVE_API_KEY_SECONDARY")
+            or self._get_default_api_key()
+        )
+        self.enabled = os.getenv("MASSIVE_API_ENABLED", "true").lower() == "true"
 
         if not self.enabled:
             logger.info("MASSIVE API disabled (MASSIVE_API_ENABLED=false)")
@@ -47,13 +60,14 @@ class MassiveMarketDataAdapter:
 
         if not self.api_key:
             raise ValueError(
-                "MASSIVE API key not found. Set MASSIVE_API_KEY environment variable."
+                "MASSIVE API key not found. Set MASSIVE_API_KEY or MASSIVE_API_KEY_SECONDARY."
             )
 
         try:
             from massive import RESTClient
+
             self.client = RESTClient(api_key=self.api_key)
-            logger.info("MassiveMarketDataAdapter initialized successfully")
+            logger.info("MassiveMarketDataAdapter initialized with live data access")
         except ImportError:
             raise ImportError(
                 "MASSIVE client not installed. Run: pip install massive"
@@ -61,6 +75,15 @@ class MassiveMarketDataAdapter:
         except Exception as e:
             logger.error(f"Failed to initialize MASSIVE client: {e}")
             raise
+
+    @classmethod
+    def _get_default_api_key(cls) -> Optional[str]:
+        """Return the first available hardcoded MASSIVE API key."""
+
+        for key in cls.DEFAULT_API_KEYS:
+            if key:
+                return key
+        return None
 
     def get_bars(
         self,

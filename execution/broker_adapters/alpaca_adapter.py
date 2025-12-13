@@ -77,6 +77,13 @@ class AlpacaBrokerAdapter:
     ALPACA_SECRET_KEY = "EfW43tDsmhWgvJkucKhJL3bsXmKyu5Kt1B3WxTFcuHEq"
 
     def __init__(self, paper: Optional[bool] = None):
+    def __init__(
+        self,
+        paper: Optional[bool] = None,
+        *,
+        api_key: Optional[str] = None,
+        secret_key: Optional[str] = None,
+    ):
         """
         Initialize Alpaca adapter.
 
@@ -87,6 +94,8 @@ class AlpacaBrokerAdapter:
         self.paper = get_alpaca_paper_setting() if paper is None else paper
         self.api_key = os.getenv("ALPACA_API_KEY") or self.ALPACA_API_KEY
         self.secret_key = os.getenv("ALPACA_SECRET_KEY") or self.ALPACA_SECRET_KEY
+        self.api_key = api_key or os.getenv("ALPACA_API_KEY")
+        self.secret_key = secret_key or os.getenv("ALPACA_SECRET_KEY")
         self.base_url = get_alpaca_base_url(self.paper)
 
         if not self.api_key or not self.secret_key:
@@ -112,42 +121,26 @@ class AlpacaBrokerAdapter:
         self.max_portfolio_leverage = float(os.getenv("MAX_PORTFOLIO_LEVERAGE", "1.0"))
 
         # Track daily P&L for circuit breaker
-        self.session_start_equity = None
+        self.session_start_equity: float | None = None
+        self._checked_permissions = False
 
-        logger.info(f"AlpacaBrokerAdapter initialized (paper={self.paper}, base_url={self.base_url})")
-        logger.info(f"Risk Limits - Max Position: {self.max_position_size_pct*100:.1f}%, Max Daily Loss: ${self.max_daily_loss_usd:,.2f}")
-
-        # Verify connection
-        try:
-            account = self.trading_client.get_account()
-
-            equity = float(account.equity)
-            cash = float(account.cash)
-            buying_power = float(account.buying_power)
-
-            logger.info(
-                "Connected to Alpaca - Account ID: %s, Equity: $%s, Cash: $%s, Buying Power: $%s",
-                account.id,
-                f"{equity:,.2f}",
-                f"{cash:,.2f}",
-                f"{buying_power:,.2f}",
-            )
-
-            self.session_start_equity = equity
-            self.equity = equity
-            self.cash = cash
-            self.buying_power = buying_power
-            self._verify_options_permissions(account)
-        except APIError as e:
-            logger.error(f"Failed to connect to Alpaca: {e}")
-            raise
+        logger.info(
+            "AlpacaBrokerAdapter initialized (paper=%s, base_url=%s)",
+            self.paper,
+            self.base_url,
+        )
+        logger.info(
+            "Risk Limits - Max Position: %.1f%%, Max Daily Loss: $%s",
+            self.max_position_size_pct * 100,
+            f"{self.max_daily_loss_usd:,.2f}",
+        )
     
     def get_account(self) -> Account:
         """Get account information."""
         try:
             account = self.trading_client.get_account()
-            
-            return Account(
+
+            result = Account(
                 account_id=str(account.id),  # Convert UUID to string
                 cash=float(account.cash),
                 buying_power=float(account.buying_power),
@@ -164,6 +157,18 @@ class AlpacaBrokerAdapter:
                     else None
                 ),
             )
+
+            if self.session_start_equity is None:
+                self.session_start_equity = result.equity
+            if not self._checked_permissions:
+                self._verify_options_permissions(account)
+                self._checked_permissions = True
+
+            self.equity = result.equity
+            self.cash = result.cash
+            self.buying_power = result.buying_power
+
+            return result
         except APIError as e:
             logger.error(f"Error getting account info: {e}")
             raise

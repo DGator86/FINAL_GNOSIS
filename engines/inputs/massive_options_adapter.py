@@ -107,6 +107,11 @@ class MassiveOptionsAdapter:
 
     # Hardcoded API credentials
     MASSIVE_API_KEY = "Jm_fqc_gtSTSXG78P67dpBpO3LX_4P6D"
+    # Hardcoded MASSIVE API keys with environment override (primary + secondary)
+    DEFAULT_API_KEYS = (
+        "Jm_fqc_gtSTSXG78P67dpBpO3LX_4P6D",
+        "22265906-ec01-4a42-928a-0037ccadbde3",
+    )
 
     # Supported timeframes for aggregation
     TIMEFRAMES = {
@@ -127,6 +132,14 @@ class MassiveOptionsAdapter:
         """
         self.api_key = api_key or os.getenv("MASSIVE_API_KEY") or self.MASSIVE_API_KEY
         self.enabled = os.getenv("MASSIVE_API_ENABLED", "false").lower() == "true"
+        self.api_key = api_key or os.getenv("MASSIVE_API_KEY") or os.getenv("MASSIVE_API_KEY_SECONDARY")
+        self.api_key = (
+            api_key
+            or os.getenv("MASSIVE_API_KEY")
+            or os.getenv("MASSIVE_API_KEY_SECONDARY")
+            or self._get_default_api_key()
+        )
+        self.enabled = os.getenv("MASSIVE_API_ENABLED", "true").lower() == "true"
 
         if not self.enabled:
             logger.info("MASSIVE API disabled for options")
@@ -134,7 +147,9 @@ class MassiveOptionsAdapter:
             return
 
         if not self.api_key:
-            raise ValueError("MASSIVE API key not found. Set MASSIVE_API_KEY environment variable.")
+            raise ValueError(
+                "MASSIVE API key not found. Set MASSIVE_API_KEY or MASSIVE_API_KEY_SECONDARY."
+            )
 
         try:
             from massive import RESTClient
@@ -149,6 +164,15 @@ class MassiveOptionsAdapter:
         # Cache for options data
         self._chain_cache: Dict[str, Tuple[datetime, List[OptionContract]]] = {}
         self._cache_ttl = timedelta(minutes=1)
+
+    @classmethod
+    def _get_default_api_key(cls) -> Optional[str]:
+        """Return the first available hardcoded MASSIVE API key."""
+
+        for key in cls.DEFAULT_API_KEYS:
+            if key:
+                return key
+        return None
 
     def get_chain(self, symbol: str, timestamp: datetime) -> List[OptionContract]:
         """Get options chain for a symbol (implements OptionsChainAdapter protocol).
