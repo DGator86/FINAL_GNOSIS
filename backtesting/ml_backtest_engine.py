@@ -85,6 +85,10 @@ class MLBacktestConfig:
     end_date: str = "2024-12-01"
     timeframe: str = "1Day"  # 1Min, 5Min, 15Min, 1Hour, 1Day
 
+    # Data provider settings
+    data_provider: str = "auto"  # "massive", "alpaca", or "auto"
+    use_options_data: bool = True  # Include options data if available (Massive only)
+
     # Capital settings
     initial_capital: float = 100_000.0
     position_size_pct: float = 0.10  # 10% of capital per trade
@@ -112,6 +116,11 @@ class MLBacktestConfig:
     use_lstm: bool = False  # Enable LSTM predictions
     lstm_model_path: Optional[str] = None
     lstm_weight: float = 0.3  # Weight of LSTM in final signal
+
+    # XGBoost settings (for direction prediction)
+    use_xgboost: bool = False  # Enable XGBoost predictions
+    xgb_model_path: Optional[str] = None
+    xgb_weight: float = 0.3  # Weight of XGBoost in final signal
 
     # Output settings
     save_trades: bool = True
@@ -474,12 +483,10 @@ class MLBacktestEngine:
             self.lstm_predictor = None
 
     def fetch_historical_data(self) -> pd.DataFrame:
-        """Fetch historical data from Alpaca."""
-        from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
+        """Fetch historical data from configured provider (Massive or Alpaca)."""
+        provider = self._select_data_provider()
 
         try:
-            adapter = AlpacaMarketDataAdapter()
-
             start = datetime.strptime(self.config.start_date, "%Y-%m-%d")
             end = datetime.strptime(self.config.end_date, "%Y-%m-%d")
 
@@ -487,33 +494,15 @@ class MLBacktestEngine:
             start = start.replace(tzinfo=timezone.utc)
             end = end.replace(tzinfo=timezone.utc)
 
-            logger.info(f"Fetching {self.config.symbol} data from {start} to {end}")
+            logger.info(f"Fetching {self.config.symbol} data from {start} to {end} via {provider}")
 
-            bars = adapter.get_bars(
-                symbol=self.config.symbol,
-                start=start,
-                end=end,
-                timeframe=self.config.timeframe,
-            )
+            if provider == "massive":
+                df = self._fetch_from_massive(start, end)
+            else:
+                df = self._fetch_from_alpaca(start, end)
 
-            if not bars:
+            if df.empty:
                 raise ValueError(f"No data returned for {self.config.symbol}")
-
-            # Convert to DataFrame
-            df = pd.DataFrame([
-                {
-                    'timestamp': bar.timestamp,
-                    'open': bar.open,
-                    'high': bar.high,
-                    'low': bar.low,
-                    'close': bar.close,
-                    'volume': bar.volume,
-                }
-                for bar in bars
-            ])
-
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-            df = df.sort_values('timestamp').reset_index(drop=True)
 
             logger.info(f"Fetched {len(df)} bars for {self.config.symbol}")
             return df
@@ -521,6 +510,128 @@ class MLBacktestEngine:
         except Exception as e:
             logger.error(f"Error fetching historical data: {e}")
             raise
+
+    def _select_data_provider(self) -> str:
+        """Select data provider based on config and available credentials."""
+        provider = self.config.data_provider
+
+        if provider == "auto":
+            # Try Massive first, fall back to Alpaca
+            if os.getenv("MASSIVE_API_ENABLED", "").lower() == "true" and os.getenv("MASSIVE_API_KEY"):
+                return "massive"
+            elif os.getenv("ALPACA_API_KEY") and os.getenv("ALPACA_SECRET_KEY"):
+                return "alpaca"
+            else:
+                raise ValueError(
+                    "No data provider available. Set MASSIVE_API_ENABLED=true with MASSIVE_API_KEY, "
+                    "or set ALPACA_API_KEY and ALPACA_SECRET_KEY environment variables."
+                )
+
+        return provider
+
+    def _fetch_from_massive(self, start: datetime, end: datetime) -> pd.DataFrame:
+        """Fetch historical data from Massive."""
+        from engines.inputs.massive_market_adapter import MassiveMarketDataAdapter
+
+        adapter = MassiveMarketDataAdapter()
+
+        bars = adapter.get_bars(
+            symbol=self.config.symbol,
+            start=start,
+            end=end,
+            timeframe=self.config.timeframe,
+        )
+
+        if not bars:
+            return pd.DataFrame()
+
+        # Convert to DataFrame
+        df = pd.DataFrame([
+            {
+                'timestamp': bar.timestamp,
+                'open': bar.open,
+                'high': bar.high,
+                'low': bar.low,
+                'close': bar.close,
+                'volume': bar.volume,
+            }
+            for bar in bars
+        ])
+
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df = df.sort_values('timestamp').reset_index(drop=True)
+
+        # Optionally fetch options data for enhanced engine signals
+        if self.config.use_options_data:
+            self._options_data = self._fetch_massive_options(start, end)
+        else:
+            self._options_data = None
+
+        return df
+
+    def _fetch_from_alpaca(self, start: datetime, end: datetime) -> pd.DataFrame:
+        """Fetch historical data from Alpaca."""
+        from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
+
+        adapter = AlpacaMarketDataAdapter()
+
+        bars = adapter.get_bars(
+            symbol=self.config.symbol,
+            start=start,
+            end=end,
+            timeframe=self.config.timeframe,
+        )
+
+        if not bars:
+            return pd.DataFrame()
+
+        # Convert to DataFrame
+        df = pd.DataFrame([
+            {
+                'timestamp': bar.timestamp,
+                'open': bar.open,
+                'high': bar.high,
+                'low': bar.low,
+                'close': bar.close,
+                'volume': bar.volume,
+            }
+            for bar in bars
+        ])
+
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df = df.sort_values('timestamp').reset_index(drop=True)
+
+        self._options_data = None  # Alpaca doesn't provide comprehensive options data
+
+        return df
+
+    def _fetch_massive_options(self, start: datetime, end: datetime) -> Optional[pd.DataFrame]:
+        """Fetch historical options data from Massive for enhanced signals."""
+        try:
+            from engines.inputs.massive_options_adapter import MassiveOptionsAdapter
+
+            adapter = MassiveOptionsAdapter()
+            if not adapter.client:
+                logger.info("Massive options adapter not available")
+                return None
+
+            # Get options flow features for ML
+            options_df = adapter.get_options_features_for_ml(
+                symbol=self.config.symbol,
+                start=start,
+                end=end,
+                timeframe=self.config.timeframe.lower().replace("day", "day"),
+            )
+
+            if options_df is not None and not options_df.empty:
+                logger.info(f"Fetched {len(options_df)} options data points")
+                return options_df
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"Could not fetch options data: {e}")
+            return None
 
     def compute_consensus(
         self,
