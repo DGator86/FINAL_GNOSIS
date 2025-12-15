@@ -6,6 +6,9 @@ from datetime import datetime
 from math import exp
 from typing import Any, Dict, List, Tuple
 
+import numpy as np
+import statsmodels.api as sm
+
 from loguru import logger
 
 from engines.inputs.options_chain_adapter import OptionsChainAdapter
@@ -72,7 +75,7 @@ class HedgeEngineV3:
         liquidity_friction = self._estimate_liquidity_friction(chain)
 
         pressure_up, pressure_down, pressure_net = self._directional_pressures(chain)
-        elasticity = self._compute_elasticity(gamma_pressure, vanna_pressure)
+        elasticity, directional_elasticity = self._compute_elasticity(chain, gamma_pressure, vanna_pressure)
         movement_energy = self._movement_energy(pressure_net, elasticity)
         energy_asymmetry = self._energy_asymmetry(pressure_up, pressure_down)
 
@@ -121,6 +124,7 @@ class HedgeEngineV3:
             liquidity_friction=liquidity_friction,
             adaptive_weights=self.weight_state,
             confidence=confidence,
+            directional_elasticity=directional_elasticity,
         )
 
     def _dealer_gamma_sign(self, chain) -> float:
@@ -163,10 +167,57 @@ class HedgeEngineV3:
         )
         return pressure_up, pressure_down, pressure_up - pressure_down
 
-    def _compute_elasticity(self, gamma_pressure: float, vanna_pressure: float) -> float:
+    def _compute_elasticity(
+        self, chain, gamma_pressure: float, vanna_pressure: float
+    ) -> Tuple[float, Dict[str, float]]:
+        """Enhanced elasticity using IMH + flow regression and OI weighting."""
+
         self._update_weights(gamma_pressure, vanna_pressure)
-        elasticity = max(0.1, gamma_pressure * self.weight_state["gamma"] + vanna_pressure * self.weight_state["vanna"])
-        return self._adaptive_smoothing("elasticity", elasticity)
+        base_elasticity = max(
+            0.1,
+            gamma_pressure * self.weight_state["gamma"] + vanna_pressure * self.weight_state["vanna"],
+        )
+
+        # Flow multiplier via OLS on ledger data (Inelastic Markets Hypothesis)
+        ledger_flows = self.config.get("ledger_flows", [])
+        flow_multiplier = 0.0
+        if len(ledger_flows) >= 5:
+            try:
+                volumes = np.array([item.get("flow", 0.0) for item in ledger_flows])
+                returns = np.array([item.get("return", 0.0) for item in ledger_flows])
+                X = sm.add_constant(volumes)
+                model = sm.OLS(returns, X).fit()
+                flow_multiplier = float(model.params[-1])
+            except Exception as exc:  # pragma: no cover
+                logger.debug(f"Flow regression failed: {exc}")
+
+        elasticity = base_elasticity * (1 + flow_multiplier)
+
+        # Open interest distribution weighting
+        total_oi = sum(getattr(c, "open_interest", 0.0) for c in chain) or 1.0
+        weighted_elasticity = 0.0
+        for contract in chain:
+            oi_weight = getattr(contract, "open_interest", 0.0) / total_oi
+            greek_pressure = abs(getattr(contract, "gamma", 0.0) * getattr(contract, "delta", 0.0))
+            weighted_elasticity += oi_weight * greek_pressure
+        elasticity += weighted_elasticity
+
+        # Directional splits for calls vs puts
+        up_elasticity = self._directional_elasticity(chain, option_type="call")
+        down_elasticity = self._directional_elasticity(chain, option_type="put")
+        directional = {"up": up_elasticity, "down": down_elasticity}
+
+        smoothed = self._adaptive_smoothing("elasticity", elasticity)
+        return smoothed, directional
+
+    def _directional_elasticity(self, chain, option_type: str) -> float:
+        filtered = [c for c in chain if getattr(c, "option_type", "") == option_type]
+        if not filtered:
+            return 0.0
+        total_oi = sum(getattr(c, "open_interest", 0.0) for c in filtered) or 1.0
+        pressures = [abs(getattr(c, "gamma", 0.0) * getattr(c, "delta", 0.0)) for c in filtered]
+        weights = [getattr(c, "open_interest", 0.0) / total_oi for c in filtered]
+        return float(np.dot(weights, pressures))
 
     def _movement_energy(self, pressure_net: float, elasticity: float) -> float:
         return abs(pressure_net) / elasticity if elasticity > 0 else 0.0

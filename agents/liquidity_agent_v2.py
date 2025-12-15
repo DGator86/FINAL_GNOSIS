@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 from loguru import logger
 
 from agents.confidence_builder import TimeframeSignal
@@ -32,12 +33,13 @@ class LiquidityAgentV2:
         """Generate suggestion based on liquidity snapshot (backward compatibility)."""
         if not pipeline_result.liquidity_snapshot:
             return None
-        
+
         snapshot = pipeline_result.liquidity_snapshot
-        
-        if snapshot.confidence < self.min_confidence:
+
+        confidence = self._risk_adjust_confidence(snapshot)
+        if confidence < self.min_confidence:
             return None
-        
+
         # Determine direction from bid/ask imbalance
         if snapshot.bid_ask_imbalance > self.imbalance_threshold:
             direction = DirectionEnum.LONG
@@ -48,13 +50,19 @@ class LiquidityAgentV2:
         else:
             direction = DirectionEnum.NEUTRAL
             reasoning = "Balanced order book"
-        
+
+        liquidity_asymmetry = self._liquidity_asymmetry(snapshot)
+        confidence = self._bayesian_blend(confidence, liquidity_asymmetry)
+        reasoning = (
+            f"{reasoning} | asym={liquidity_asymmetry:.2f} | depth={snapshot.depth:.1f}"
+        )
+
         return AgentSuggestion(
             agent_name="liquidity_agent_v2",
             timestamp=timestamp,
             symbol=pipeline_result.symbol,
             direction=direction,
-            confidence=snapshot.confidence,
+            confidence=confidence,
             reasoning=reasoning,
             target_allocation=0.0,
         )
@@ -155,6 +163,23 @@ class LiquidityAgentV2:
             'has_strong_support': len(support_levels) >= 3,
             'has_strong_resistance': len(resistance_levels) >= 3
         }
+
+    def _liquidity_asymmetry(self, snapshot) -> float:
+        total_depth = max(snapshot.depth, 1e-6)
+        up_depth = getattr(snapshot, "bid_depth", snapshot.depth * 0.5)
+        down_depth = getattr(snapshot, "ask_depth", snapshot.depth * 0.5)
+        return (up_depth - down_depth) / total_depth
+
+    def _bayesian_blend(self, agent_conf: float, asymmetry: float) -> float:
+        prior = 0.6
+        ml_conf = min(1.0, abs(asymmetry))
+        return (agent_conf * prior + ml_conf * (1 - prior)) / 2
+
+    def _risk_adjust_confidence(self, snapshot) -> float:
+        hist_returns = getattr(snapshot, "historical_returns", [0.0])
+        position_size = getattr(snapshot, "position_size", 1.0)
+        var_factor = np.std(hist_returns) * position_size if hist_returns else 0.0
+        return max(0.0, snapshot.confidence * (1 - var_factor))
 
 
 __all__ = ['LiquidityAgentV2']
