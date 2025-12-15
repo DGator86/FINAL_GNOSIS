@@ -33,6 +33,11 @@ class HedgeSnapshot(BaseModel):
     charm_pressure: float = 0.0
     dealer_gamma_sign: float = 0.0
     regime: str = "neutral"
+    regime_features: Dict[str, float] = Field(default_factory=dict)
+    regime_probabilities: Dict[str, float] = Field(default_factory=dict)
+    jump_intensity: float = 0.0
+    liquidity_friction: float = 0.0
+    adaptive_weights: Dict[str, float] = Field(default_factory=dict)
     confidence: float = 0.5
 
 
