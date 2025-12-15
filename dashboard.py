@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
@@ -82,22 +83,25 @@ def get_broker():
 def load_ledger_data():
     """Load ledger data from JSONL file."""
     ledger_path = Path("data/ledger.jsonl")
-    
+    sqlite_path = ledger_path.with_suffix(".db")
+
+    if sqlite_path.exists():
+        try:
+            return pd.read_sql("SELECT * FROM ledger", f"sqlite:///{sqlite_path}")
+        except Exception:
+            pass
+
     if not ledger_path.exists():
         return pd.DataFrame()
-    
+
     records = []
     with open(ledger_path, 'r') as f:
         for line in f:
             try:
                 records.append(json.loads(line))
             except json.JSONDecodeError:
-                # Skip malformed JSON lines
                 continue
-    
-    if not records:
-        return pd.DataFrame()
-    
+
     return pd.DataFrame(records)
 
 
@@ -239,16 +243,21 @@ def main():
         
         st.markdown("---")
         st.markdown("### 📊 Quick Actions")
-        
+
         symbol = st.text_input("Symbol", value="SPY")
-        
+        risk_level = st.slider("Risk Level", 0.1, 1.0, 0.5, 0.1)
+
         if st.button("🔍 Run Analysis", type="primary"):
             with st.spinner("Running pipeline..."):
                 try:
                     config = load_config()
+                    config["risk_level"] = risk_level
                     runner = build_pipeline(symbol, config)
                     result = runner.run_once(datetime.now())
+                    st.session_state["last_result"] = result
                     st.success(f"✅ Analysis complete for {symbol}")
+                    if result.hedge_snapshot and result.hedge_snapshot.movement_energy > 50:
+                        st.warning("High Movement Energy Alert! Potential Squeeze.")
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
         
@@ -445,7 +454,21 @@ def main():
                         st.metric("Impact Cost", f"{l.impact_cost:.4f}%")
                 
                 st.markdown("---")
-                
+
+                ledger_df = load_ledger_data()
+                if not ledger_df.empty and "timestamp" in ledger_df.columns:
+                    try:
+                        ledger_df["timestamp"] = pd.to_datetime(ledger_df["timestamp"])
+                        fig = px.line(
+                            ledger_df,
+                            x="timestamp",
+                            y=ledger_df.get("elasticity", ledger_df.get("elasticity_snapshot.elasticity", None)),
+                            title="Market Elasticity",
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    except Exception:
+                        pass
+
                 col1, col2 = st.columns(2)
                 
                 with col1:

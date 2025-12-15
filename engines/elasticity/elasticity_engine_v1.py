@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from loguru import logger
 
 from engines.inputs.market_data_adapter import MarketDataAdapter
+from engines.hedge.hedge_engine_v3 import HedgeEngineV3
+from schemas.core_schemas import HedgeSnapshot
 from schemas.core_schemas import ElasticitySnapshot
 
 
@@ -18,7 +20,12 @@ class ElasticityEngineV1:
     Analyzes market volatility and trend characteristics.
     """
     
-    def __init__(self, market_adapter: MarketDataAdapter, config: Dict[str, Any]):
+    def __init__(
+        self,
+        market_adapter: MarketDataAdapter,
+        config: Dict[str, Any],
+        hedge_engine: Optional[HedgeEngineV3] = None,
+    ):
         """
         Initialize Elasticity Engine.
         
@@ -28,6 +35,7 @@ class ElasticityEngineV1:
         """
         self.market_adapter = market_adapter
         self.config = config
+        self.hedge_engine = hedge_engine
         logger.info("ElasticityEngineV1 initialized")
     
     def run(self, symbol: str, timestamp: datetime) -> ElasticitySnapshot:
@@ -44,6 +52,17 @@ class ElasticityEngineV1:
         logger.debug(f"Running ElasticityEngineV1 for {symbol} at {timestamp}")
         
         try:
+            if self.hedge_engine:
+                # Delegate to HedgeEngine elasticity when available to avoid divergence
+                hedge_snapshot: HedgeSnapshot = self.hedge_engine.run(symbol, timestamp)
+                return ElasticitySnapshot(
+                    timestamp=timestamp,
+                    symbol=symbol,
+                    volatility=hedge_snapshot.elasticity,
+                    volatility_regime=hedge_snapshot.regime,
+                    trend_strength=hedge_snapshot.energy_asymmetry,
+                )
+
             window = self.config.get("volatility_window", 20)
             bars = self.market_adapter.get_bars(
                 symbol,

@@ -107,6 +107,8 @@ class LSTMLookaheadSnapshot(BaseModel):
     direction_probs: Dict[str, float] = Field(default_factory=dict)  # {up, down, neutral} -> probability
     confidence: float = 0.0
     model_version: str = "lstm_lookahead_v1"
+    # NEW: optional forward-looking returns curve to preserve backward compatibility
+    forecast_returns: Optional[List[float]] = None
 
 
 class RegimeSimilaritySnapshot(BaseModel):
