@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any, Dict, Optional, Set
@@ -60,7 +61,14 @@ class PipelineRunner:
         self.ml_engine = ml_engine
         logger.info(f"PipelineRunner initialized for {symbol}")
     
-    def run_once(self, timestamp: datetime) -> PipelineResult:
+    async def _run_engine(self, name: str, engine, timestamp: datetime):
+        if hasattr(engine, "run_async") and asyncio.iscoroutinefunction(engine.run_async):
+            return name, await engine.run_async(self.symbol, timestamp)
+        loop = asyncio.get_running_loop()
+        snapshot = await loop.run_in_executor(None, engine.run, self.symbol, timestamp)
+        return name, snapshot
+
+    async def run_once_async(self, timestamp: datetime) -> PipelineResult:
         """
         Run a single pipeline iteration.
         
@@ -78,33 +86,21 @@ class PipelineRunner:
         )
         
         try:
-            engine_fns = {
-                "hedge": lambda: self.engines["hedge"].run(self.symbol, timestamp),
-                "liquidity": lambda: self.engines["liquidity"].run(self.symbol, timestamp),
-                "sentiment": lambda: self.engines["sentiment"].run(self.symbol, timestamp),
-                "elasticity": lambda: self.engines["elasticity"].run(self.symbol, timestamp),
-            }
-
-            with ThreadPoolExecutor(max_workers=len(self.engines)) as executor:
-                futures = {
-                    executor.submit(fn): name
-                    for name, fn in engine_fns.items()
-                    if name in self.engines
-                }
-                for future in as_completed(futures):
-                    name = futures[future]
-                    try:
-                        snapshot = future.result()
-                        if name == "hedge":
-                            result.hedge_snapshot = snapshot
-                        elif name == "liquidity":
-                            result.liquidity_snapshot = snapshot
-                        elif name == "sentiment":
-                            result.sentiment_snapshot = snapshot
-                        elif name == "elasticity":
-                            result.elasticity_snapshot = snapshot
-                    except Exception as exc:
-                        logger.error(f"Error running {name} engine: {exc}")
+            engine_names = [name for name in ["hedge", "liquidity", "sentiment", "elasticity"] if name in self.engines]
+            tasks = [self._run_engine(name, self.engines[name], timestamp) for name in engine_names]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for name, snapshot in results:
+                if isinstance(snapshot, Exception):
+                    logger.error(f"Error running {name} engine: {snapshot}")
+                    continue
+                if name == "hedge":
+                    result.hedge_snapshot = snapshot
+                elif name == "liquidity":
+                    result.liquidity_snapshot = snapshot
+                elif name == "sentiment":
+                    result.sentiment_snapshot = snapshot
+                elif name == "elasticity":
+                    result.elasticity_snapshot = snapshot
 
             # Run ML enhancement engine (e.g., LSTM lookahead predictions)
             # Can be MLEnhancementEngine (composite) or LSTMPredictionEngine (specialized)
@@ -200,5 +196,10 @@ class PipelineRunner:
             
         except Exception as e:
             logger.error(f"Pipeline error for {self.symbol}: {e}")
-        
+
         return result
+
+    def run_once(self, timestamp: datetime) -> PipelineResult:
+        """Synchronous wrapper for environments not using asyncio."""
+
+        return asyncio.run(self.run_once_async(timestamp))

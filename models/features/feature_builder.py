@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 
@@ -573,6 +574,11 @@ class EnhancedFeatureBuilder:
         """
         features = pd.DataFrame(index=range(len(options_df)))
 
+        # Graph-derived features to capture strike/OI topology
+        graph_feats = self._graph_metrics(options_df)
+        for key, value in graph_feats.items():
+            features[key] = value
+
         # =====================================================================
         # Core Put-Call Ratio Features
         # =====================================================================
@@ -789,6 +795,36 @@ class EnhancedFeatureBuilder:
             features['options_sentiment'] = sentiment_score / n_components
 
         return features
+
+    def _graph_metrics(self, options_df: pd.DataFrame) -> Dict[str, float]:
+        """Construct strike graph centrality metrics for OI diffusion."""
+
+        if options_df.empty or 'strike' not in options_df.columns:
+            return {}
+
+        graph = nx.Graph()
+        strikes = options_df['strike'].to_numpy()
+        oi_series = options_df.get('open_interest', pd.Series([1.0] * len(options_df)))
+
+        for strike, oi in zip(strikes, oi_series):
+            graph.add_node(float(strike), weight=float(oi))
+
+        sorted_nodes = sorted(zip(strikes, oi_series), key=lambda x: x[0])
+        for (strike_a, oi_a), (strike_b, oi_b) in zip(sorted_nodes, sorted_nodes[1:]):
+            proximity = 1.0 / (abs(float(strike_a) - float(strike_b)) + 1e-3)
+            similarity = 1.0 / (abs(float(oi_a) - float(oi_b)) + 1.0)
+            graph.add_edge(float(strike_a), float(strike_b), weight=proximity * similarity)
+
+        centrality = nx.degree_centrality(graph)
+        values = list(centrality.values())
+        if not values:
+            return {}
+
+        return {
+            "graph_centrality_mean": float(np.mean(values)),
+            "graph_centrality_max": float(np.max(values)),
+            "graph_density": float(nx.density(graph)),
+        }
     
     def _post_process_features(self, features: pd.DataFrame) -> pd.DataFrame:
         """Post-processing: handle NaN, remove correlated, normalize"""

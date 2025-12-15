@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from math import exp
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 import numpy as np
 import statsmodels.api as sm
@@ -43,6 +43,9 @@ class HedgeEngineV3:
             "gamma": config.get("gamma_weight", 0.6),
             "vanna": config.get("vanna_weight", 0.4),
         }
+        self.ledger_history: Iterable[Dict[str, Any]] | None = config.get(
+            "ledger_history", None
+        )
         logger.info("HedgeEngineV3 initialized with adaptive regime detection")
     
     def run(self, symbol: str, timestamp: datetime) -> HedgeSnapshot:
@@ -179,14 +182,14 @@ class HedgeEngineV3:
         )
 
         # Flow multiplier via OLS on ledger data (Inelastic Markets Hypothesis)
-        ledger_flows = self.config.get("ledger_flows", [])
+        ledger_flows = self._load_flow_history()
         flow_multiplier = 0.0
         if len(ledger_flows) >= 5:
             try:
                 volumes = np.array([item.get("flow", 0.0) for item in ledger_flows])
-                returns = np.array([item.get("return", 0.0) for item in ledger_flows])
+                prices = np.array([item.get("price", 0.0) for item in ledger_flows])
                 X = sm.add_constant(volumes)
-                model = sm.OLS(returns, X).fit()
+                model = sm.OLS(prices, X).fit()
                 flow_multiplier = float(model.params[-1])
             except Exception as exc:  # pragma: no cover
                 logger.debug(f"Flow regression failed: {exc}")
@@ -198,7 +201,9 @@ class HedgeEngineV3:
         weighted_elasticity = 0.0
         for contract in chain:
             oi_weight = getattr(contract, "open_interest", 0.0) / total_oi
-            greek_pressure = abs(getattr(contract, "gamma", 0.0) * getattr(contract, "delta", 0.0))
+            greek_pressure = abs(
+                getattr(contract, "gamma", 0.0) * getattr(contract, "delta", 0.0)
+            )
             weighted_elasticity += oi_weight * greek_pressure
         elasticity += weighted_elasticity
 
@@ -218,6 +223,22 @@ class HedgeEngineV3:
         pressures = [abs(getattr(c, "gamma", 0.0) * getattr(c, "delta", 0.0)) for c in filtered]
         weights = [getattr(c, "open_interest", 0.0) / total_oi for c in filtered]
         return float(np.dot(weights, pressures))
+
+    def _load_flow_history(self) -> List[Dict[str, Any]]:
+        """Load recent ledger-derived flows for regression multiplier.
+
+        Supports either a pre-loaded iterable on config or a callable that returns
+        a sequence of flow dictionaries. Only the most recent 30 are retained to
+        avoid stale effects.
+        """
+
+        source = self.ledger_history or self.config.get("ledger_flows", [])
+        try:
+            flows = list(source() if callable(source) else source)
+            return flows[-30:]
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug(f"Failed to load ledger flow history: {exc}")
+            return []
 
     def _movement_energy(self, pressure_net: float, elasticity: float) -> float:
         return abs(pressure_net) / elasticity if elasticity > 0 else 0.0
