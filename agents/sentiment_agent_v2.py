@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 from loguru import logger
 
 from agents.confidence_builder import TimeframeSignal
@@ -35,7 +36,8 @@ class SentimentAgentV2:
         
         snapshot = pipeline_result.sentiment_snapshot
         
-        if snapshot.confidence < self.min_confidence:
+        confidence = self._risk_adjust_confidence(snapshot)
+        if confidence < self.min_confidence:
             return None
         
         # Determine direction from sentiment score
@@ -54,7 +56,7 @@ class SentimentAgentV2:
             timestamp=timestamp,
             symbol=pipeline_result.symbol,
             direction=direction,
-            confidence=snapshot.confidence,
+            confidence=confidence,
             reasoning=reasoning,
             target_allocation=0.0,
         )
@@ -96,7 +98,7 @@ class SentimentAgentV2:
             strength = min(1.0, abs(snapshot.sentiment_score))
             
             # Confidence from snapshot
-            confidence = snapshot.confidence
+            confidence = self._risk_adjust_confidence(snapshot)
             
             signal = TimeframeSignal(
                 timeframe=timeframe,
@@ -166,7 +168,7 @@ class SentimentAgentV2:
             for tf in ['1Hour', '4Hour', '1Day']
             if tf in scores
         )
-        
+
         if short_term_bullish and long_term_bearish:
             return {
                 "has_divergence": True,
@@ -174,8 +176,17 @@ class SentimentAgentV2:
                 "confidence": 0.7,
                 "reasoning": "Short-term bullish, long-term bearish - potential reversal down"
             }
-        
+
         return {"has_divergence": False, "type": None}
+
+    def _risk_adjust_confidence(self, snapshot) -> float:
+        hist_returns = getattr(snapshot, "historical_returns", [0.0])
+        position_size = getattr(snapshot, "position_size", 1.0)
+        var_factor = np.std(hist_returns) * position_size if hist_returns else 0.0
+        agent_conf = snapshot.confidence
+        ml_conf = min(1.0, abs(getattr(snapshot, "mtf_score", agent_conf)))
+        blended = (agent_conf * 0.6 + ml_conf * 0.4) * (1 - var_factor)
+        return max(0.0, blended)
 
 
 __all__ = ['SentimentAgentV2']

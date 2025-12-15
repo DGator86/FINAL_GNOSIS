@@ -39,6 +39,7 @@ class HedgeSnapshot(BaseModel):
     liquidity_friction: float = 0.0
     adaptive_weights: Dict[str, float] = Field(default_factory=dict)
     confidence: float = 0.5
+    directional_elasticity: Dict[str, float] = Field(default_factory=dict)
 
 
 class LiquiditySnapshot(BaseModel):
@@ -51,6 +52,12 @@ class LiquiditySnapshot(BaseModel):
     volume: float = 0.0
     depth: float = 0.0
     impact_cost: float = 0.0
+    # NEW: optional v2+ liquidity metrics
+    impact_lambda: Optional[float] = None
+    friction: Optional[float] = None
+    forecast_depth: List[float] = Field(default_factory=list)
+    percentile_score: Optional[float] = None
+    liquidity_friction: Optional[float] = None
 
 
 class SentimentSnapshot(BaseModel):
@@ -63,6 +70,9 @@ class SentimentSnapshot(BaseModel):
     flow_sentiment: float = 0.0
     technical_sentiment: float = 0.0
     confidence: float = 0.5
+    intensity: Optional[float] = None
+    relevance: Optional[float] = None
+    mtf_score: Optional[float] = None
 
 
 class ElasticitySnapshot(BaseModel):
