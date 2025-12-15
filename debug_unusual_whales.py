@@ -10,17 +10,26 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Import the credentials module that the main system uses
+from config.credentials import get_unusual_whales_token
+
 def test_unusual_whales():
     """Test Unusual Whales API and show raw response."""
 
-    # Get token
-    token = os.getenv("UNUSUAL_WHALES_API_KEY") or os.getenv("UNUSUAL_WHALES_TOKEN")
+    # Get token using same method as main system
+    token = get_unusual_whales_token()
 
     if not token:
-        print("❌ No UNUSUAL_WHALES_API_KEY found in .env")
+        print("❌ No Unusual Whales token available")
         return
 
-    print(f"✅ Token found: {token[:8]}...{token[-4:]}")
+    # Check source
+    env_token = os.getenv("UNUSUAL_WHALES_API_TOKEN") or os.getenv("UNUSUAL_WHALES_TOKEN") or os.getenv("UNUSUAL_WHALES_API_KEY")
+    if env_token:
+        print(f"✅ Token from .env: {token[:8]}...{token[-4:]}")
+    else:
+        print(f"⚠️  Using HARDCODED default token: {token[:8]}...{token[-4:]}")
+        print("   (This may have limited access - consider adding your own key to .env)")
 
     base_url = "https://api.unusualwhales.com"
     headers = {
