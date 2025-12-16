@@ -255,8 +255,15 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
         try:
             response = self.client.get(url)
             response.raise_for_status()
-            payload = response.json() or {}
-            data_list = payload.get("data", [])
+            payload = response.json()
+
+            # Handle both formats: {"data": [...]} or direct list [...]
+            if isinstance(payload, list):
+                data_list = payload
+            elif isinstance(payload, dict):
+                data_list = payload.get("data", [])
+            else:
+                data_list = []
 
             # Aggregate flow data from recent trades
             call_volume = 0
