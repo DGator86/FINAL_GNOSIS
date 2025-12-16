@@ -77,14 +77,62 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             self.timeout,
         )
 
+    def _fetch_greeks(self, symbol: str) -> Dict[str, Dict[str, float]]:
+        """Fetch Greeks from the separate /greeks endpoint and index by option_symbol."""
+        greeks_map: Dict[str, Dict[str, float]] = {}
+
+        try:
+            url = f"{self.base_url}/api/stock/{symbol}/greeks"
+            response = self.client.get(url)
+            response.raise_for_status()
+            payload = response.json()
+            greeks_data = payload.get("data", [])
+
+            for row in greeks_data:
+                # Each row has call and put Greeks for a strike/expiry combo
+                call_symbol = row.get("call_option_symbol", "")
+                put_symbol = row.get("put_option_symbol", "")
+
+                if call_symbol:
+                    greeks_map[call_symbol] = {
+                        "delta": float(row.get("call_delta", 0) or 0),
+                        "gamma": float(row.get("call_gamma", 0) or 0),
+                        "theta": float(row.get("call_theta", 0) or 0),
+                        "vega": float(row.get("call_vega", 0) or 0),
+                        "rho": float(row.get("call_rho", 0) or 0),
+                        "charm": float(row.get("call_charm", 0) or 0),
+                        "vanna": float(row.get("call_vanna", 0) or 0),
+                    }
+
+                if put_symbol:
+                    greeks_map[put_symbol] = {
+                        "delta": float(row.get("put_delta", 0) or 0),
+                        "gamma": float(row.get("put_gamma", 0) or 0),
+                        "theta": float(row.get("put_theta", 0) or 0),
+                        "vega": float(row.get("put_vega", 0) or 0),
+                        "rho": float(row.get("put_rho", 0) or 0),
+                        "charm": float(row.get("put_charm", 0) or 0),
+                        "vanna": float(row.get("put_vanna", 0) or 0),
+                    }
+
+            logger.debug(f"Fetched Greeks for {len(greeks_map)} option symbols")
+            return greeks_map
+
+        except Exception as error:
+            logger.warning(f"Could not fetch Greeks for {symbol}: {error}")
+            return {}
+
     def get_chain(self, symbol: str, timestamp: datetime, expiration: Optional[str] = None) -> List[OptionContract]:
-        """Get options chain for a symbol using the public contracts endpoint."""
+        """Get options chain for a symbol, merging contracts with Greeks from separate endpoints."""
 
         if not self.client:
             raise RuntimeError("Unusual Whales client not initialized; real data is required")
 
+        # Step 1: Fetch contracts from /option-contracts
         url = f"{self.base_url}/api/stock/{symbol}/option-contracts"
-        params = {"expiration_date": expiration, "limit": 500} if expiration else {"limit": 500}
+        params = {"limit": 500}
+        if expiration:
+            params["expiration_date"] = expiration
 
         try:
             response = self.client.get(url, params=params)
@@ -99,13 +147,19 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                 )
                 return []
 
+            # Step 2: Fetch Greeks from /greeks endpoint (separate API call)
+            greeks_map = self._fetch_greeks(symbol)
+
+            # Step 3: Parse contracts and merge with Greeks
             contracts: List[OptionContract] = []
             for option in contracts_data:
                 try:
-                    symbol_str = option.get("symbol") or option.get("occ_symbol")
+                    # The API returns "option_symbol" not "symbol" or "occ_symbol"
+                    symbol_str = option.get("option_symbol") or option.get("symbol") or option.get("occ_symbol")
                     if not symbol_str:
                         continue
 
+                    symbol_str = symbol_str.strip()
                     parsed = OptionUtils.parse_occ_symbol(symbol_str.replace(" ", ""))
                     exp_date = parsed["expiration"]
                     option_type = parsed["option_type"]
@@ -115,12 +169,15 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                     ask = float(option.get("nbbo_ask", option.get("ask", 0)) or 0)
                     last = float(option.get("last_price", option.get("last", 0)) or 0)
                     volume = float(option.get("volume", 0) or 0)
-                    oi = float(option.get("open_interest", option.get("open_interest", 0)) or 0)
+                    oi = float(option.get("open_interest", 0) or 0)
                     iv = float(option.get("implied_volatility", option.get("iv", 0)) or 0)
+
+                    # Look up Greeks by option_symbol
+                    greeks = greeks_map.get(symbol_str, {})
 
                     contracts.append(
                         OptionContract(
-                            symbol=symbol_str.strip(),
+                            symbol=symbol_str,
                             strike=strike,
                             expiration=exp_date,
                             option_type=option_type,
@@ -130,11 +187,11 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                             volume=volume,
                             open_interest=oi,
                             implied_volatility=iv,
-                            delta=float(option.get("delta", 0) or 0),
-                            gamma=float(option.get("gamma", 0) or 0),
-                            theta=float(option.get("theta", 0) or 0),
-                            vega=float(option.get("vega", 0) or 0),
-                            rho=float(option.get("rho", 0) or 0),
+                            delta=greeks.get("delta", 0.0),
+                            gamma=greeks.get("gamma", 0.0),
+                            theta=greeks.get("theta", 0.0),
+                            vega=greeks.get("vega", 0.0),
+                            rho=greeks.get("rho", 0.0),
                         )
                     )
                 except (ValueError, KeyError) as error:
@@ -142,7 +199,8 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                     continue
 
             if contracts:
-                logger.info(f"✅ Retrieved {len(contracts)} option contracts for {symbol}")
+                n_with_greeks = sum(1 for c in contracts if c.delta != 0 or c.gamma != 0)
+                logger.info(f"✅ Retrieved {len(contracts)} option contracts for {symbol} ({n_with_greeks} with Greeks)")
                 return contracts
 
             logger.warning(
