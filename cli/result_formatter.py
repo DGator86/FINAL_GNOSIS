@@ -9,6 +9,8 @@ from schemas.core_schemas import (
     ElasticitySnapshot,
     AgentSuggestion,
     TradeIdea,
+    ExpectedMove,
+    PriceRange,
 )
 
 
@@ -359,6 +361,10 @@ def _format_trade_idea(idea: TradeIdea, num: int) -> List[str]:
         reasoning = idea.reasoning[:200] + "..." if len(idea.reasoning) > 200 else idea.reasoning
         lines.append(f"    Rationale: {reasoning}")
 
+    # Expected Move Range (Industry Standard)
+    if idea.expected_move:
+        lines.extend(_format_expected_move(idea.expected_move, idea.entry_price))
+
     # Options details if present
     if idea.options_request:
         opt = idea.options_request
@@ -370,3 +376,130 @@ def _format_trade_idea(idea: TradeIdea, num: int) -> List[str]:
             lines.append(f"      Expiry: {opt.expiration}")
 
     return lines
+
+
+def _format_expected_move(em: ExpectedMove, entry_price: Optional[float] = None) -> List[str]:
+    """
+    Format expected move with industry-standard probability ranges.
+
+    Displays the same information professional traders see:
+    - 1σ (68% probability): Most likely range
+    - 2σ (95% probability): Extended range
+    - 3σ (99.7% probability): Extreme/tail risk range
+    """
+    lines = []
+    lines.append("")
+    lines.append("    ┌─────────────────────────────────────────────────────────┐")
+    lines.append("    │  EXPECTED PRICE MOVEMENT (Industry Standard)            │")
+    lines.append("    └─────────────────────────────────────────────────────────┘")
+
+    # Method and timeframe
+    method_names = {
+        "iv_based": "Implied Volatility (Options Market)",
+        "atr_based": "Average True Range (Historical)",
+        "regime_estimate": "Volatility Regime Estimate",
+        "hybrid": "Hybrid (IV + ATR)",
+    }
+    method = method_names.get(em.calculation_method, em.calculation_method)
+    lines.append(f"    Method: {method}")
+    lines.append(f"    Timeframe: {em.timeframe}")
+
+    # IV metrics if available
+    if em.implied_volatility:
+        lines.append(f"    Implied Volatility: {em.implied_volatility:.1%} annualized")
+    if em.historical_volatility:
+        lines.append(f"    Historical Volatility: {em.historical_volatility:.1%}")
+    if em.iv_rank is not None:
+        iv_rank_meaning = ""
+        if em.iv_rank > 80:
+            iv_rank_meaning = " (HIGH - options expensive)"
+        elif em.iv_rank > 50:
+            iv_rank_meaning = " (elevated)"
+        elif em.iv_rank < 20:
+            iv_rank_meaning = " (LOW - options cheap)"
+        lines.append(f"    IV Rank: {em.iv_rank:.0f}th percentile{iv_rank_meaning}")
+
+    lines.append("")
+    lines.append("    PROBABILITY RANGES:")
+
+    # 1-Sigma (68% probability)
+    if em.one_sigma:
+        lines.append("")
+        lines.append("    68% Probability (1-sigma, most likely):")
+        lines.append(f"      Range: ${em.one_sigma.lower:.2f} - ${em.one_sigma.upper:.2f}")
+        move_pct = em.expected_move_pct if em.expected_move_pct else 0
+        lines.append(f"      Expected Move: +/- {move_pct:.2f}%")
+        lines.append(f"        -> Price will likely stay within this range")
+
+    # 2-Sigma (95% probability)
+    if em.two_sigma:
+        lines.append("")
+        lines.append("    95% Probability (2-sigma, extended range):")
+        lines.append(f"      Range: ${em.two_sigma.lower:.2f} - ${em.two_sigma.upper:.2f}")
+        if em.expected_move_pct:
+            lines.append(f"      Expected Move: +/- {em.expected_move_pct * 2:.2f}%")
+        lines.append(f"        -> Only 5% chance of moving outside this range")
+
+    # 3-Sigma (99.7% probability)
+    if em.three_sigma:
+        lines.append("")
+        lines.append("    99.7% Probability (3-sigma, tail risk):")
+        lines.append(f"      Range: ${em.three_sigma.lower:.2f} - ${em.three_sigma.upper:.2f}")
+        if em.expected_move_pct:
+            lines.append(f"      Expected Move: +/- {em.expected_move_pct * 3:.2f}%")
+        lines.append(f"        -> Extreme move territory (black swan)")
+
+    # Directional probabilities
+    if em.upside_probability and em.downside_probability:
+        lines.append("")
+        lines.append("    DIRECTIONAL BIAS:")
+        if em.upside_probability > 0.55:
+            lines.append(f"      Upside favored: {em.upside_probability:.0%} probability of moving higher")
+        elif em.downside_probability > 0.55:
+            lines.append(f"      Downside favored: {em.downside_probability:.0%} probability of moving lower")
+        else:
+            lines.append(f"      Neutral: {em.upside_probability:.0%} up / {em.downside_probability:.0%} down")
+
+    # Visual price ladder
+    if em.one_sigma and entry_price:
+        lines.append("")
+        lines.append("    PRICE LADDER:")
+        lines.append(_create_price_ladder(em, entry_price))
+
+    return lines
+
+
+def _create_price_ladder(em: ExpectedMove, entry_price: float) -> str:
+    """Create a visual ASCII price ladder showing probability zones."""
+    lines = []
+
+    # Build ladder from highest to lowest price
+    prices = []
+
+    if em.three_sigma:
+        prices.append((em.three_sigma.upper, "3σ Upper (99.7%)", "---"))
+    if em.two_sigma:
+        prices.append((em.two_sigma.upper, "2σ Upper (95%)", "==="))
+    if em.one_sigma:
+        prices.append((em.one_sigma.upper, "1σ Upper (68%)", "###"))
+
+    prices.append((entry_price, "ENTRY", ">>>"))
+
+    if em.one_sigma:
+        prices.append((em.one_sigma.lower, "1σ Lower (68%)", "###"))
+    if em.two_sigma:
+        prices.append((em.two_sigma.lower, "2σ Lower (95%)", "==="))
+    if em.three_sigma:
+        prices.append((em.three_sigma.lower, "3σ Lower (99.7%)", "---"))
+
+    # Sort by price descending
+    prices.sort(key=lambda x: x[0], reverse=True)
+
+    # Create visual
+    result = []
+    for price, label, marker in prices:
+        pct_from_entry = ((price - entry_price) / entry_price) * 100
+        pct_str = f"{pct_from_entry:+.1f}%" if price != entry_price else "0.0%"
+        result.append(f"      ${price:>8.2f} {marker} {label:<20} ({pct_str})")
+
+    return "\n".join(result)

@@ -15,6 +15,7 @@ from schemas.core_schemas import (
     StrategyType,
     TradeIdea,
 )
+from trade.expected_move_calculator import ExpectedMoveCalculator
 
 
 class TradeAgentV1:
@@ -31,6 +32,14 @@ class TradeAgentV1:
         self.market_adapter = market_adapter
         self.config = config
         self.broker = broker
+
+        # Initialize expected move calculator
+        self.expected_move_calculator = ExpectedMoveCalculator(
+            options_adapter=options_adapter,
+            market_adapter=market_adapter,
+            config=config,
+        )
+
         mode = "enabled" if self.broker else "disabled"
         logger.info(f"TradeAgentV1 initialized (execution {mode})")
     
@@ -71,9 +80,31 @@ class TradeAgentV1:
         max_size = self.config.get("max_position_size", 10000.0)
         risk_per_trade = self.config.get("risk_per_trade", 0.02)
         size = max_size * risk_per_trade * confidence
-        
+
+        # Get current price for expected move calculation
+        spot_price = self._get_current_price(pipeline_result.symbol)
+
+        # Calculate expected move (industry standard)
+        expected_move = self.expected_move_calculator.calculate(
+            symbol=pipeline_result.symbol,
+            spot_price=spot_price,
+            pipeline_result=pipeline_result,
+            dte=1,  # 1-day expected move
+        )
+
+        # Calculate stop loss and take profit from expected move
+        stop_loss = None
+        take_profit = None
+        if expected_move and expected_move.one_sigma:
+            if direction == DirectionEnum.LONG:
+                stop_loss = expected_move.one_sigma.lower
+                take_profit = expected_move.two_sigma.upper if expected_move.two_sigma else expected_move.one_sigma.upper
+            elif direction == DirectionEnum.SHORT:
+                stop_loss = expected_move.one_sigma.upper
+                take_profit = expected_move.two_sigma.lower if expected_move.two_sigma else expected_move.one_sigma.lower
+
         reasoning = f"{strategy_type.value} strategy based on consensus ({confidence:.2f})"
-        
+
         trade_idea = TradeIdea(
             timestamp=timestamp,
             symbol=pipeline_result.symbol,
@@ -81,7 +112,11 @@ class TradeAgentV1:
             direction=direction,
             confidence=confidence,
             size=size,
+            entry_price=spot_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
             reasoning=reasoning,
+            expected_move=expected_move,
         )
 
         return [trade_idea]
@@ -149,6 +184,23 @@ class TradeAgentV1:
 
         self.config["risk_per_trade"] = risk_per_trade
         logger.info(f"TradeAgent risk_per_trade updated to {risk_per_trade:.3f}")
+
+    def _get_current_price(self, symbol: str) -> float:
+        """Get current price from broker quote or fallback sources."""
+        # Try broker quote first
+        if self.broker:
+            try:
+                quote = self.broker.get_latest_quote(symbol)
+                if quote:
+                    bid = quote.get("bid") or 0
+                    ask = quote.get("ask") or 0
+                    if bid and ask:
+                        return (bid + ask) / 2
+            except Exception:
+                pass
+
+        # Fall back to market data
+        return self._fallback_price(symbol)
 
     def _fallback_price(self, symbol: str) -> float:
         """Use market adapter to obtain a last known price as sizing fallback."""

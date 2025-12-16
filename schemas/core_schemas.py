@@ -204,6 +204,61 @@ class OptionsOrderRequest(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
 
 
+class PriceRange(BaseModel):
+    """Price range with lower, center, and upper bounds."""
+
+    lower: float
+    center: float
+    upper: float
+
+    @property
+    def width(self) -> float:
+        """Total width of the range."""
+        return self.upper - self.lower
+
+    @property
+    def width_pct(self) -> float:
+        """Width as percentage of center price."""
+        if self.center == 0:
+            return 0.0
+        return self.width / self.center
+
+
+class ExpectedMove(BaseModel):
+    """
+    Industry-standard expected price movement projections.
+
+    Based on options market implied volatility (IV) and statistical analysis.
+    Uses standard deviation bands (sigma levels) for probability ranges:
+    - 1σ (68.2% probability): ~2/3 of outcomes fall within this range
+    - 2σ (95.4% probability): ~19/20 of outcomes fall within this range
+    - 3σ (99.7% probability): Nearly all outcomes fall within this range
+    """
+
+    # Core expected move (1-sigma, 68% probability)
+    one_sigma: PriceRange
+
+    # Extended ranges
+    two_sigma: Optional[PriceRange] = None  # 95% probability
+    three_sigma: Optional[PriceRange] = None  # 99.7% probability
+
+    # Metadata
+    calculation_method: str = "iv_based"  # "iv_based", "atr_based", "hybrid"
+    timeframe: str = "1D"  # "1D", "1W", "expiration"
+    implied_volatility: Optional[float] = None  # Annualized IV used
+    historical_volatility: Optional[float] = None  # HV for comparison
+    iv_rank: Optional[float] = None  # IV percentile (0-100)
+    days_to_expiry: Optional[int] = None  # DTE if options-based
+
+    # Risk metrics
+    expected_move_pct: float = 0.0  # Single value (1σ move as %)
+    max_pain: Optional[float] = None  # Options max pain price
+
+    # Directional bias from skew
+    upside_probability: Optional[float] = None  # P(above center)
+    downside_probability: Optional[float] = None  # P(below center)
+
+
 class TradeIdea(BaseModel):
     """Trade idea from the trade agent."""
 
@@ -218,6 +273,9 @@ class TradeIdea(BaseModel):
     take_profit: Optional[float] = None
     reasoning: str = ""
     options_request: Optional[OptionsOrderRequest] = None
+
+    # Expected price movement range (industry standard)
+    expected_move: Optional[ExpectedMove] = None
 
 
 class WatchlistEntry(BaseModel):
