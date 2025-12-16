@@ -249,24 +249,50 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
         if not self.client:
             raise RuntimeError("Unusual Whales client not initialized")
 
-        params = {"start": timestamp.strftime("%Y-%m-%d"), "end": timestamp.strftime("%Y-%m-%d")}
-        url = f"{self.base_url}/api/stock/{symbol}/flow"
+        # Use flow-recent endpoint (the /flow endpoint doesn't exist)
+        url = f"{self.base_url}/api/stock/{symbol}/flow-recent"
 
         try:
-            response = self.client.get(url, params=params)
+            response = self.client.get(url)
             response.raise_for_status()
             payload = response.json() or {}
-            data = payload.get("data", {}) or payload
+            data_list = payload.get("data", [])
+
+            # Aggregate flow data from recent trades
+            call_volume = 0
+            put_volume = 0
+            call_premium = 0
+            put_premium = 0
+            sweep_count = 0
+            total_count = 0
+
+            for item in data_list if isinstance(data_list, list) else []:
+                total_count += 1
+                opt_type = item.get("option_type", "").lower()
+                volume = float(item.get("volume", 0) or 0)
+                premium = float(item.get("premium", 0) or 0)
+
+                if opt_type == "call":
+                    call_volume += volume
+                    call_premium += premium
+                elif opt_type == "put":
+                    put_volume += volume
+                    put_premium += premium
+
+                if item.get("is_sweep") or item.get("trade_type", "").lower() == "sweep":
+                    sweep_count += 1
+
+            sweep_ratio = sweep_count / total_count if total_count > 0 else 0
 
             return {
-                "call_volume": float(data.get("call_volume", 0) or 0),
-                "put_volume": float(data.get("put_volume", 0) or 0),
-                "call_premium": float(data.get("call_premium", 0) or 0),
-                "put_premium": float(data.get("put_premium", 0) or 0),
-                "sweep_ratio": float(data.get("sweep_ratio", data.get("sweep_percentage", 0)) or 0),
+                "call_volume": call_volume,
+                "put_volume": put_volume,
+                "call_premium": call_premium,
+                "put_premium": put_premium,
+                "sweep_ratio": sweep_ratio,
             }
         except httpx.HTTPError as error:
-            logger.error(f"Error fetching Unusual Whales flow for {symbol}: {error}")
+            logger.debug(f"Could not fetch flow for {symbol}: {error}")
             return {}
 
     def _log_once(self, symbol: str, url: str, params: dict, status_code: int, detail: str) -> None:
@@ -419,6 +445,65 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
         except Exception as error:
             logger.error(f"Error getting IV for {symbol}: {error}")
             return None
+
+    def get_volatility_metrics(self, symbol: str) -> Optional[Dict[str, float]]:
+        """
+        Get comprehensive volatility metrics for expected move calculations.
+
+        Returns dict with:
+        - atm_iv: At-the-money implied volatility (annualized)
+        - iv_rank: IV percentile rank (0-100)
+        - hv_20: 20-day historical volatility
+        """
+        if not self.client or not self.api_token:
+            return None
+
+        metrics: Dict[str, float] = {}
+
+        # Get IV rank from dedicated endpoint
+        try:
+            url = f"{self.base_url}/api/stock/{symbol}/iv-rank"
+            response = self.client.get(url)
+            response.raise_for_status()
+            data = response.json().get("data", {})
+
+            if isinstance(data, dict):
+                # IV rank is typically 0-100
+                iv_rank = data.get("iv_rank") or data.get("rank")
+                if iv_rank is not None:
+                    metrics["iv_rank"] = float(iv_rank)
+
+                # Sometimes ATM IV is included
+                atm_iv = data.get("iv") or data.get("implied_volatility")
+                if atm_iv is not None:
+                    metrics["atm_iv"] = float(atm_iv)
+        except httpx.HTTPStatusError:
+            pass  # Endpoint may not be available
+        except Exception:
+            pass
+
+        # Get ATM IV from options chain if not already obtained
+        if "atm_iv" not in metrics:
+            iv = self.get_implied_volatility(symbol)
+            if iv is not None:
+                metrics["atm_iv"] = iv
+
+        # Get historical volatility from realized volatility endpoint
+        try:
+            url = f"{self.base_url}/api/stock/{symbol}/volatility/realized"
+            response = self.client.get(url, params={"timeframe": "20d"})
+            response.raise_for_status()
+            data = response.json().get("data")
+
+            if isinstance(data, list) and data:
+                first = data[0]
+                hv = first.get("historical_volatility") or first.get("realized_volatility")
+                if hv is not None:
+                    metrics["hv_20"] = float(hv)
+        except Exception:
+            pass
+
+        return metrics if metrics else None
 
     def close(self) -> None:
         if self.client:
