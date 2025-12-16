@@ -181,8 +181,8 @@ def run_once(
     
     if dry_run:
         typer.echo("🔍 DRY-RUN MODE: No orders will be executed")
-    
-    typer.echo(result)
+
+    typer.echo(format_pipeline_result(result))
 
 
 @app.command()
