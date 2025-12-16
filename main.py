@@ -189,27 +189,31 @@ def live_loop(
     symbol: str = typer.Option("SPY", help="Ticker symbol to trade."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Dry-run mode (no actual execution)"),
     interval: int = typer.Option(60, "--interval", help="Loop interval in seconds (default: 60)"),
+    warmup_days: int = typer.Option(30, "--warmup-days", help="Days of history for ML warmup"),
 ) -> None:
     """
     Run autonomous trading loop with continuous execution.
-    
+
     This command starts the autonomous trading system that:
-    1. Runs the full pipeline every {interval} seconds
-    2. Generates trade ideas based on current market conditions
-    3. Executes trades on Alpaca Paper (if --dry-run not specified)
-    4. Tracks predictions and learns from outcomes
-    5. Self-optimizes based on performance
-    
+    1. Warms up with historical data for ML models (30+ bars)
+    2. Runs the full pipeline every {interval} seconds
+    3. Generates trade ideas based on current market conditions
+    4. Executes trades on Alpaca Paper (if --dry-run not specified)
+    5. Tracks predictions and learns from outcomes
+    6. Self-optimizes based on performance
+
     Example:
         # Dry-run to preview without execution
         python main.py live-loop --symbol SPY --dry-run
-        
+
         # Start live paper trading
         python main.py live-loop --symbol SPY
-        
+
         # Custom interval (5 minutes)
         python main.py live-loop --symbol SPY --interval 300
     """
+    from gnosis.timeframe_manager import TimeframeManager
+
     config = load_config()
     paper_mode = get_alpaca_paper_setting()
 
@@ -231,12 +235,20 @@ def live_loop(
             raise typer.Exit(1)
     else:
         typer.echo("🔍 DRY-RUN MODE: No actual execution")
-    
+
+    # Initialize market adapter and warmup
+    typer.echo(f"\n📚 Warming up with {warmup_days} days of historical data...")
+    market_adapter = create_market_data_adapter(prefer_real=True)
+    tfm = TimeframeManager(max_bars=500)
+    bars_loaded = tfm.warmup_from_adapter(market_adapter, symbol, warmup_days)
+    counts = tfm.get_bar_counts()
+    typer.echo(f"✅ Loaded {bars_loaded} bars | 1D: {counts.get('1Day', 0)} | 1H: {counts.get('1Hour', 0)}")
+
     # Build pipeline with broker
-    adapters = {}
+    adapters = {"market": market_adapter}
     if broker:
         adapters["broker"] = broker
-    
+
     runner = build_pipeline(symbol, config, adapters)
     
     typer.echo("\n" + "="*80)
@@ -723,6 +735,198 @@ def cli_train_ml(
     train_score, test_score = model.train(df)
     model.save(model_path)
     typer.echo(f"Saved model to {model_path} (train={train_score:.3f}, test={test_score:.3f})")
+
+
+@app.command("mtf-scan")
+def multi_timeframe_scan(
+    top_n: int = typer.Option(10, "--top", help="Number of symbols to scan"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Dry-run mode (no execution)"),
+    warmup_days: int = typer.Option(30, "--warmup-days", help="Days of history for ML warmup"),
+    universe: str = typer.Option("default", "--universe", help="Symbol universe"),
+) -> None:
+    """
+    Multi-timeframe continuous scanner (1m, 5m, 15m, 30m, 1hr, 4hr, 1day, 3day).
+
+    This command:
+    1. Warms up with historical data for ML models (30+ bars)
+    2. Scans the universe across all timeframes simultaneously
+    3. Generates signals at each timeframe boundary
+    4. Builds multi-timeframe confluence for higher confidence trades
+
+    Timeframes: 1Min, 5Min, 15Min, 30Min, 1Hour, 4Hour, 1Day, 3Day
+
+    Example:
+        # Scan top 10 symbols across all timeframes
+        python main.py mtf-scan --top 10
+
+        # Dry-run with 60 days warmup
+        python main.py mtf-scan --warmup-days 60 --dry-run
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from engines.scanner import get_dynamic_universe
+    from gnosis.timeframe_manager import TimeframeManager
+
+    config = load_config()
+    paper_mode = get_alpaca_paper_setting()
+
+    # Determine universe
+    if universe == "default":
+        typer.echo("📊 Ranking universe using dynamic scanner...")
+        symbol_list = get_dynamic_universe(config.scanner.model_dump(), top_n)
+        typer.echo(f"✅ Selected top {len(symbol_list)} symbols")
+    else:
+        symbol_list = [s.strip().upper() for s in universe.split(',')]
+
+    # Initialize broker
+    broker = None
+    if not dry_run:
+        try:
+            typer.echo(f"🔌 Connecting to Alpaca {'Paper' if paper_mode else 'Live'}...")
+            broker = create_broker_adapter(paper=paper_mode, prefer_real=True)
+            account = broker.get_account()
+            typer.echo(f"✅ Connected | Portfolio: ${account.portfolio_value:,.2f}")
+        except Exception as e:
+            typer.echo(f"❌ Alpaca connection failed: {e}", err=True)
+            raise typer.Exit(1)
+    else:
+        typer.echo("🔍 DRY-RUN MODE")
+
+    # Initialize adapters
+    market_adapter = create_market_data_adapter(prefer_real=True)
+    options_adapter = create_options_adapter(prefer_real=True)
+
+    # Create TimeframeManager for each symbol
+    timeframe_managers: Dict[str, TimeframeManager] = {}
+
+    typer.echo("\n" + "=" * 80)
+    typer.echo("🚀 MULTI-TIMEFRAME SCANNER")
+    typer.echo("=" * 80)
+    typer.echo(f"   Symbols: {len(symbol_list)}")
+    typer.echo(f"   Timeframes: 1Min, 5Min, 15Min, 30Min, 1Hour, 4Hour, 1Day, 3Day")
+    typer.echo(f"   Warmup: {warmup_days} days")
+    typer.echo("=" * 80)
+
+    # Warmup phase - fetch historical data for ML models
+    typer.echo("\n📚 WARMUP PHASE: Loading historical data...")
+    with ThreadPoolExecutor(max_workers=min(5, len(symbol_list))) as executor:
+        futures = {}
+        for symbol in symbol_list:
+            tfm = TimeframeManager(max_bars=500)
+            timeframe_managers[symbol] = tfm
+            futures[executor.submit(tfm.warmup_from_adapter, market_adapter, symbol, warmup_days)] = symbol
+
+        for future in as_completed(futures):
+            symbol = futures[future]
+            try:
+                bars_loaded = future.result()
+                counts = timeframe_managers[symbol].get_bar_counts()
+                typer.echo(f"   ✓ {symbol}: {bars_loaded} bars | 1D: {counts.get('1Day', 0)} | 1H: {counts.get('1Hour', 0)}")
+            except Exception as e:
+                typer.echo(f"   ❌ {symbol}: Warmup failed - {e}")
+
+    typer.echo("\n✅ Warmup complete!")
+    typer.echo("=" * 80)
+
+    # Build pipeline runners for each symbol
+    adapters = {"broker": broker} if broker else {}
+    runners: Dict[str, PipelineRunner] = {}
+    for symbol in symbol_list:
+        runners[symbol] = build_pipeline(symbol, config, adapters)
+
+    # Scanning loop
+    typer.echo("\n🔄 Starting continuous multi-timeframe scanning...")
+    typer.echo("   Press Ctrl+C to stop\n")
+
+    iteration = 0
+    SCAN_INTERVALS = {
+        "1Min": 60,      # Run every minute
+        "5Min": 300,     # Run every 5 minutes
+        "15Min": 900,    # Run every 15 minutes
+        "30Min": 1800,   # Run every 30 minutes
+        "1Hour": 3600,   # Run every hour
+        "4Hour": 14400,  # Run every 4 hours
+        "1Day": 86400,   # Run daily
+        "3Day": 259200,  # Run every 3 days
+    }
+    last_run: Dict[str, float] = {tf: 0 for tf in SCAN_INTERVALS}
+
+    try:
+        while True:
+            iteration += 1
+            now = datetime.now(timezone.utc)
+            current_time = time.time()
+
+            # Determine which timeframes to run this iteration
+            timeframes_to_run = []
+            for tf, interval in SCAN_INTERVALS.items():
+                if current_time - last_run[tf] >= interval:
+                    timeframes_to_run.append(tf)
+                    last_run[tf] = current_time
+
+            if timeframes_to_run:
+                typer.echo(f"\n[{now.strftime('%H:%M:%S')}] Iteration #{iteration}")
+                typer.echo(f"   Timeframes: {', '.join(timeframes_to_run)}")
+                typer.echo("-" * 60)
+
+                # Run pipeline for each symbol
+                all_signals = []
+                for symbol in symbol_list:
+                    try:
+                        result = runners[symbol].run_once(now)
+
+                        if result.trade_ideas:
+                            for idea in result.trade_ideas:
+                                signal_info = {
+                                    "symbol": symbol,
+                                    "direction": idea.direction.value if hasattr(idea.direction, 'value') else str(idea.direction),
+                                    "confidence": idea.confidence,
+                                    "timeframes": timeframes_to_run,
+                                }
+                                all_signals.append(signal_info)
+
+                                if idea.confidence >= 0.7:
+                                    typer.echo(
+                                        f"   🎯 {symbol} | {signal_info['direction'].upper()} "
+                                        f"| Conf: {idea.confidence:.1%}"
+                                    )
+                    except Exception as e:
+                        typer.echo(f"   ❌ {symbol}: {e}")
+
+                # Summary
+                if all_signals:
+                    high_conf = [s for s in all_signals if s["confidence"] >= 0.7]
+                    typer.echo(f"\n   📊 Signals: {len(all_signals)} total | {len(high_conf)} high-confidence")
+
+                    # Show broker status
+                    if broker and not dry_run:
+                        try:
+                            account = broker.get_account()
+                            typer.echo(f"   💰 Portfolio: ${account.portfolio_value:,.2f}")
+                        except Exception:
+                            pass
+                else:
+                    typer.echo("   No signals this iteration")
+
+            # Sleep until next minute boundary
+            time.sleep(60 - (time.time() % 60))
+
+    except KeyboardInterrupt:
+        typer.echo("\n\n" + "=" * 80)
+        typer.echo("🛑 MULTI-TIMEFRAME SCANNER STOPPED")
+        typer.echo("=" * 80)
+        typer.echo(f"   Total Iterations: {iteration}")
+
+        if broker and not dry_run:
+            try:
+                account = broker.get_account()
+                positions = broker.get_positions()
+                typer.echo(f"\n   Final Portfolio: ${account.portfolio_value:,.2f}")
+                typer.echo(f"   Open Positions: {len(positions)}")
+            except Exception:
+                pass
+
+        typer.echo("=" * 80)
 
 
 if __name__ == "__main__":

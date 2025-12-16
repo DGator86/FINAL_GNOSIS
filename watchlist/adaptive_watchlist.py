@@ -109,7 +109,7 @@ class AdaptiveWatchlist:
             "elasticity_regime_volatility_edge": (elasticity.volatility if elasticity else 0.0),
             "gamma_exposure_imbalance": (hedge.gamma_pressure if hedge else 0.0),
             "liquidity_friction_score": 1 - ((liquidity.bid_ask_spread or 0.0) / 1.0) if liquidity else 0.0,
-            "recent_options_flow_momentum": (hedge.data.get("options_flow_momentum", 0.0) if hedge else 0.0),
+            "recent_options_flow_momentum": (hedge.options_flow_momentum if hedge else 0.0),
             "average_daily_volume": liquidity.volume if liquidity else 0.0,
             "elasticity_percentile": hedge.elasticity if hedge else 0.5,
             "dealer_gamma_sign": hedge.dealer_gamma_sign if hedge else 0.0,

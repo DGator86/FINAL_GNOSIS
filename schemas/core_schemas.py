@@ -34,6 +34,7 @@ class HedgeSnapshot(BaseModel):
     dealer_gamma_sign: float = 0.0
     regime: str = "neutral"
     confidence: float = 0.5
+    options_flow_momentum: float = 0.0  # Flow momentum from options activity
 
 
 class LiquiditySnapshot(BaseModel):

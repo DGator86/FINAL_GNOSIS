@@ -64,6 +64,7 @@ class TimeframeManager:
         "1Hour": 60,
         "4Hour": 240,
         "1Day": 1440,  # minutes in a day
+        "3Day": 4320,  # 3 days in minutes
     }
 
     def __init__(self, max_bars: int = 200):
@@ -194,7 +195,18 @@ class TimeframeManager:
             agg_bar = OHLCV.aggregate(self.aggregation_buffer["1Day"])
             self.bars["1Day"].append(agg_bar)
             self.aggregation_buffer["1Day"] = []
+            self._aggregate_3day(agg_bar)
             logger.debug(f"Aggregated 1Day bar | {agg_bar.timestamp}")
+
+    def _aggregate_3day(self, bar: OHLCV) -> None:
+        """Aggregate to 3-day bars."""
+        self.aggregation_buffer["3Day"].append(bar)
+
+        if len(self.aggregation_buffer["3Day"]) >= 3:
+            agg_bar = OHLCV.aggregate(self.aggregation_buffer["3Day"][:3])
+            self.bars["3Day"].append(agg_bar)
+            self.aggregation_buffer["3Day"] = self.aggregation_buffer["3Day"][3:]
+            logger.debug(f"Aggregated 3Day bar | {agg_bar.timestamp}")
 
     def get_bars(self, timeframe: str, count: Optional[int] = None) -> List[OHLCV]:
         """Get bars for a specific timeframe.
@@ -258,6 +270,69 @@ class TimeframeManager:
             if tf != "1Min":
                 self.aggregation_buffer[tf].clear()
         logger.info("TimeframeManager cleared")
+
+    def warmup_from_adapter(
+        self,
+        market_adapter: Any,
+        symbol: str,
+        lookback_days: int = 90,
+    ) -> int:
+        """Pre-fetch historical bars to warmup all timeframes.
+
+        Args:
+            market_adapter: Market data adapter with get_bars method
+            symbol: Symbol to fetch bars for
+            lookback_days: Number of days of history to fetch
+
+        Returns:
+            Number of 1-minute bars loaded
+        """
+        from datetime import timedelta
+
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(days=lookback_days)
+
+        logger.info(f"Warming up TimeframeManager for {symbol} | {lookback_days} days of history")
+
+        try:
+            # Fetch 1-minute bars for detailed timeframes
+            bars_1m = market_adapter.get_bars(symbol, start_time, end_time, timeframe="1Min")
+            if bars_1m:
+                for bar in bars_1m:
+                    bar_dict = {
+                        "t_event": bar.timestamp,
+                        "open": float(bar.open),
+                        "high": float(bar.high),
+                        "low": float(bar.low),
+                        "close": float(bar.close),
+                        "volume": float(bar.volume),
+                    }
+                    self.add_1min_bar(bar_dict)
+                logger.info(f"Loaded {len(bars_1m)} 1-minute bars for {symbol}")
+
+            # Also fetch daily bars directly for accurate daily/3day data
+            bars_daily = market_adapter.get_bars(symbol, start_time, end_time, timeframe="1Day")
+            if bars_daily:
+                for bar in bars_daily:
+                    ohlcv = OHLCV(
+                        timestamp=bar.timestamp,
+                        open=float(bar.open),
+                        high=float(bar.high),
+                        low=float(bar.low),
+                        close=float(bar.close),
+                        volume=float(bar.volume),
+                    )
+                    self.bars["1Day"].append(ohlcv)
+                    self._aggregate_3day(ohlcv)
+                logger.info(f"Loaded {len(bars_daily)} daily bars for {symbol}")
+
+            counts = self.get_bar_counts()
+            logger.info(f"Warmup complete | bars: {counts}")
+            return len(bars_1m) if bars_1m else 0
+
+        except Exception as e:
+            logger.error(f"Failed to warmup TimeframeManager for {symbol}: {e}")
+            return 0
 
 
 __all__ = ["TimeframeManager", "OHLCV"]

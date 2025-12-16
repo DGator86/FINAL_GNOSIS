@@ -244,27 +244,61 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             raise
 
     def get_flow_snapshot(self, symbol: str, timestamp: datetime) -> Dict[str, float]:
-        """Retrieve aggregated options flow for sentiment scoring."""
+        """Retrieve aggregated options flow for sentiment scoring.
+
+        Uses /api/stock/{symbol}/flow-alerts endpoint and aggregates the data.
+        """
 
         if not self.client:
             raise RuntimeError("Unusual Whales client not initialized")
 
-        params = {"start": timestamp.strftime("%Y-%m-%d"), "end": timestamp.strftime("%Y-%m-%d")}
-        url = f"{self.base_url}/api/stock/{symbol}/flow"
+        # Use the working flow-alerts endpoint
+        url = f"{self.base_url}/api/stock/{symbol}/flow-alerts"
+        params = {"limit": 100}
 
         try:
             response = self.client.get(url, params=params)
             response.raise_for_status()
             payload = response.json() or {}
-            data = payload.get("data", {}) or payload
+            alerts = payload.get("data", []) or []
+
+            # Aggregate flow data from alerts
+            call_volume = 0.0
+            put_volume = 0.0
+            call_premium = 0.0
+            put_premium = 0.0
+            sweep_count = 0
+            total_count = len(alerts) or 1
+
+            for alert in alerts:
+                is_call = alert.get("is_call", alert.get("option_type", "").upper() == "CALL")
+                volume = float(alert.get("volume", alert.get("size", 0)) or 0)
+                premium = float(alert.get("premium", alert.get("total_premium", 0)) or 0)
+                is_sweep = alert.get("is_sweep", alert.get("trade_type", "").upper() == "SWEEP")
+
+                if is_call:
+                    call_volume += volume
+                    call_premium += premium
+                else:
+                    put_volume += volume
+                    put_premium += premium
+
+                if is_sweep:
+                    sweep_count += 1
 
             return {
-                "call_volume": float(data.get("call_volume", 0) or 0),
-                "put_volume": float(data.get("put_volume", 0) or 0),
-                "call_premium": float(data.get("call_premium", 0) or 0),
-                "put_premium": float(data.get("put_premium", 0) or 0),
-                "sweep_ratio": float(data.get("sweep_ratio", data.get("sweep_percentage", 0)) or 0),
+                "call_volume": call_volume,
+                "put_volume": put_volume,
+                "call_premium": call_premium,
+                "put_premium": put_premium,
+                "sweep_ratio": sweep_count / total_count if total_count > 0 else 0.0,
             }
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code == 404:
+                logger.debug(f"No flow alerts for {symbol} (404)")
+                return {}
+            logger.warning(f"Error fetching Unusual Whales flow for {symbol}: {error}")
+            return {}
         except httpx.HTTPError as error:
             logger.error(f"Error fetching Unusual Whales flow for {symbol}: {error}")
             return {}
