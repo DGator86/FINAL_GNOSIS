@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
+from adapters.alpaca_market_adapter import AlpacaMarketDataAdapter
 from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
 
 

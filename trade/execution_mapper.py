@@ -53,7 +53,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Sequence
 
-from engines.inputs.options_chain_adapter import OptionContract
+from adapters.options_chain_adapter import OptionContract
 
 
 @dataclass

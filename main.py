@@ -17,15 +17,15 @@ from agents.sentiment_agent_v1 import SentimentAgentV1
 from config import AppConfig, load_config
 from engines.elasticity.elasticity_engine_v1 import ElasticityEngineV1
 from engines.hedge.hedge_engine_v3 import HedgeEngineV3
-from engines.inputs.adapter_factory import (
+from adapters.adapter_factory import (
     create_broker_adapter,
     create_market_data_adapter,
     create_news_adapter,
     create_options_adapter,
 )
-from engines.inputs.market_data_adapter import MarketDataAdapter
-from engines.inputs.news_adapter import NewsAdapter
-from engines.inputs.options_chain_adapter import OptionsChainAdapter
+from adapters.market_data_adapter import MarketDataAdapter
+from adapters.news_adapter import NewsAdapter
+from adapters.options_chain_adapter import OptionsChainAdapter
 from engines.liquidity.liquidity_engine_v1 import LiquidityEngineV1
 from engines.ml import (
     AnomalyDetector,
@@ -34,7 +34,7 @@ from engines.ml import (
     KatsForecasterAdapter,
     MLEnhancementEngine,
 )
-from engines.orchestration.pipeline_runner import PipelineRunner
+from core.orchestration.pipeline_runner import PipelineRunner
 from engines.sentiment.processors import (
     FlowSentimentProcessor,
     NewsSentimentProcessor,
@@ -46,7 +46,7 @@ from feedback.adaptation_agent import AdaptationAgent
 from feedback.tracking_agent import TrackingAgent
 from ledger.ledger_store import LedgerStore
 from models.features.feature_builder import EnhancedFeatureBuilder, FeatureConfig
-from models.lookahead_model import LookaheadModel
+from models.predictors.lookahead_model import LookaheadModel
 from trade.trade_agent_v1 import TradeAgentV1
 from universe.watchlist_loader import load_active_watchlist
 from watchlist import AdaptiveWatchlist
@@ -74,7 +74,7 @@ def build_pipeline(
     flow_adapter = adapters.get("flow")
     if not flow_adapter and config.data_sources.unusual_whales_enabled:
         try:
-            from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+            from adapters.unusual_whales_adapter import UnusualWhalesAdapter
 
             flow_adapter = UnusualWhalesAdapter()
         except Exception:
@@ -672,7 +672,7 @@ def cli_download_data(
 ) -> None:
     """Download historical data using Massive.com REST client."""
 
-    from scripts.download_historical import download_bars, download_options
+    from examples.download_historical import download_bars, download_options
 
     start_dt = datetime.fromisoformat(start)
     end_dt = datetime.fromisoformat(end)

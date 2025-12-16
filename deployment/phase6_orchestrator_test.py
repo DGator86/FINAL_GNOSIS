@@ -21,7 +21,7 @@ from loguru import logger
 
 from brokers.alpaca_client import AlpacaClient
 from config.options_config_v2 import GNOSIS_V2_CONFIG
-from engines.orchestration import UnifiedOrchestrator
+from core.orchestration import UnifiedOrchestrator
 from models.options_contracts import EnhancedMarketData, OptionQuote, OptionsChain
 
 

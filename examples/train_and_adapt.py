@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from loguru import logger
 
 from models.features.feature_builder import EnhancedFeatureBuilder, FeatureConfig
-from models.lookahead_model import LookaheadModel
+from models.predictors.lookahead_model import LookaheadModel
 
 load_dotenv()
 

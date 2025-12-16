@@ -41,7 +41,7 @@ def test_unusual_whales():
     )
 
     try:
-        from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+        from adapters.unusual_whales_adapter import UnusualWhalesAdapter
 
         # Get API key
         api_key = _require_unusual_whales_key()

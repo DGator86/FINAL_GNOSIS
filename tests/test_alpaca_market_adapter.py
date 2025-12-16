@@ -8,7 +8,7 @@ os.environ.setdefault("ALPACA_SECRET_KEY", "test_secret")
 
 pytest.importorskip("loguru")
 
-from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
+from adapters.alpaca_market_adapter import AlpacaMarketDataAdapter
 
 
 class FakeBar:

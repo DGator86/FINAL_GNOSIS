@@ -45,26 +45,20 @@ The **Hedge Engine v3.0** represents the first production-grade implementation i
 }
 ```
 
-For complete documentation, see [`HEDGE_ENGINE_V3_IMPLEMENTATION.md`](./HEDGE_ENGINE_V3_IMPLEMENTATION.md).
+For complete documentation, see [`docs/HEDGE_ENGINE_V3_IMPLEMENTATION.md`](./docs/HEDGE_ENGINE_V3_IMPLEMENTATION.md).
 
 ---
 
 ## Directory Structure
 
-The canonical directory tree implemented here:
+The refactored directory tree emphasizes modularity and separation of concerns:
 
 ```
-V2---Gnosis/
+FINAL_GNOSIS/
 ├── README.md
-├── QUICKSTART.md
-├── QUICK_REFERENCE.md
-├── FINAL_SUMMARY.md
-├── IMPLEMENTATION_COMPLETE.md
-├── INDEX.md
-├── DELIVERABLES.txt
+├── main.py
 ├── pyproject.toml
 ├── requirements.txt
-├── main.py
 ├── config/
 │   ├── config.yaml
 │   ├── config_models.py
@@ -72,31 +66,48 @@ V2---Gnosis/
 ├── schemas/
 │   ├── __init__.py
 │   └── core_schemas.py
+├── adapters/                          # ⭐ Shared data input layer
+│   ├── __init__.py
+│   ├── adapter_factory.py
+│   ├── market_data_adapter.py
+│   ├── news_adapter.py
+│   ├── options_chain_adapter.py
+│   ├── stub_adapters.py
+│   ├── alpaca_market_adapter.py
+│   ├── unusual_whales_adapter.py
+│   └── massive_*.py                   # Massive.io adapters
 ├── engines/
 │   ├── __init__.py
 │   ├── base.py
-│   ├── inputs/
-│   │   ├── __init__.py
-│   │   ├── market_data_adapter.py
-│   │   ├── news_adapter.py
-│   │   ├── options_chain_adapter.py
-│   │   └── stub_adapters.py
 │   ├── hedge/
 │   │   ├── __init__.py
 │   │   └── hedge_engine_v3.py
 │   ├── liquidity/
 │   │   ├── __init__.py
-│   │   └── liquidity_engine_v1.py
+│   │   └── liquidity_engine_v*.py
 │   ├── sentiment/
 │   │   ├── __init__.py
 │   │   ├── processors.py
-│   │   └── sentiment_engine_v1.py
+│   │   └── sentiment_engine_v*.py
 │   ├── elasticity/
 │   │   ├── __init__.py
 │   │   └── elasticity_engine_v1.py
-│   └── orchestration/
+│   └── ml/
 │       ├── __init__.py
-│       └── pipeline_runner.py
+│       ├── forecasting.py
+│       └── enhancement_engine.py
+├── core/                              # ⭐ Control plane orchestration
+│   ├── __init__.py
+│   ├── orchestration/
+│   │   ├── __init__.py
+│   │   ├── pipeline_runner.py
+│   │   └── unified_orchestrator.py
+│   ├── feedback/
+│   │   ├── __init__.py
+│   │   └── adaptation_agent.py
+│   └── ledger/
+│       ├── __init__.py
+│       └── ledger_store.py
 ├── agents/
 │   ├── __init__.py
 │   ├── base.py
@@ -105,42 +116,72 @@ V2---Gnosis/
 │   └── sentiment_agent_v1.py
 ├── trade/
 │   ├── __init__.py
-│   └── trade_agent_v1.py
-├── models/
+│   └── trade_agent_v*.py
+├── models/                            # ⭐ Enhanced ML structure
 │   ├── __init__.py
-│   ├── feature_builder.py
-│   └── lookahead_model.py
-├── ledger/
-│   ├── __init__.py
-│   ├── ledger_store.py
-│   └── ledger_metrics.py
-├── feedback/
-│   ├── __init__.py
-│   └── feedback_engine.py
+│   ├── base.py
+│   ├── features/
+│   │   ├── __init__.py
+│   │   └── feature_builder.py
+│   ├── predictors/                    # All prediction models
+│   │   ├── __init__.py
+│   │   ├── lookahead_model.py
+│   │   ├── lstm_lookahead.py
+│   │   ├── time_series/
+│   │   │   └── lstm_forecaster.py
+│   │   ├── ensemble/
+│   │   │   └── xgboost_model.py
+│   │   └── rl_agents/
+│   │       └── dqn_agent.py
+│   └── trainers/                      # Training utilities
+│       ├── __init__.py
+│       └── hyperparameter_optimizer.py
 ├── backtest/
 │   ├── __init__.py
 │   └── runner.py
 ├── execution/
 │   ├── __init__.py
-│   ├── broker_adapter.py
+│   ├── broker_adapters/
+│   │   └── alpaca_*.py
 │   └── order_simulator.py
-├── ui/
+├── interfaces/                        # ⭐ User-facing layer
 │   ├── __init__.py
-│   └── dashboard.py
-├── scripts/
-│   ├── example_usage.py
-│   └── verify_integration.py
+│   ├── cli/
+│   │   ├── __init__.py
+│   │   ├── commands/
+│   │   └── pipeline_builder.py
+│   └── ui/
+│       ├── __init__.py
+│       └── dashboard.py
+├── examples/                          # ⭐ Merged scripts/examples
+│   ├── __init__.py
+│   ├── run_gnosis_backtest.py
+│   ├── terminal_dashboard.py
+│   └── *.py                          # Utility scripts
 ├── tests/
 │   ├── __init__.py
-│   ├── test_elasticity_engine_v1.py
-│   ├── test_hedge_engine_v3.py
-│   ├── test_liquidity_engine_v1.py
-│   ├── test_pipeline_smoke.py
-│   ├── test_sentiment_engine_v1.py
-│   └── test_schemas.py
+│   └── test_*.py
+├── docs/                              # ⭐ Consolidated documentation
+│   ├── README.md
+│   ├── QUICKSTART.md
+│   ├── HEDGE_ENGINE_V3_IMPLEMENTATION.md
+│   ├── DASHBOARD_GUIDE.md
+│   ├── guides/
+│   ├── implementation/
+│   └── *.md                          # All other documentation
 └── data/
     └── ledger.jsonl (created at runtime)
 ```
+
+### Key Structural Improvements
+
+1. **`adapters/`** - Top-level shared data adapters serving all components (engines, agents, models)
+2. **`core/`** - Centralized control plane with orchestration, feedback, and ledger
+3. **`models/predictors/`** - Unified prediction models (LSTM, XGBoost, RL agents)
+4. **`models/trainers/`** - Training and hyperparameter optimization utilities
+5. **`interfaces/`** - Clean separation of CLI and UI from core logic
+6. **`examples/`** - Consolidated utility scripts and examples
+7. **`docs/`** - All documentation in one place (except main README)
 
 ## 🚀 Quick Start
 
@@ -221,7 +262,7 @@ The enhanced dashboard provides:
 - 📜 **Trade History**: Historical pipeline executions
 - ⚙️ **Engine Metrics**: Performance tracking over time
 
-See [`DASHBOARD_GUIDE.md`](./DASHBOARD_GUIDE.md) for complete documentation.
+See [`docs/DASHBOARD_GUIDE.md`](./docs/DASHBOARD_GUIDE.md) for complete documentation.
 
 ---
 
@@ -241,20 +282,22 @@ The system connects to real trading APIs:
 - Options flow analysis
 - Implied volatility tracking
 
-The adapter factory automatically falls back to stub data if APIs are unavailable, ensuring the system always runs.
+The adapter factory (in `adapters/`) automatically falls back to stub data if APIs are unavailable, ensuring the system always runs.
 
 ## Testing
 
-```
+```bash
 pytest
 ```
 
-## Extending the Skeleton
+## Extending the Framework
 
-- Implement real adapters under `engines/inputs/` that conform to the provided protocols.
-- Replace analytics inside each engine with your production models while keeping output schemas intact.
-- Extend the trade agent with richer strategy selection or broker integration via `execution/broker_adapter.py`.
-- Plug an ML model into `models/lookahead_model.py` and feed predictions into agents/composer.
-- Integrate UI requirements inside `ui/dashboard.py` and expose metrics in real time.
+- **Adapters**: Implement new data sources in `adapters/` that conform to the provided protocols (MarketDataAdapter, OptionsChainAdapter, NewsAdapter).
+- **Engines**: Add analytics in `engines/` while maintaining output schemas defined in `schemas/`.
+- **Models**: Add ML models in `models/predictors/` and training scripts in `models/trainers/`.
+- **Orchestration**: Extend pipeline logic in `core/orchestration/` for multi-symbol or advanced workflows.
+- **Trade Logic**: Enhance strategy selection in `trade/` with broker integration via `execution/broker_adapters/`.
+- **UI**: Build dashboards in `interfaces/ui/` and CLI commands in `interfaces/cli/commands/`.
+- **Examples**: Add utility scripts to `examples/` for backtesting, analysis, and demonstrations.
 
-The repository serves as the authoritative reference for Super Gnosis / DHPE v3. Update both the documentation and implementation together to keep them in sync.
+The repository serves as the authoritative reference for Super Gnosis / DHPE v3. Update both the documentation (in `docs/`) and implementation together to keep them in sync.

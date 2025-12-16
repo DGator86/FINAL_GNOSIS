@@ -21,8 +21,8 @@ from dotenv import load_dotenv
 # Load environment
 load_dotenv()
 
-from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
-from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+from adapters.alpaca_market_adapter import AlpacaMarketDataAdapter
+from adapters.unusual_whales_adapter import UnusualWhalesAdapter
 from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
 
 

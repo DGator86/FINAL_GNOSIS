@@ -1,13 +1,13 @@
 """Orchestration package."""
 
-from engines.orchestration.pipeline_runner import PipelineRunner
-from engines.orchestration.strategy_selector import (
+from core.orchestration.pipeline_runner import PipelineRunner
+from core.orchestration.strategy_selector import (
     InstrumentDecision,
     InstrumentType,
     IntelligentStrategySelector,
     StrategyType,
 )
-from engines.orchestration.unified_orchestrator import (
+from core.orchestration.unified_orchestrator import (
     ExecutionResult,
     UnifiedOrchestrator,
 )

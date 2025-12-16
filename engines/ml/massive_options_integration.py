@@ -69,7 +69,7 @@ class MassiveOptionsMLIntegration:
             self.market_adapter = market_adapter
         else:
             try:
-                from engines.inputs.adapter_factory import create_market_data_adapter
+                from adapters.adapter_factory import create_market_data_adapter
                 self.market_adapter = create_market_data_adapter(provider="massive")
             except Exception as e:
                 logger.warning(f"Failed to create market adapter: {e}")
@@ -80,7 +80,7 @@ class MassiveOptionsMLIntegration:
             self.options_adapter = options_adapter
         else:
             try:
-                from engines.inputs.adapter_factory import create_massive_options_adapter
+                from adapters.adapter_factory import create_massive_options_adapter
                 self.options_adapter = create_massive_options_adapter()
             except Exception as e:
                 logger.warning(f"Failed to create options adapter: {e}")

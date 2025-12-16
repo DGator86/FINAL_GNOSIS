@@ -7,8 +7,8 @@ from typing import Any, Dict
 
 from loguru import logger
 
-from engines.inputs.market_data_adapter import MarketDataAdapter
-from engines.inputs.options_chain_adapter import OptionsChainAdapter
+from adapters.market_data_adapter import MarketDataAdapter
+from adapters.options_chain_adapter import OptionsChainAdapter
 from schemas.core_schemas import LiquiditySnapshot
 
 

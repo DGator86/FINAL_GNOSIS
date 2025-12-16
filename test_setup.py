@@ -218,7 +218,7 @@ def test_unusual_whales():
         pytest.skip("Unusual Whales live test disabled; set RUN_UW_LIVE=1 to enable")
 
     try:
-        from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+        from adapters.unusual_whales_adapter import UnusualWhalesAdapter
 
         # Try with configured key or test key
         uw_key = os.getenv("UNUSUAL_WHALES_API_KEY")

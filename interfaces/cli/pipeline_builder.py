@@ -12,14 +12,14 @@ from agents.sentiment_agent_v1 import SentimentAgentV1
 from config import AppConfig
 from engines.elasticity.elasticity_engine_v1 import ElasticityEngineV1
 from engines.hedge.hedge_engine_v3 import HedgeEngineV3
-from engines.inputs.adapter_factory import (
+from adapters.adapter_factory import (
     create_market_data_adapter,
     create_news_adapter,
     create_options_adapter,
 )
-from engines.inputs.market_data_adapter import MarketDataAdapter
-from engines.inputs.news_adapter import NewsAdapter
-from engines.inputs.options_chain_adapter import OptionsChainAdapter
+from adapters.market_data_adapter import MarketDataAdapter
+from adapters.news_adapter import NewsAdapter
+from adapters.options_chain_adapter import OptionsChainAdapter
 from engines.liquidity.liquidity_engine_v1 import LiquidityEngineV1
 from engines.ml import (
     AnomalyDetector,
@@ -28,7 +28,7 @@ from engines.ml import (
     KatsForecasterAdapter,
     MLEnhancementEngine,
 )
-from engines.orchestration.pipeline_runner import PipelineRunner
+from core.orchestration.pipeline_runner import PipelineRunner
 from engines.sentiment.processors import (
     FlowSentimentProcessor,
     NewsSentimentProcessor,

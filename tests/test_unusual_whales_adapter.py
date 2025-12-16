@@ -7,7 +7,7 @@ pytest.importorskip("loguru")
 
 import httpx
 
-from engines.inputs.unusual_whales_adapter import UnusualWhalesOptionsAdapter
+from adapters.unusual_whales_adapter import UnusualWhalesOptionsAdapter
 
 
 class FakeUWClient:

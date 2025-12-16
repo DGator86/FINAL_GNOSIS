@@ -3,7 +3,7 @@ import pytest
 
 pytest.importorskip("optuna")
 
-from models.hyperparameter_optimization import BayesianOptimizer, HyperparameterSpace
+from models.trainers.hyperparameter_optimization import BayesianOptimizer, HyperparameterSpace
 
 
 def _build_optimizer(n_initial_points: int = 2) -> BayesianOptimizer:

@@ -14,7 +14,7 @@ from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from loguru import logger
 
 from config.credentials import get_alpaca_credentials
-from engines.inputs.market_data_adapter import OHLCV, Quote
+from adapters.market_data_adapter import OHLCV, Quote
 
 
 class AlpacaMarketDataAdapter:

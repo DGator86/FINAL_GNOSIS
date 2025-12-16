@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from engines.inputs.market_data_adapter import MarketDataAdapter
+from adapters.market_data_adapter import MarketDataAdapter
 from engines.ml.anomaly import AnomalyDetector
 from engines.ml.curriculum import CurriculumRLEvaluator
 from engines.ml.forecasting import KatsForecasterAdapter

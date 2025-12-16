@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 import pandas as pd
 
-from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
+from adapters.alpaca_market_adapter import AlpacaMarketDataAdapter
 from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
 from gnosis.trading.ml_forecasting_agent import AgentSignal, MLForecastingAgent
 

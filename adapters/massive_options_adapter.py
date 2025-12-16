@@ -22,7 +22,7 @@ import polars as pl
 from loguru import logger
 
 from config.credentials import get_massive_api_keys, massive_api_enabled
-from engines.inputs.options_chain_adapter import OptionContract
+from adapters.options_chain_adapter import OptionContract
 
 
 @dataclass

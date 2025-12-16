@@ -16,9 +16,9 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from models.ensemble.xgboost_model import XGBoostEnsemble
-from models.time_series.gnosis_lstm_forecaster import GnosisLSTMForecaster
-from models.time_series.transformer_forecaster import TransformerForecaster
+from models.predictors.ensemble.xgboost_model import XGBoostEnsemble
+from models.predictors.time_series.gnosis_lstm_forecaster import GnosisLSTMForecaster
+from models.predictors.time_series.transformer_forecaster import TransformerForecaster
 
 
 @dataclass

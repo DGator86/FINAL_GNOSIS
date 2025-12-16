@@ -6,9 +6,9 @@ import random
 from datetime import datetime, timedelta
 from typing import List
 
-from engines.inputs.market_data_adapter import OHLCV, Quote
-from engines.inputs.news_adapter import NewsArticle
-from engines.inputs.options_chain_adapter import OptionContract
+from adapters.market_data_adapter import OHLCV, Quote
+from adapters.news_adapter import NewsArticle
+from adapters.options_chain_adapter import OptionContract
 
 
 class StaticOptionsAdapter:

@@ -9,7 +9,7 @@ import pytest
 torch = pytest.importorskip("torch")
 sklearn = pytest.importorskip("sklearn")
 
-from models.time_series.gnosis_lstm_forecaster import GnosisLSTMForecaster
+from models.predictors.time_series.gnosis_lstm_forecaster import GnosisLSTMForecaster
 
 
 class TestGnosisLSTMForecaster:

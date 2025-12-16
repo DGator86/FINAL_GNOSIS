@@ -11,7 +11,7 @@ import pytest
 import torch
 
 from engines.ml.lstm_engine import LSTMPredictionEngine
-from models.lstm_lookahead import (
+from models.predictors.lstm_lookahead import (
     BidirectionalLSTMLookahead,
     LookaheadConfig,
     LSTMLookaheadPredictor,

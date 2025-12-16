@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from engines.liquidity.options_execution_v2 import OptionsExecutionModule
-from engines.orchestration.strategy_selector import (
+from core.orchestration.strategy_selector import (
     InstrumentDecision,
     InstrumentType,
     IntelligentStrategySelector,

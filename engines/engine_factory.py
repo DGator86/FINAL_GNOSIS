@@ -7,12 +7,12 @@ from loguru import logger
 
 from engines.elasticity import ElasticityEngineV1
 from engines.hedge import HedgeEngineV3
-from engines.inputs.adapter_factory import (
+from adapters.adapter_factory import (
     create_market_data_adapter,
     create_options_adapter,
 )
-from engines.inputs.market_data_adapter import MarketDataAdapter
-from engines.inputs.options_chain_adapter import OptionsChainAdapter
+from adapters.market_data_adapter import MarketDataAdapter
+from adapters.options_chain_adapter import OptionsChainAdapter
 from engines.liquidity import LiquidityEngineV1
 from engines.scanner import OpportunityScanner
 from engines.sentiment import SentimentEngineV1

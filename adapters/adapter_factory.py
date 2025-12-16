@@ -27,7 +27,7 @@ def create_market_data_adapter(prefer_real: bool = True, provider: Optional[str]
         # Try MASSIVE first if enabled or preferred
         if provider in ("massive", "auto") and os.getenv("MASSIVE_API_ENABLED", "false").lower() == "true":
             try:
-                from engines.inputs.massive_market_adapter import MassiveMarketDataAdapter
+                from adapters.massive_market_adapter import MassiveMarketDataAdapter
                 adapter = MassiveMarketDataAdapter()
                 logger.info("Using MassiveMarketDataAdapter (real)")
                 return adapter
@@ -39,7 +39,7 @@ def create_market_data_adapter(prefer_real: bool = True, provider: Optional[str]
         # Try Alpaca
         if provider in ("alpaca", "auto"):
             try:
-                from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
+                from adapters.alpaca_market_adapter import AlpacaMarketDataAdapter
                 adapter = AlpacaMarketDataAdapter()
                 logger.info("Using AlpacaMarketDataAdapter (real)")
                 return adapter
@@ -47,7 +47,7 @@ def create_market_data_adapter(prefer_real: bool = True, provider: Optional[str]
                 logger.warning(f"Failed to initialize Alpaca market data adapter: {e}")
                 logger.info("Falling back to StaticMarketDataAdapter")
 
-    from engines.inputs.stub_adapters import StaticMarketDataAdapter
+    from adapters.stub_adapters import StaticMarketDataAdapter
     logger.info("Using StaticMarketDataAdapter (stub)")
     return StaticMarketDataAdapter()
 
@@ -71,7 +71,7 @@ def create_options_adapter(prefer_real: bool = True, provider: Optional[str] = N
         # Try MASSIVE first if enabled or preferred (comprehensive options data)
         if provider in ("massive", "auto") and os.getenv("MASSIVE_API_ENABLED", "false").lower() == "true":
             try:
-                from engines.inputs.massive_options_adapter import MassiveOptionsAdapter
+                from adapters.massive_options_adapter import MassiveOptionsAdapter
                 adapter = MassiveOptionsAdapter()
                 logger.info("Using MassiveOptionsAdapter (real)")
                 return adapter
@@ -83,7 +83,7 @@ def create_options_adapter(prefer_real: bool = True, provider: Optional[str] = N
         # Try Unusual Whales
         if provider in ("unusual_whales", "auto"):
             try:
-                from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+                from adapters.unusual_whales_adapter import UnusualWhalesAdapter
                 adapter = UnusualWhalesAdapter()
                 logger.info("Using UnusualWhalesAdapter (real)")
                 return adapter
@@ -91,7 +91,7 @@ def create_options_adapter(prefer_real: bool = True, provider: Optional[str] = N
                 logger.warning(f"Failed to initialize Unusual Whales adapter: {e}")
                 logger.info("Falling back to StaticOptionsAdapter")
 
-    from engines.inputs.stub_adapters import StaticOptionsAdapter
+    from adapters.stub_adapters import StaticOptionsAdapter
     logger.info("Using StaticOptionsAdapter (stub)")
     return StaticOptionsAdapter()
 
@@ -110,7 +110,7 @@ def create_massive_options_adapter() -> Any:
         return None
 
     try:
-        from engines.inputs.massive_options_adapter import MassiveOptionsAdapter
+        from adapters.massive_options_adapter import MassiveOptionsAdapter
         adapter = MassiveOptionsAdapter()
         logger.info("MassiveOptionsAdapter created successfully")
         return adapter
@@ -131,14 +131,14 @@ def create_news_adapter(prefer_real: bool = True) -> Any:
     """
     if prefer_real and os.getenv("MASSIVE_API_ENABLED", "false").lower() == "true":
         try:
-            from engines.inputs.massive_market_adapter import MassiveMarketDataAdapter
+            from adapters.massive_market_adapter import MassiveMarketDataAdapter
             adapter = MassiveMarketDataAdapter()
             logger.info("Using MassiveMarketDataAdapter for news (real)")
             return adapter
         except Exception as e:
             logger.warning(f"Failed to initialize MASSIVE adapter for news: {e}")
 
-    from engines.inputs.stub_adapters import StaticNewsAdapter
+    from adapters.stub_adapters import StaticNewsAdapter
     logger.info("Using StaticNewsAdapter (stub)")
     return StaticNewsAdapter()
 
@@ -155,7 +155,7 @@ def create_massive_adapter() -> Any:
         return None
 
     try:
-        from engines.inputs.massive_market_adapter import MassiveMarketDataAdapter
+        from adapters.massive_market_adapter import MassiveMarketDataAdapter
         adapter = MassiveMarketDataAdapter()
         logger.info("MassiveMarketDataAdapter created successfully")
         return adapter

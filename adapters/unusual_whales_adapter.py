@@ -11,7 +11,7 @@ import httpx
 from loguru import logger
 
 from config.credentials import get_unusual_whales_token
-from engines.inputs.options_chain_adapter import OptionContract, OptionsChainAdapter
+from adapters.options_chain_adapter import OptionContract, OptionsChainAdapter
 from gnosis.utils.option_utils import OptionUtils
 
 
@@ -257,7 +257,7 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
 
         logger.info(f"📊 Using stub options chain for {symbol}")
         try:
-            from engines.inputs.stub_adapters import StaticOptionsAdapter
+            from adapters.stub_adapters import StaticOptionsAdapter
 
             return StaticOptionsAdapter().get_chain(symbol, timestamp)
         except Exception as error:  # pragma: no cover - defensive fallback

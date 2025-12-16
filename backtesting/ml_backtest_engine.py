@@ -466,7 +466,7 @@ class MLBacktestEngine:
     def _load_lstm(self):
         """Load LSTM model if available."""
         try:
-            from models.lstm_lookahead import LSTMLookaheadPredictor, LookaheadConfig
+            from models.predictors.lstm_lookahead import LSTMLookaheadPredictor, LookaheadConfig
             self.lstm_predictor = LSTMLookaheadPredictor(model_path=self.config.lstm_model_path)
             logger.info("LSTM model loaded successfully")
         except Exception as e:
@@ -475,7 +475,7 @@ class MLBacktestEngine:
 
     def fetch_historical_data(self) -> pd.DataFrame:
         """Fetch historical data from Alpaca."""
-        from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
+        from adapters.alpaca_market_adapter import AlpacaMarketDataAdapter
 
         try:
             adapter = AlpacaMarketDataAdapter()

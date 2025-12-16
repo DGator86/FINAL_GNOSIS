@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 from loguru import logger
 
 from agents.composer.composer_agent_v2 import ComposerDecision
-from engines.inputs.options_chain_adapter import OptionContract
+from adapters.options_chain_adapter import OptionContract
 from gnosis.utils.option_utils import OptionUtils
 from trade.trade_agent_v3 import TradeAgentV3
 

@@ -19,8 +19,8 @@ from agents.memory.episodic_memory import Episode, EpisodicMemory
 from agents.memory.semantic_memory import SemanticMemory
 
 # Import ML models
-from models.ensemble.xgboost_model import XGBoostEnsemble
-from models.time_series.lstm_forecaster import LSTMForecastModel
+from models.predictors.ensemble.xgboost_model import XGBoostEnsemble
+from models.predictors.time_series.lstm_forecaster import LSTMForecastModel
 
 # Import existing GNOSIS components
 from schemas.core_schemas import AgentSuggestion

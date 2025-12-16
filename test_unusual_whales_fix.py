@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+from adapters.unusual_whales_adapter import UnusualWhalesAdapter
 
 
 def main():

@@ -7,7 +7,7 @@ from loguru import logger
 
 from cli.pipeline_builder import build_pipeline
 from config import load_config
-from engines.inputs.adapter_factory import create_broker_adapter
+from adapters.adapter_factory import create_broker_adapter
 
 
 def run_once(

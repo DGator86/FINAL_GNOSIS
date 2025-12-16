@@ -16,7 +16,7 @@ except Exception:  # pragma: no cover - defensive
 
 # Try to import the UnusualWhalesAdapter
 try:
-    from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+    from adapters.unusual_whales_adapter import UnusualWhalesAdapter
 except Exception:
     UnusualWhalesAdapter = None  # makes API still run if adapter missing
 

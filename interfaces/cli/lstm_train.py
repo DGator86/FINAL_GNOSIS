@@ -17,10 +17,10 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from engines.inputs.market_data_adapter import MarketDataAdapter
+from adapters.market_data_adapter import MarketDataAdapter
 from engines.ml.lstm_engine import LSTMPredictionEngine
 from models.features.feature_builder import EnhancedFeatureBuilder
-from models.lstm_lookahead import LookaheadConfig
+from models.predictors.lstm_lookahead import LookaheadConfig
 
 logging.basicConfig(
     level=logging.INFO,

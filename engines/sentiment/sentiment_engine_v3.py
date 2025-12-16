@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+from adapters.unusual_whales_adapter import UnusualWhalesAdapter
 from schemas.core_schemas import SentimentSnapshot
 
 

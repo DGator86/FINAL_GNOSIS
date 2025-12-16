@@ -10,7 +10,7 @@ import pandas as pd
 from loguru import logger
 from sklearn.linear_model import LinearRegression
 
-from engines.inputs.market_data_adapter import MarketDataAdapter
+from adapters.market_data_adapter import MarketDataAdapter
 
 
 class KatsForecasterAdapter:

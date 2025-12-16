@@ -15,7 +15,7 @@ from loguru import logger
 import polars as pl
 
 from config.credentials import get_massive_api_keys, massive_api_enabled
-from engines.inputs.market_data_adapter import OHLCV, Quote
+from adapters.market_data_adapter import OHLCV, Quote
 
 
 class MassiveMarketDataAdapter:

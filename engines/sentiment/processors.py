@@ -7,8 +7,8 @@ from typing import Any, Dict
 
 from loguru import logger
 
-from engines.inputs.market_data_adapter import MarketDataAdapter
-from engines.inputs.news_adapter import NewsAdapter
+from adapters.market_data_adapter import MarketDataAdapter
+from adapters.news_adapter import NewsAdapter
 
 
 class NewsSentimentProcessor:

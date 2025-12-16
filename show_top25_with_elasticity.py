@@ -11,7 +11,7 @@ from datetime import datetime
 from config.loader import load_config
 from engines.dynamic_universe import DynamicUniverseRanker
 from engines.hedge.hedge_engine_v3 import HedgeEngineV3
-from engines.inputs.adapter_factory import (
+from adapters.adapter_factory import (
     create_market_data_adapter,
     create_options_adapter,
 )
