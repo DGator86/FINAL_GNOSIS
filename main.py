@@ -117,7 +117,7 @@ def build_pipeline(
         universe=watchlist_universe,
         min_candidates=3,
         max_candidates=8,
-        volume_threshold=10_000_000,
+        volume_threshold=500_000,  # Lowered from 10M to allow more symbols through
     )
 
     ledger_path = Path(config.tracking.ledger_path)

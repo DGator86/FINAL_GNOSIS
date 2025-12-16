@@ -67,7 +67,8 @@ class KatsForecasterAdapter:
         """
 
         horizon = horizon or self.forecast_horizon
-        start = end_time - timedelta(days=max(self.min_history, horizon * 3))
+        # Request 90 days to ensure we get enough bars (APIs may return limited data)
+        start = end_time - timedelta(days=max(90, self.min_history * 3, horizon * 3))
         bars = self.market_adapter.get_bars(symbol, start, end_time, timeframe="1Day")
         if not bars:
             logger.warning(f"No history available for {symbol}; skipping forecast")

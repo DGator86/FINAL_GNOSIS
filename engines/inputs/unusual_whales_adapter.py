@@ -78,6 +78,8 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
         )
 
     def _fetch_greeks(self, symbol: str) -> Dict[str, Dict[str, float]]:
+        # NOTE: Unusual Whales Greeks endpoint only returns data for major ETFs (SPY, QQQ, IWM, etc.)
+        # Individual stocks like NVDA, TSLA, AAPL will return 0 Greeks - this is an API limitation
         """Fetch Greeks from the separate /greeks endpoint and index by option_symbol."""
         greeks_map: Dict[str, Dict[str, float]] = {}
 

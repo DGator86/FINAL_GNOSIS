@@ -121,6 +121,10 @@ class PipelineRunner:
                     suggestion = agent.suggest(result, timestamp)
                     if suggestion:
                         result.suggestions.append(suggestion)
+                        logger.info(
+                            f"🤖 {agent_name}: {suggestion.direction.value.upper()} "
+                            f"({suggestion.confidence:.1%}) - {suggestion.reasoning[:80]}..."
+                        )
                 except Exception as e:
                     logger.error(f"Error in agent {agent_name}: {e}")
             
