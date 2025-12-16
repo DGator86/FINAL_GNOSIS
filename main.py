@@ -50,6 +50,7 @@ from models.lookahead_model import LookaheadModel
 from trade.trade_agent_v1 import TradeAgentV1
 from universe.watchlist_loader import load_active_watchlist
 from watchlist import AdaptiveWatchlist
+from cli.result_formatter import format_pipeline_result
 
 # Load environment variables
 load_dotenv()
