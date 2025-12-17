@@ -12,7 +12,7 @@ from loguru import logger
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from brokers.alpaca_client import AlpacaClient
+from brokers.alpaca_client import AlpacaClient  # noqa: E402
 # from engines.liquidity.options_execution_v2 import OptionsExecutionModule
 
 

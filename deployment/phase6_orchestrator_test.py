@@ -20,10 +20,10 @@ load_dotenv()
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from brokers.alpaca_client import AlpacaClient
-from config.options_config_v2 import GNOSIS_V2_CONFIG
-from engines.orchestration import UnifiedOrchestrator
-from models.options_contracts import EnhancedMarketData, OptionQuote, OptionsChain
+from brokers.alpaca_client import AlpacaClient  # noqa: E402
+from config.options_config_v2 import GNOSIS_V2_CONFIG  # noqa: E402
+from engines.orchestration import UnifiedOrchestrator  # noqa: E402
+from models.options_contracts import EnhancedMarketData, OptionQuote, OptionsChain  # noqa: E402
 
 
 def create_mock_market_data(ticker: str, iv_level: str = "moderate") -> EnhancedMarketData:
