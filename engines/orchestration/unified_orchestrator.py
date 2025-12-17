@@ -81,9 +81,9 @@ class UnifiedOrchestrator:
         """
 
         if self.logger:
-            self.logger.info(f"=" * 60)
+            self.logger.info("=" * 60)
             self.logger.info(f"Orchestrating Trade for {ticker}")
-            self.logger.info(f"=" * 60)
+            self.logger.info("=" * 60)
 
         try:
             # Step 1: Get strategy decision

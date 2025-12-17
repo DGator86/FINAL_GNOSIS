@@ -6,9 +6,12 @@ This demonstrates the "quant firm" behavior - choosing optimal instruments
 """
 
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
+from loguru import logger
+
 
 # Load environment variables
 load_dotenv()
@@ -16,8 +19,6 @@ load_dotenv()
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-
-from loguru import logger
 
 from brokers.alpaca_client import AlpacaClient
 from config.options_config_v2 import GNOSIS_V2_CONFIG
@@ -45,13 +46,13 @@ def create_mock_market_data(ticker: str, iv_level: str = "moderate") -> Enhanced
             OptionQuote(
                 symbol=f"{ticker}241220C00{int(strike):05d}00",
                 strike=strike,
-                expiration="2024-12-20",
-                option_type="call",
-                bid_price=5.0,
-                ask_price=5.10,
+                expiration=datetime.strptime("2024-12-20", "%Y-%m-%d").date(),
+                type="call",
+                bid=5.0,
+                ask=5.10,
                 volume=100,
                 open_interest=500,
-                implied_volatility=base_iv + (0.02 if strike_offset != 0 else 0),
+                iv=base_iv + (0.02 if strike_offset != 0 else 0),
                 delta=0.50 if strike_offset == 0 else (0.70 if strike_offset < 0 else 0.30),
                 gamma=0.05,
                 theta=-0.10,
@@ -64,13 +65,13 @@ def create_mock_market_data(ticker: str, iv_level: str = "moderate") -> Enhanced
             OptionQuote(
                 symbol=f"{ticker}241220P00{int(strike):05d}00",
                 strike=strike,
-                expiration="2024-12-20",
-                option_type="put",
-                bid_price=5.0,
-                ask_price=5.10,
+                expiration=datetime.strptime("2024-12-20", "%Y-%m-%d").date(),
+                type="put",
+                bid=5.0,
+                ask=5.10,
                 volume=100,
                 open_interest=500,
-                implied_volatility=base_iv + (0.02 if strike_offset != 0 else 0),
+                iv=base_iv + (0.02 if strike_offset != 0 else 0),
                 delta=-0.50 if strike_offset == 0 else (-0.30 if strike_offset < 0 else -0.70),
                 gamma=0.05,
                 theta=-0.10,
@@ -78,10 +79,25 @@ def create_mock_market_data(ticker: str, iv_level: str = "moderate") -> Enhanced
             )
         )
 
-    options_chain = OptionsChain(ticker=ticker, expiration_dates=["2024-12-20"], quotes=quotes)
+    options_chain = OptionsChain(quotes=quotes)
+
+    # Mock other fields needed for EnhancedMarketData default values if not provided
+    from models.options_contracts import MacroVolatilityData, VolatilityMetrics, VolatilityStructure
 
     return EnhancedMarketData(
-        ticker=ticker, current_price=current_price, options_chain=options_chain
+        ticker=ticker,
+        timestamp=datetime.now(),
+        spot_price=current_price,
+        options_chain=options_chain,
+        volatility_metrics=VolatilityMetrics(
+            atm_iv=base_iv, iv_rank=50.0, iv_percentile=50.0, hv_20=base_iv, hv_60=base_iv
+        ),
+        vol_structure=VolatilityStructure(
+            front_month_iv=base_iv, back_month_iv=base_iv, put_skew_25d=0.0, call_skew_25d=0.0
+        ),
+        macro_vol_data=MacroVolatilityData(
+            vix=15.0, vvix=80.0, move_index=90.0, credit_spreads=1.0, dxy_volatility=0.05
+        ),
     )
 
 
@@ -113,9 +129,9 @@ def test_scenario(
     try:
         decision = orchestrator.strategy_selector.select_optimal_instrument(
             market_data=market_data,
-            signal_direction=signal_direction,
+            signal_direction=signal_direction,  # type: ignore
             signal_confidence=signal_confidence,
-            regime=regime,
+            regime=regime,  # type: ignore
             portfolio_state=None,
         )
 

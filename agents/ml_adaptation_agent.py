@@ -66,7 +66,7 @@ class PerformanceMetrics:
     avg_hold_time: timedelta
 
     # Per-timeframe breakdown
-    timeframe_performance: Dict[str, Dict]
+    timeframe_performance: Dict[str, Dict[str, Any]]
 
 
 class MLAdaptationAgent:
@@ -103,7 +103,7 @@ class MLAdaptationAgent:
         self.min_trades_for_optimization = min_trades_for_optimization
 
         # Trade history
-        self.trade_history: deque = deque(maxlen=max_history)
+        self.trade_history: deque[TradeOutcome] = deque(maxlen=max_history)
         self.last_optimization_time: Optional[datetime] = None
 
         # Current parameter set
@@ -174,8 +174,8 @@ class MLAdaptationAgent:
         wins = [t.pnl for t in trades if t.pnl > 0]
         losses = [abs(t.pnl) for t in trades if t.pnl < 0]
 
-        avg_win = np.mean(wins) if wins else 0
-        avg_loss = np.mean(losses) if losses else 0
+        avg_win = float(np.mean(wins)) if wins else 0.0
+        avg_loss = float(np.mean(losses)) if losses else 0.0
         profit_factor = sum(wins) / sum(losses) if losses else float("inf")
 
         # Risk metrics
@@ -185,7 +185,7 @@ class MLAdaptationAgent:
 
         # Time metrics
         avg_hold_time = timedelta(
-            seconds=np.mean([t.hold_duration.total_seconds() for t in trades])
+            seconds=float(np.mean([t.hold_duration.total_seconds() for t in trades]))
         )
 
         # Per-timeframe breakdown
@@ -382,7 +382,7 @@ class MLAdaptationAgent:
         if np.std(excess_returns) == 0:
             return 0.0
 
-        return np.mean(excess_returns) / np.std(excess_returns)
+        return float(np.mean(excess_returns) / np.std(excess_returns))
 
     def _calculate_max_drawdown(self, trades: List[TradeOutcome]) -> float:
         """Calculate maximum drawdown."""
@@ -393,11 +393,13 @@ class MLAdaptationAgent:
         running_max = np.maximum.accumulate(cumulative_pnl)
         drawdown = (cumulative_pnl - running_max) / (running_max + 1)  # Avoid division by zero
 
-        return abs(np.min(drawdown))
+        return float(abs(np.min(drawdown)))
 
-    def _calculate_timeframe_breakdown(self, trades: List[TradeOutcome]) -> Dict[str, Dict]:
+    def _calculate_timeframe_breakdown(
+        self, trades: List[TradeOutcome]
+    ) -> Dict[str, Dict[str, Any]]:
         """Calculate performance breakdown by timeframe."""
-        timeframe_trades = {}
+        timeframe_trades: Dict[str, List[TradeOutcome]] = {}
 
         for trade in trades:
             tf = trade.timeframe
@@ -433,15 +435,17 @@ class MLAdaptationAgent:
             losing_trades=total - wins,
             win_rate=wins / total,
             total_pnl=sum(t.pnl for t in trades),
-            avg_win=(np.mean([t.pnl for t in trades if t.pnl > 0]) if wins > 0 else 0),
+            avg_win=float(np.mean([t.pnl for t in trades if t.pnl > 0])) if wins > 0 else 0.0,
             avg_loss=(
-                np.mean([abs(t.pnl) for t in trades if t.pnl < 0]) if (total - wins) > 0 else 0
+                float(np.mean([abs(t.pnl) for t in trades if t.pnl < 0]))
+                if (total - wins) > 0
+                else 0.0
             ),
             profit_factor=1.0,  # Simplified
             sharpe_ratio=self._calculate_sharpe([t.pnl_pct for t in trades]),
             max_drawdown=self._calculate_max_drawdown(trades),
             avg_hold_time=timedelta(
-                seconds=np.mean([t.hold_duration.total_seconds() for t in trades])
+                seconds=float(np.mean([t.hold_duration.total_seconds() for t in trades]))
             ),
             timeframe_performance={},
         )

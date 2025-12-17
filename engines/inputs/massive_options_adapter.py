@@ -11,10 +11,10 @@ Provides comprehensive historical options data for ML training and optimization 
 from __future__ import annotations
 
 import os
-from datetime import datetime, date, timedelta, timezone
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -143,6 +143,7 @@ class MassiveOptionsAdapter:
 
         try:
             from massive import RESTClient
+
             self.client = RESTClient(api_key=self.api_key)
             logger.info("MassiveOptionsAdapter initialized successfully")
         except ImportError:
@@ -183,10 +184,12 @@ class MassiveOptionsAdapter:
 
         try:
             # Get options contracts from MASSIVE
-            contracts = list(self.client.list_options_contracts(
-                underlying_ticker=symbol,
-                limit=500,  # Get comprehensive chain
-            ))
+            contracts = list(
+                self.client.list_options_contracts(
+                    underlying_ticker=symbol,
+                    limit=500,  # Get comprehensive chain
+                )
+            )
 
             result = []
             for contract in contracts:
@@ -194,28 +197,40 @@ class MassiveOptionsAdapter:
                 try:
                     snapshot = self.client.get_snapshot_option(
                         underlying_asset=symbol,
-                        option_contract=getattr(contract, 'ticker', ''),
+                        option_contract=getattr(contract, "ticker", ""),
                     )
-                    greeks = getattr(snapshot, 'greeks', {}) if snapshot else {}
+                    greeks = getattr(snapshot, "greeks", {}) if snapshot else {}
                 except Exception:
                     greeks = {}
 
                 option = OptionContract(
-                    symbol=getattr(contract, 'ticker', ''),
-                    strike=float(getattr(contract, 'strike_price', 0)),
-                    expiration=self._parse_expiration(getattr(contract, 'expiration_date', '')),
-                    option_type=getattr(contract, 'contract_type', 'call').lower(),
+                    symbol=getattr(contract, "ticker", ""),
+                    strike=float(getattr(contract, "strike_price", 0)),
+                    expiration=self._parse_expiration(getattr(contract, "expiration_date", "")),
+                    option_type=getattr(contract, "contract_type", "call").lower(),
                     bid=0.0,  # Not available in contracts endpoint
                     ask=0.0,
                     last=0.0,
                     volume=0.0,
                     open_interest=0.0,
-                    implied_volatility=float(getattr(snapshot, 'implied_volatility', 0)) if snapshot else 0.0,
-                    delta=float(greeks.get('delta', 0)) if isinstance(greeks, dict) else getattr(greeks, 'delta', 0),
-                    gamma=float(greeks.get('gamma', 0)) if isinstance(greeks, dict) else getattr(greeks, 'gamma', 0),
-                    theta=float(greeks.get('theta', 0)) if isinstance(greeks, dict) else getattr(greeks, 'theta', 0),
-                    vega=float(greeks.get('vega', 0)) if isinstance(greeks, dict) else getattr(greeks, 'vega', 0),
-                    rho=float(greeks.get('rho', 0)) if isinstance(greeks, dict) else getattr(greeks, 'rho', 0),
+                    implied_volatility=float(getattr(snapshot, "implied_volatility", 0))
+                    if snapshot
+                    else 0.0,
+                    delta=float(greeks.get("delta", 0))
+                    if isinstance(greeks, dict)
+                    else getattr(greeks, "delta", 0),
+                    gamma=float(greeks.get("gamma", 0))
+                    if isinstance(greeks, dict)
+                    else getattr(greeks, "gamma", 0),
+                    theta=float(greeks.get("theta", 0))
+                    if isinstance(greeks, dict)
+                    else getattr(greeks, "theta", 0),
+                    vega=float(greeks.get("vega", 0))
+                    if isinstance(greeks, dict)
+                    else getattr(greeks, "vega", 0),
+                    rho=float(greeks.get("rho", 0))
+                    if isinstance(greeks, dict)
+                    else getattr(greeks, "rho", 0),
                 )
                 result.append(option)
 
@@ -249,32 +264,54 @@ class MassiveOptionsAdapter:
             return []
 
         try:
-            snapshots = list(self.client.list_snapshot_options_chain(
-                underlying_asset=symbol,
-                expiration_date=expiration_date,
-                limit=500,
-            ))
+            snapshots = list(
+                self.client.list_snapshot_options_chain(
+                    underlying_asset=symbol,
+                    expiration_date=expiration_date,
+                    limit=500,
+                )
+            )
 
             result = []
             for snap in snapshots:
-                result.append({
-                    "ticker": getattr(snap, 'ticker', ''),
-                    "underlying": symbol,
-                    "strike": getattr(snap.details, 'strike_price', 0) if hasattr(snap, 'details') else 0,
-                    "expiration": getattr(snap.details, 'expiration_date', '') if hasattr(snap, 'details') else '',
-                    "contract_type": getattr(snap.details, 'contract_type', '') if hasattr(snap, 'details') else '',
-                    "bid": getattr(snap.last_quote, 'bid', 0) if hasattr(snap, 'last_quote') else 0,
-                    "ask": getattr(snap.last_quote, 'ask', 0) if hasattr(snap, 'last_quote') else 0,
-                    "last": getattr(snap.day, 'close', 0) if hasattr(snap, 'day') else 0,
-                    "volume": getattr(snap.day, 'volume', 0) if hasattr(snap, 'day') else 0,
-                    "open_interest": getattr(snap, 'open_interest', 0),
-                    "implied_volatility": getattr(snap, 'implied_volatility', 0),
-                    "delta": getattr(snap.greeks, 'delta', 0) if hasattr(snap, 'greeks') and snap.greeks else 0,
-                    "gamma": getattr(snap.greeks, 'gamma', 0) if hasattr(snap, 'greeks') and snap.greeks else 0,
-                    "theta": getattr(snap.greeks, 'theta', 0) if hasattr(snap, 'greeks') and snap.greeks else 0,
-                    "vega": getattr(snap.greeks, 'vega', 0) if hasattr(snap, 'greeks') and snap.greeks else 0,
-                    "break_even": getattr(snap, 'break_even_price', 0),
-                })
+                result.append(
+                    {
+                        "ticker": getattr(snap, "ticker", ""),
+                        "underlying": symbol,
+                        "strike": getattr(snap.details, "strike_price", 0)
+                        if hasattr(snap, "details")
+                        else 0,
+                        "expiration": getattr(snap.details, "expiration_date", "")
+                        if hasattr(snap, "details")
+                        else "",
+                        "contract_type": getattr(snap.details, "contract_type", "")
+                        if hasattr(snap, "details")
+                        else "",
+                        "bid": getattr(snap.last_quote, "bid", 0)
+                        if hasattr(snap, "last_quote")
+                        else 0,
+                        "ask": getattr(snap.last_quote, "ask", 0)
+                        if hasattr(snap, "last_quote")
+                        else 0,
+                        "last": getattr(snap.day, "close", 0) if hasattr(snap, "day") else 0,
+                        "volume": getattr(snap.day, "volume", 0) if hasattr(snap, "day") else 0,
+                        "open_interest": getattr(snap, "open_interest", 0),
+                        "implied_volatility": getattr(snap, "implied_volatility", 0),
+                        "delta": getattr(snap.greeks, "delta", 0)
+                        if hasattr(snap, "greeks") and snap.greeks
+                        else 0,
+                        "gamma": getattr(snap.greeks, "gamma", 0)
+                        if hasattr(snap, "greeks") and snap.greeks
+                        else 0,
+                        "theta": getattr(snap.greeks, "theta", 0)
+                        if hasattr(snap, "greeks") and snap.greeks
+                        else 0,
+                        "vega": getattr(snap.greeks, "vega", 0)
+                        if hasattr(snap, "greeks") and snap.greeks
+                        else 0,
+                        "break_even": getattr(snap, "break_even_price", 0),
+                    }
+                )
 
             logger.debug(f"Retrieved {len(result)} options snapshots for {symbol}")
             return result
@@ -329,16 +366,18 @@ class MassiveOptionsAdapter:
 
             data = []
             for agg in aggs:
-                data.append({
-                    "timestamp": datetime.fromtimestamp(agg.timestamp / 1000, tz=timezone.utc),
-                    "open": float(agg.open),
-                    "high": float(agg.high),
-                    "low": float(agg.low),
-                    "close": float(agg.close),
-                    "volume": float(agg.volume),
-                    "vwap": float(getattr(agg, 'vwap', 0)),
-                    "transactions": int(getattr(agg, 'transactions', 0)),
-                })
+                data.append(
+                    {
+                        "timestamp": datetime.fromtimestamp(agg.timestamp / 1000, tz=timezone.utc),
+                        "open": float(agg.open),
+                        "high": float(agg.high),
+                        "low": float(agg.low),
+                        "close": float(agg.close),
+                        "volume": float(agg.volume),
+                        "vwap": float(getattr(agg, "vwap", 0)),
+                        "transactions": int(getattr(agg, "transactions", 0)),
+                    }
+                )
 
             return pd.DataFrame(data).set_index("timestamp")
 
@@ -362,8 +401,7 @@ class MassiveOptionsAdapter:
         Returns:
             MultiTimeframeOptionsData with all timeframe aggregations
         """
-        if not self.client:
-            return MultiTimeframeOptionsData(symbol=symbol, timestamp=timestamp or datetime.now(timezone.utc))
+        timestamp = timestamp or datetime.now(timezone.utc)
 
         timestamp = timestamp or datetime.now(timezone.utc)
 
@@ -377,14 +415,16 @@ class MassiveOptionsAdapter:
             # Get underlying price
             try:
                 underlying_snapshot = self.client.get_snapshot_ticker("stocks", symbol)
-                current_price = float(underlying_snapshot.day.close) if underlying_snapshot and underlying_snapshot.day else 0.0
+                current_price = (
+                    float(underlying_snapshot.day.close)
+                    if underlying_snapshot and underlying_snapshot.day
+                    else 0.0
+                )
             except Exception:
                 current_price = 0.0
 
             # Build historical snapshots (using daily aggregations for lookback)
-            historical = self._build_historical_snapshots(
-                symbol, timestamp, lookback_days, chain
-            )
+            historical = self._build_historical_snapshots(symbol, timestamp, lookback_days, chain)
 
             # Calculate multi-timeframe features
             mtf_data = MultiTimeframeOptionsData(
@@ -433,7 +473,12 @@ class MassiveOptionsAdapter:
 
         try:
             # Get market data for date range
-            tf_map = {"1min": (1, "minute"), "5min": (5, "minute"), "1hour": (1, "hour"), "1day": (1, "day")}
+            tf_map = {
+                "1min": (1, "minute"),
+                "5min": (5, "minute"),
+                "1hour": (1, "hour"),
+                "1day": (1, "day"),
+            }
             mult, span = tf_map.get(timeframe, (1, "day"))
 
             market_aggs = self.client.get_aggs(
@@ -457,48 +502,45 @@ class MassiveOptionsAdapter:
                 chain = self.get_options_snapshot_chain(symbol)
                 snapshot = self._aggregate_chain_to_snapshot(chain, symbol, ts)
 
-                features_data.append({
-                    "timestamp": ts,
-                    "current_price": float(agg.close),
-
-                    # Volume features
-                    "call_volume": snapshot.call_volume,
-                    "put_volume": snapshot.put_volume,
-                    "total_volume": snapshot.total_volume,
-                    "pcr_volume": snapshot.pcr_volume,
-
-                    # Open Interest features
-                    "call_oi": snapshot.call_oi,
-                    "put_oi": snapshot.put_oi,
-                    "total_oi": snapshot.total_oi,
-                    "pcr_oi": snapshot.pcr_oi,
-
-                    # IV features
-                    "atm_iv": snapshot.atm_iv,
-                    "iv_25d_put": snapshot.iv_25d_put,
-                    "iv_25d_call": snapshot.iv_25d_call,
-                    "iv_skew": snapshot.iv_skew,
-
-                    # Greeks aggregates
-                    "net_delta": snapshot.net_delta,
-                    "net_gamma": snapshot.net_gamma,
-                    "net_vega": snapshot.net_vega,
-                    "net_theta": snapshot.net_theta,
-
-                    # GEX
-                    "gex_total": snapshot.gex_total,
-                    "gex_calls": snapshot.gex_calls,
-                    "gex_puts": snapshot.gex_puts,
-
-                    # Price levels
-                    "max_pain": snapshot.max_pain,
-                    "high_gamma_strike": snapshot.high_gamma_strike,
-                    "price_to_max_pain": float(agg.close) / snapshot.max_pain if snapshot.max_pain > 0 else 1.0,
-
-                    # Dealer positioning
-                    "dealer_gamma_exposure": snapshot.dealer_gamma_exposure,
-                    "dealer_delta_exposure": snapshot.dealer_delta_exposure,
-                })
+                features_data.append(
+                    {
+                        "timestamp": ts,
+                        "current_price": float(agg.close),
+                        # Volume features
+                        "call_volume": snapshot.call_volume,
+                        "put_volume": snapshot.put_volume,
+                        "total_volume": snapshot.total_volume,
+                        "pcr_volume": snapshot.pcr_volume,
+                        # Open Interest features
+                        "call_oi": snapshot.call_oi,
+                        "put_oi": snapshot.put_oi,
+                        "total_oi": snapshot.total_oi,
+                        "pcr_oi": snapshot.pcr_oi,
+                        # IV features
+                        "atm_iv": snapshot.atm_iv,
+                        "iv_25d_put": snapshot.iv_25d_put,
+                        "iv_25d_call": snapshot.iv_25d_call,
+                        "iv_skew": snapshot.iv_skew,
+                        # Greeks aggregates
+                        "net_delta": snapshot.net_delta,
+                        "net_gamma": snapshot.net_gamma,
+                        "net_vega": snapshot.net_vega,
+                        "net_theta": snapshot.net_theta,
+                        # GEX
+                        "gex_total": snapshot.gex_total,
+                        "gex_calls": snapshot.gex_calls,
+                        "gex_puts": snapshot.gex_puts,
+                        # Price levels
+                        "max_pain": snapshot.max_pain,
+                        "high_gamma_strike": snapshot.high_gamma_strike,
+                        "price_to_max_pain": (
+                            float(agg.close) / snapshot.max_pain if snapshot.max_pain > 0 else 1.0
+                        ),
+                        # Dealer positioning
+                        "dealer_gamma_exposure": snapshot.dealer_gamma_exposure,
+                        "dealer_delta_exposure": snapshot.dealer_delta_exposure,
+                    }
+                )
 
             df = pd.DataFrame(features_data).set_index("timestamp")
 
@@ -525,65 +567,65 @@ class MassiveOptionsAdapter:
         if not chain:
             return snapshot
 
-        calls = [c for c in chain if c.get('contract_type', '').lower() == 'call']
-        puts = [c for c in chain if c.get('contract_type', '').lower() == 'put']
+        calls = [c for c in chain if c.get("contract_type", "").lower() == "call"]
+        puts = [c for c in chain if c.get("contract_type", "").lower() == "put"]
 
         # Volume aggregates
-        snapshot.call_volume = sum(c.get('volume', 0) for c in calls)
-        snapshot.put_volume = sum(c.get('volume', 0) for c in puts)
+        snapshot.call_volume = sum(c.get("volume", 0) for c in calls)
+        snapshot.put_volume = sum(c.get("volume", 0) for c in puts)
         snapshot.total_volume = snapshot.call_volume + snapshot.put_volume
         snapshot.pcr_volume = snapshot.put_volume / (snapshot.call_volume + 1e-8)
 
         # Open Interest aggregates
-        snapshot.call_oi = sum(c.get('open_interest', 0) for c in calls)
-        snapshot.put_oi = sum(c.get('open_interest', 0) for c in puts)
+        snapshot.call_oi = sum(c.get("open_interest", 0) for c in calls)
+        snapshot.put_oi = sum(c.get("open_interest", 0) for c in puts)
         snapshot.total_oi = snapshot.call_oi + snapshot.put_oi
         snapshot.pcr_oi = snapshot.put_oi / (snapshot.call_oi + 1e-8)
 
         # IV metrics
-        ivs = [c.get('implied_volatility', 0) for c in chain if c.get('implied_volatility', 0) > 0]
+        ivs = [c.get("implied_volatility", 0) for c in chain if c.get("implied_volatility", 0) > 0]
         snapshot.atm_iv = np.mean(ivs) if ivs else 0.0
 
         # Find 25 delta options for skew
-        put_25d = [c for c in puts if -0.30 < c.get('delta', 0) < -0.20]
-        call_25d = [c for c in calls if 0.20 < c.get('delta', 0) < 0.30]
+        put_25d = [c for c in puts if -0.30 < c.get("delta", 0) < -0.20]
+        call_25d = [c for c in calls if 0.20 < c.get("delta", 0) < 0.30]
 
         if put_25d:
-            snapshot.iv_25d_put = np.mean([c.get('implied_volatility', 0) for c in put_25d])
+            snapshot.iv_25d_put = np.mean([c.get("implied_volatility", 0) for c in put_25d])
         if call_25d:
-            snapshot.iv_25d_call = np.mean([c.get('implied_volatility', 0) for c in call_25d])
+            snapshot.iv_25d_call = np.mean([c.get("implied_volatility", 0) for c in call_25d])
 
         snapshot.iv_skew = snapshot.iv_25d_put - snapshot.iv_25d_call
 
         # Greeks aggregates
-        snapshot.net_delta = sum(c.get('delta', 0) * c.get('open_interest', 0) for c in chain)
-        snapshot.net_gamma = sum(c.get('gamma', 0) * c.get('open_interest', 0) for c in chain)
-        snapshot.net_vega = sum(c.get('vega', 0) * c.get('open_interest', 0) for c in chain)
-        snapshot.net_theta = sum(c.get('theta', 0) * c.get('open_interest', 0) for c in chain)
+        snapshot.net_delta = sum(c.get("delta", 0) * c.get("open_interest", 0) for c in chain)
+        snapshot.net_gamma = sum(c.get("gamma", 0) * c.get("open_interest", 0) for c in chain)
+        snapshot.net_vega = sum(c.get("vega", 0) * c.get("open_interest", 0) for c in chain)
+        snapshot.net_theta = sum(c.get("theta", 0) * c.get("open_interest", 0) for c in chain)
 
         # GEX calculation (simplified)
         # GEX = Gamma × OI × 100 × Spot^2 × 0.01
         # Simplified version without spot^2 scaling
-        snapshot.gex_calls = sum(c.get('gamma', 0) * c.get('open_interest', 0) * 100 for c in calls)
-        snapshot.gex_puts = -sum(c.get('gamma', 0) * c.get('open_interest', 0) * 100 for c in puts)
+        snapshot.gex_calls = sum(c.get("gamma", 0) * c.get("open_interest", 0) * 100 for c in calls)
+        snapshot.gex_puts = -sum(c.get("gamma", 0) * c.get("open_interest", 0) * 100 for c in puts)
         snapshot.gex_total = snapshot.gex_calls + snapshot.gex_puts
 
         # Max pain calculation
-        strikes = set(c.get('strike', 0) for c in chain if c.get('strike', 0) > 0)
+        strikes = set(c.get("strike", 0) for c in chain if c.get("strike", 0) > 0)
         if strikes:
             max_pain_strike = min(strikes, key=lambda s: self._calc_pain_at_strike(s, chain))
             snapshot.max_pain = max_pain_strike
 
         # High gamma/OI strikes
         if calls:
-            max_gamma_call = max(calls, key=lambda c: c.get('gamma', 0) * c.get('open_interest', 0))
-            snapshot.high_gamma_strike = max_gamma_call.get('strike', 0)
-            max_oi_call = max(calls, key=lambda c: c.get('open_interest', 0))
-            snapshot.high_oi_call_strike = max_oi_call.get('strike', 0)
+            max_gamma_call = max(calls, key=lambda c: c.get("gamma", 0) * c.get("open_interest", 0))
+            snapshot.high_gamma_strike = max_gamma_call.get("strike", 0)
+            max_oi_call = max(calls, key=lambda c: c.get("open_interest", 0))
+            snapshot.high_oi_call_strike = max_oi_call.get("strike", 0)
 
         if puts:
-            max_oi_put = max(puts, key=lambda c: c.get('open_interest', 0))
-            snapshot.high_oi_put_strike = max_oi_put.get('strike', 0)
+            max_oi_put = max(puts, key=lambda c: c.get("open_interest", 0))
+            snapshot.high_oi_put_strike = max_oi_put.get("strike", 0)
 
         # Dealer positioning (simplified - assumes dealers are short options)
         snapshot.dealer_gamma_exposure = -snapshot.gex_total
@@ -596,11 +638,11 @@ class MassiveOptionsAdapter:
         total_pain = 0.0
 
         for contract in chain:
-            oi = contract.get('open_interest', 0)
-            contract_strike = contract.get('strike', 0)
-            contract_type = contract.get('contract_type', '').lower()
+            oi = contract.get("open_interest", 0)
+            contract_strike = contract.get("strike", 0)
+            contract_type = contract.get("contract_type", "").lower()
 
-            if contract_type == 'call':
+            if contract_type == "call":
                 # Call pain: max(0, strike - expiry_price) * OI
                 intrinsic = max(0, strike - contract_strike)
             else:
@@ -631,7 +673,7 @@ class MassiveOptionsAdapter:
             ts = end_date - timedelta(days=i)
 
             # Apply simple decay to simulate historical data
-            decay = 0.95 ** i
+            decay = 0.95**i
 
             snapshot = OptionsFlowSnapshot(
                 timestamp=ts,
@@ -659,41 +701,47 @@ class MassiveOptionsAdapter:
             return df
 
         # Rolling averages
-        for col in ['pcr_volume', 'pcr_oi', 'atm_iv', 'gex_total']:
+        for col in ["pcr_volume", "pcr_oi", "atm_iv", "gex_total"]:
             if col in df.columns:
                 for period in [5, 10, 20]:
-                    df[f'{col}_ma_{period}'] = df[col].rolling(period).mean()
+                    df[f"{col}_ma_{period}"] = df[col].rolling(period).mean()
 
         # Rate of change
-        for col in ['pcr_volume', 'atm_iv', 'gex_total', 'net_gamma']:
+        for col in ["pcr_volume", "atm_iv", "gex_total", "net_gamma"]:
             if col in df.columns:
-                df[f'{col}_roc_1'] = df[col].pct_change(1)
-                df[f'{col}_roc_5'] = df[col].pct_change(5)
+                df[f"{col}_roc_1"] = df[col].pct_change(1)
+                df[f"{col}_roc_5"] = df[col].pct_change(5)
 
         # Z-scores (standardized)
-        for col in ['pcr_volume', 'pcr_oi', 'atm_iv', 'gex_total']:
+        for col in ["pcr_volume", "pcr_oi", "atm_iv", "gex_total"]:
             if col in df.columns:
                 rolling_mean = df[col].rolling(20).mean()
                 rolling_std = df[col].rolling(20).std()
-                df[f'{col}_zscore'] = (df[col] - rolling_mean) / (rolling_std + 1e-8)
+                df[f"{col}_zscore"] = (df[col] - rolling_mean) / (rolling_std + 1e-8)
 
         # IV term structure features
-        if 'atm_iv' in df.columns:
-            df['iv_regime'] = pd.cut(
-                df['atm_iv'].rolling(20).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1]),
+        if "atm_iv" in df.columns:
+            df["iv_regime"] = pd.cut(
+                df["atm_iv"].rolling(20).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1]),
                 bins=[0, 0.25, 0.75, 1.0],
-                labels=[0, 1, 2]  # Low, Normal, High IV
+                labels=[0, 1, 2],  # Low, Normal, High IV
             ).astype(float)
 
         # PCR extremes
-        if 'pcr_volume' in df.columns:
-            df['pcr_extreme_put'] = (df['pcr_volume'] > df['pcr_volume'].rolling(20).quantile(0.9)).astype(int)
-            df['pcr_extreme_call'] = (df['pcr_volume'] < df['pcr_volume'].rolling(20).quantile(0.1)).astype(int)
+        if "pcr_volume" in df.columns:
+            df["pcr_extreme_put"] = (
+                df["pcr_volume"] > df["pcr_volume"].rolling(20).quantile(0.9)
+            ).astype(int)
+            df["pcr_extreme_call"] = (
+                df["pcr_volume"] < df["pcr_volume"].rolling(20).quantile(0.1)
+            ).astype(int)
 
         # GEX flip indicator
-        if 'gex_total' in df.columns:
-            df['gex_flip'] = (np.sign(df['gex_total']) != np.sign(df['gex_total'].shift(1))).astype(int)
-            df['gex_positive'] = (df['gex_total'] > 0).astype(int)
+        if "gex_total" in df.columns:
+            df["gex_flip"] = (np.sign(df["gex_total"]) != np.sign(df["gex_total"].shift(1))).astype(
+                int
+            )
+            df["gex_positive"] = (df["gex_total"] > 0).astype(int)
 
         return df
 
@@ -749,10 +797,7 @@ class MassiveOptionsAdapter:
 
         try:
             df = pl.read_parquet(path)
-            return [
-                OptionContract(**row)
-                for row in df.to_dicts()
-            ]
+            return [OptionContract(**row) for row in df.to_dicts()]
         except Exception as exc:
             logger.warning(f"Failed to read cached options chain for {symbol}: {exc}")
             return []

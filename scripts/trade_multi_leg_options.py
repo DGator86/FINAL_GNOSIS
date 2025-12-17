@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+from loguru import logger
 
 # Load environment variables
 load_dotenv()
@@ -18,8 +19,6 @@ load_dotenv()
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-
-from loguru import logger
 
 from brokers.alpaca_client import AlpacaClient
 
@@ -61,7 +60,7 @@ def place_bull_call_spread(client: AlpacaClient, underlying_price: float, quanti
         {"symbol": f"SPY{expiration}C00{otm_strike:05d}00", "side": "sell", "ratio_qty": 1},
     ]
 
-    logger.info(f"Placing Bull Call Spread:")
+    logger.info("Placing Bull Call Spread:")
     logger.info(f"  Buy:  SPY ${atm_strike} Call")
     logger.info(f"  Sell: SPY ${otm_strike} Call")
     logger.info(f"  Quantity: {quantity}")
@@ -95,7 +94,7 @@ def place_bear_put_spread(client: AlpacaClient, underlying_price: float, quantit
         {"symbol": f"SPY{expiration}P00{otm_strike:05d}00", "side": "sell", "ratio_qty": 1},
     ]
 
-    logger.info(f"Placing Bear Put Spread:")
+    logger.info("Placing Bear Put Spread:")
     logger.info(f"  Buy:  SPY ${atm_strike} Put")
     logger.info(f"  Sell: SPY ${otm_strike} Put")
     logger.info(f"  Quantity: {quantity}")
@@ -128,7 +127,7 @@ def place_long_straddle(client: AlpacaClient, underlying_price: float, quantity:
         {"symbol": f"SPY{expiration}P00{atm_strike:05d}00", "side": "buy", "ratio_qty": 1},
     ]
 
-    logger.info(f"Placing Long Straddle:")
+    logger.info("Placing Long Straddle:")
     logger.info(f"  Buy: SPY ${atm_strike} Call")
     logger.info(f"  Buy: SPY ${atm_strike} Put")
     logger.info(f"  Quantity: {quantity}")
@@ -167,7 +166,7 @@ def place_iron_condor(client: AlpacaClient, underlying_price: float, quantity: i
         {"symbol": f"SPY{expiration}P00{atm_strike - 20:05d}00", "side": "buy", "ratio_qty": 1},
     ]
 
-    logger.info(f"Placing Iron Condor:")
+    logger.info("Placing Iron Condor:")
     logger.info(f"  Sell: SPY ${atm_strike + 10} Call")
     logger.info(f"  Buy:  SPY ${atm_strike + 20} Call")
     logger.info(f"  Sell: SPY ${atm_strike - 10} Put")

@@ -1,0 +1,28 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.3, pytest-9.0.1, pluggy-1.6.0 -- C:\Users\Darrin Vogeli\AppData\Local\Programs\Python\Python313\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Darrin Vogeli\FINAL_GNOSIS
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+testpaths: tests
+plugins: anyio-4.12.0
+collecting ... collected 100 items
+
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_strong_consensus_bullish FAILED [  1%]
+
+================================== FAILURES ===================================
+____________ TestComposerIntegration.test_strong_consensus_bullish ____________
+tests\integration\test_composer_integration.py:35: in test_strong_consensus_bullish
+    hedge_signal = AgentSignal(
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+E   agent
+E     Field required [type=missing, input_value={'timestamp': datetime.da...itive energy asymmetry'}, input_type=dict]
+E       For further information visit https://errors.pydantic.dev/2.12/v/missing
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 19:36:25.658 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+=========================== short test summary info ===========================
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_strong_consensus_bullish - pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+agent
+  Field required [type=missing, input_value={'timestamp': datetime.da...itive energy asymmetry'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+============================== 1 failed in 6.52s ==============================

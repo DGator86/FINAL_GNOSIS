@@ -1,0 +1,301 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.3, pytest-9.0.1, pluggy-1.6.0 -- C:\Users\Darrin Vogeli\AppData\Local\Programs\Python\Python313\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Darrin Vogeli\FINAL_GNOSIS
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: anyio-4.12.0
+collecting ... collected 7 items
+
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_strong_consensus_bullish FAILED [ 14%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_conflicting_signals FAILED [ 28%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_weighted_influence FAILED [ 42%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_all_neutral_signals FAILED [ 57%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_missing_agent_signal FAILED [ 71%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_very_low_confidence_signals FAILED [ 85%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_bearish_consensus FAILED [100%]
+
+================================== FAILURES ===================================
+____________ TestComposerIntegration.test_strong_consensus_bullish ____________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x0000024DC13F2990>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x0000024D9EDB8590>
+timestamp = datetime.datetime(2025, 12, 13, 1, 13, 45, 953538, tzinfo=datetime.timezone.utc)
+
+    def test_strong_consensus_bullish(self, composer, timestamp):
+        """Test strong bullish consensus from all agents."""
+        # All agents agree on bullish signal
+>       hedge_signal = AgentSignal(
+            timestamp=timestamp,
+            symbol="SPY",
+            signal="bullish",
+            confidence=0.9,
+            reasoning="High call pressure, positive energy asymmetry",
+        )
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+E       agent
+E         Field required [type=missing, input_value={'timestamp': datetime.da...itive energy asymmetry'}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.12/v/missing
+
+tests\integration\test_composer_integration.py:35: ValidationError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:13:45.953 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+______________ TestComposerIntegration.test_conflicting_signals _______________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x0000024DC13F3390>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x0000024DC13F3250>
+timestamp = datetime.datetime(2025, 12, 13, 1, 13, 46, 56266, tzinfo=datetime.timezone.utc)
+
+    def test_conflicting_signals(self, composer, timestamp):
+        """Test resolution when agents disagree."""
+        # Hedge is bullish, sentiment is bearish, liquidity is neutral
+        signals = {
+>           "hedge": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.8,
+                reasoning="Positive dealer positioning",
+            ),
+            "liquidity": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="neutral",
+                confidence=0.6,
+                reasoning="Moderate liquidity",
+            ),
+            "sentiment": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bearish",
+                confidence=0.7,
+                reasoning="Negative news sentiment",
+            ),
+        }
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+E       agent
+E         Field required [type=missing, input_value={'timestamp': datetime.da...ive dealer positioning'}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.12/v/missing
+
+tests\integration\test_composer_integration.py:81: ValidationError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:13:46.056 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+_______________ TestComposerIntegration.test_weighted_influence _______________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x0000024DC143DA70>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x0000024DC13F3610>
+timestamp = datetime.datetime(2025, 12, 13, 1, 13, 46, 59903, tzinfo=datetime.timezone.utc)
+
+    def test_weighted_influence(self, composer, timestamp):
+        """Test that hedge agent has higher influence (40% vs 20% liquidity)."""
+        # Strong hedge signal, weak liquidity signal
+        signals = {
+>           "hedge": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.9,
+                reasoning="Strong hedge signal",
+            ),
+            "liquidity": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bearish",
+                confidence=0.8,
+                reasoning="Poor liquidity",
+            ),
+            "sentiment": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="neutral",
+                confidence=0.5,
+                reasoning="Mixed sentiment",
+            ),
+        }
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+E       agent
+E         Field required [type=missing, input_value={'timestamp': datetime.da...: 'Strong hedge signal'}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.12/v/missing
+
+tests\integration\test_composer_integration.py:115: ValidationError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:13:46.059 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+______________ TestComposerIntegration.test_all_neutral_signals _______________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x0000024DC143DCD0>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x0000024D9ED22650>
+timestamp = datetime.datetime(2025, 12, 13, 1, 13, 46, 64553, tzinfo=datetime.timezone.utc)
+
+    def test_all_neutral_signals(self, composer, timestamp):
+        """Test when all agents are neutral."""
+        signals = {
+>           "hedge": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="neutral",
+                confidence=0.5,
+                reasoning="No clear hedge signal",
+            ),
+            "liquidity": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="neutral",
+                confidence=0.5,
+                reasoning="Average liquidity",
+            ),
+            "sentiment": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="neutral",
+                confidence=0.5,
+                reasoning="Mixed sentiment",
+            ),
+        }
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+E       agent
+E         Field required [type=missing, input_value={'timestamp': datetime.da...'No clear hedge signal'}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.12/v/missing
+
+tests\integration\test_composer_integration.py:148: ValidationError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:13:46.064 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+______________ TestComposerIntegration.test_missing_agent_signal ______________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x0000024DC147D6D0>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x0000024DC143E3F0>
+timestamp = datetime.datetime(2025, 12, 13, 1, 13, 46, 67947, tzinfo=datetime.timezone.utc)
+
+    def test_missing_agent_signal(self, composer, timestamp):
+        """Test handling when an agent signal is missing."""
+        # Only hedge and sentiment, no liquidity
+        signals = {
+>           "hedge": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.8,
+                reasoning="Strong hedge signal",
+            ),
+            "sentiment": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.75,
+                reasoning="Positive sentiment",
+            ),
+        }
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+E       agent
+E         Field required [type=missing, input_value={'timestamp': datetime.da...: 'Strong hedge signal'}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.12/v/missing
+
+tests\integration\test_composer_integration.py:181: ValidationError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:13:46.067 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+__________ TestComposerIntegration.test_very_low_confidence_signals ___________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x0000024DC14A0E20>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x0000024DC147D130>
+timestamp = datetime.datetime(2025, 12, 13, 1, 13, 46, 72244, tzinfo=datetime.timezone.utc)
+
+    def test_very_low_confidence_signals(self, composer, timestamp):
+        """Test behavior with very low confidence signals."""
+        signals = {
+>           "hedge": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.2,
+                reasoning="Weak signal",
+            ),
+            "liquidity": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.15,
+                reasoning="Low liquidity",
+            ),
+            "sentiment": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.25,
+                reasoning="Unclear sentiment",
+            ),
+        }
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+E       agent
+E         Field required [type=missing, input_value={'timestamp': datetime.da...asoning': 'Weak signal'}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.12/v/missing
+
+tests\integration\test_composer_integration.py:207: ValidationError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:13:46.072 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+_______________ TestComposerIntegration.test_bearish_consensus ________________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x0000024DC14A1040>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x0000024DC14A1BF0>
+timestamp = datetime.datetime(2025, 12, 13, 1, 13, 46, 76363, tzinfo=datetime.timezone.utc)
+
+    def test_bearish_consensus(self, composer, timestamp):
+        """Test strong bearish consensus."""
+        signals = {
+>           "hedge": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bearish",
+                confidence=0.85,
+                reasoning="Heavy put pressure",
+            ),
+            "liquidity": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bearish",
+                confidence=0.75,
+                reasoning="Widening spreads",
+            ),
+            "sentiment": AgentSignal(
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bearish",
+                confidence=0.9,
+                reasoning="Negative news flow",
+            ),
+        }
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+E       agent
+E         Field required [type=missing, input_value={'timestamp': datetime.da...': 'Heavy put pressure'}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.12/v/missing
+
+tests\integration\test_composer_integration.py:238: ValidationError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:13:46.076 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+=========================== short test summary info ===========================
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_strong_consensus_bullish - pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+agent
+  Field required [type=missing, input_value={'timestamp': datetime.da...itive energy asymmetry'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_conflicting_signals - pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+agent
+  Field required [type=missing, input_value={'timestamp': datetime.da...ive dealer positioning'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_weighted_influence - pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+agent
+  Field required [type=missing, input_value={'timestamp': datetime.da...: 'Strong hedge signal'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_all_neutral_signals - pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+agent
+  Field required [type=missing, input_value={'timestamp': datetime.da...'No clear hedge signal'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_missing_agent_signal - pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+agent
+  Field required [type=missing, input_value={'timestamp': datetime.da...: 'Strong hedge signal'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_very_low_confidence_signals - pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+agent
+  Field required [type=missing, input_value={'timestamp': datetime.da...asoning': 'Weak signal'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_bearish_consensus - pydantic_core._pydantic_core.ValidationError: 1 validation error for AgentSignal
+agent
+  Field required [type=missing, input_value={'timestamp': datetime.da...': 'Heavy put pressure'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+============================== 7 failed in 1.03s ==============================

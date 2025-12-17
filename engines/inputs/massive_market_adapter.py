@@ -4,15 +4,13 @@ Provides market data, technical indicators, financials, news, and options data
 using the official MASSIVE Python client library.
 """
 
-from __future__ import annotations
-
 import os
-from datetime import datetime, date, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from loguru import logger
 import polars as pl
+from loguru import logger
 
 from config.credentials import get_massive_api_keys, massive_api_enabled
 from engines.inputs.market_data_adapter import OHLCV, Quote
@@ -59,19 +57,13 @@ class MassiveMarketDataAdapter:
             self.client = RESTClient(api_key=self.api_key)
             logger.info("MassiveMarketDataAdapter initialized with live data access")
         except ImportError:
-            raise ImportError(
-                "MASSIVE client not installed. Run: pip install massive"
-            )
+            raise ImportError("MASSIVE client not installed. Run: pip install massive")
         except Exception as e:
             logger.error(f"Failed to initialize MASSIVE client: {e}")
             raise
 
     def get_bars(
-        self,
-        symbol: str,
-        start: datetime,
-        end: datetime,
-        timeframe: str = "1Day"
+        self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Day"
     ) -> List[OHLCV]:
         """Get historical OHLCV bars (aggregates).
 
@@ -173,14 +165,15 @@ class MassiveMarketDataAdapter:
 
             return Quote(
                 timestamp=datetime.fromtimestamp(quote.participant_timestamp / 1e9, tz=timezone.utc)
-                if hasattr(quote, 'participant_timestamp') else datetime.now(timezone.utc),
+                if hasattr(quote, "participant_timestamp")
+                else datetime.now(timezone.utc),
                 symbol=symbol,
-                bid=float(quote.bid_price) if hasattr(quote, 'bid_price') else 0.0,
-                ask=float(quote.ask_price) if hasattr(quote, 'ask_price') else 0.0,
-                bid_size=float(quote.bid_size) if hasattr(quote, 'bid_size') else 0.0,
-                ask_size=float(quote.ask_size) if hasattr(quote, 'ask_size') else 0.0,
-                last=float(quote.ask_price) if hasattr(quote, 'ask_price') else 0.0,
-                last_size=float(quote.ask_size) if hasattr(quote, 'ask_size') else 0.0,
+                bid=float(quote.bid_price) if hasattr(quote, "bid_price") else 0.0,
+                ask=float(quote.ask_price) if hasattr(quote, "ask_price") else 0.0,
+                bid_size=float(quote.bid_size) if hasattr(quote, "bid_size") else 0.0,
+                ask_size=float(quote.ask_size) if hasattr(quote, "ask_size") else 0.0,
+                last=float(quote.ask_price) if hasattr(quote, "ask_price") else 0.0,
+                last_size=float(quote.ask_size) if hasattr(quote, "ask_size") else 0.0,
             )
 
         except Exception as e:
@@ -199,10 +192,9 @@ class MassiveMarketDataAdapter:
 
         try:
             df = pl.read_parquet(path)
-            df = df.filter(
-                (pl.col("timestamp") >= start)
-                & (pl.col("timestamp") <= end)
-            ).sort("timestamp")
+            df = df.filter((pl.col("timestamp") >= start) & (pl.col("timestamp") <= end)).sort(
+                "timestamp"
+            )
             return [
                 OHLCV(
                     timestamp=ts,
@@ -311,7 +303,7 @@ class MassiveMarketDataAdapter:
 
             return [
                 {"timestamp": v.timestamp, "value": v.value}
-                for v in (sma_data.values if hasattr(sma_data, 'values') else [])
+                for v in (sma_data.values if hasattr(sma_data, "values") else [])
             ]
 
         except Exception as e:
@@ -349,7 +341,7 @@ class MassiveMarketDataAdapter:
 
             return [
                 {"timestamp": v.timestamp, "value": v.value}
-                for v in (ema_data.values if hasattr(ema_data, 'values') else [])
+                for v in (ema_data.values if hasattr(ema_data, "values") else [])
             ]
 
         except Exception as e:
@@ -387,7 +379,7 @@ class MassiveMarketDataAdapter:
 
             return [
                 {"timestamp": v.timestamp, "value": v.value}
-                for v in (rsi_data.values if hasattr(rsi_data, 'values') else [])
+                for v in (rsi_data.values if hasattr(rsi_data, "values") else [])
             ]
 
         except Exception as e:
@@ -436,7 +428,7 @@ class MassiveMarketDataAdapter:
                     "signal": v.signal,
                     "histogram": v.histogram,
                 }
-                for v in (macd_data.values if hasattr(macd_data, 'values') else [])
+                for v in (macd_data.values if hasattr(macd_data, "values") else [])
             ]
 
         except Exception as e:
@@ -462,21 +454,25 @@ class MassiveMarketDataAdapter:
                 return None
 
             return {
-                "symbol": getattr(details, 'ticker', symbol),
-                "name": getattr(details, 'name', ''),
-                "market": getattr(details, 'market', ''),
-                "locale": getattr(details, 'locale', ''),
-                "primary_exchange": getattr(details, 'primary_exchange', ''),
-                "type": getattr(details, 'type', ''),
-                "currency_name": getattr(details, 'currency_name', ''),
-                "market_cap": getattr(details, 'market_cap', None),
-                "share_class_shares_outstanding": getattr(details, 'share_class_shares_outstanding', None),
-                "weighted_shares_outstanding": getattr(details, 'weighted_shares_outstanding', None),
-                "description": getattr(details, 'description', ''),
-                "sic_code": getattr(details, 'sic_code', ''),
-                "sic_description": getattr(details, 'sic_description', ''),
-                "homepage_url": getattr(details, 'homepage_url', ''),
-                "total_employees": getattr(details, 'total_employees', None),
+                "symbol": getattr(details, "ticker", symbol),
+                "name": getattr(details, "name", ""),
+                "market": getattr(details, "market", ""),
+                "locale": getattr(details, "locale", ""),
+                "primary_exchange": getattr(details, "primary_exchange", ""),
+                "type": getattr(details, "type", ""),
+                "currency_name": getattr(details, "currency_name", ""),
+                "market_cap": getattr(details, "market_cap", None),
+                "share_class_shares_outstanding": getattr(
+                    details, "share_class_shares_outstanding", None
+                ),
+                "weighted_shares_outstanding": getattr(
+                    details, "weighted_shares_outstanding", None
+                ),
+                "description": getattr(details, "description", ""),
+                "sic_code": getattr(details, "sic_code", ""),
+                "sic_description": getattr(details, "sic_description", ""),
+                "homepage_url": getattr(details, "homepage_url", ""),
+                "total_employees": getattr(details, "total_employees", None),
             }
 
         except Exception as e:
@@ -501,22 +497,24 @@ class MassiveMarketDataAdapter:
             return []
 
         try:
-            news_list = list(self.client.list_ticker_news(
-                ticker=symbol,
-                limit=limit,
-            ))
+            news_list = list(
+                self.client.list_ticker_news(
+                    ticker=symbol,
+                    limit=limit,
+                )
+            )
 
             return [
                 {
-                    "id": getattr(article, 'id', ''),
-                    "title": getattr(article, 'title', ''),
-                    "author": getattr(article, 'author', ''),
-                    "published_utc": getattr(article, 'published_utc', ''),
-                    "article_url": getattr(article, 'article_url', ''),
-                    "tickers": getattr(article, 'tickers', []),
-                    "description": getattr(article, 'description', ''),
-                    "keywords": getattr(article, 'keywords', []),
-                    "publisher": getattr(article, 'publisher', {}),
+                    "id": getattr(article, "id", ""),
+                    "title": getattr(article, "title", ""),
+                    "author": getattr(article, "author", ""),
+                    "published_utc": getattr(article, "published_utc", ""),
+                    "article_url": getattr(article, "article_url", ""),
+                    "tickers": getattr(article, "tickers", []),
+                    "description": getattr(article, "description", ""),
+                    "keywords": getattr(article, "keywords", []),
+                    "publisher": getattr(article, "publisher", {}),
                 }
                 for article in news_list
             ]
@@ -543,22 +541,24 @@ class MassiveMarketDataAdapter:
             return []
 
         try:
-            news_list = list(self.client.list_benzinga_news(
-                tickers=symbol,
-                limit=limit,
-            ))
+            news_list = list(
+                self.client.list_benzinga_news(
+                    tickers=symbol,
+                    limit=limit,
+                )
+            )
 
             return [
                 {
-                    "id": getattr(article, 'id', ''),
-                    "title": getattr(article, 'title', ''),
-                    "author": getattr(article, 'author', ''),
-                    "created": getattr(article, 'created', ''),
-                    "updated": getattr(article, 'updated', ''),
-                    "url": getattr(article, 'url', ''),
-                    "tickers": getattr(article, 'tickers', []),
-                    "body": getattr(article, 'body', ''),
-                    "channels": getattr(article, 'channels', []),
+                    "id": getattr(article, "id", ""),
+                    "title": getattr(article, "title", ""),
+                    "author": getattr(article, "author", ""),
+                    "created": getattr(article, "created", ""),
+                    "updated": getattr(article, "updated", ""),
+                    "url": getattr(article, "url", ""),
+                    "tickers": getattr(article, "tickers", []),
+                    "body": getattr(article, "body", ""),
+                    "channels": getattr(article, "channels", []),
                 }
                 for article in news_list
             ]
@@ -585,25 +585,27 @@ class MassiveMarketDataAdapter:
             return []
 
         try:
-            ratings_list = list(self.client.list_benzinga_ratings(
-                ticker=symbol,
-                limit=limit,
-            ))
+            ratings_list = list(
+                self.client.list_benzinga_ratings(
+                    ticker=symbol,
+                    limit=limit,
+                )
+            )
 
             return [
                 {
-                    "id": getattr(rating, 'id', ''),
-                    "ticker": getattr(rating, 'ticker', symbol),
-                    "analyst": getattr(rating, 'analyst', ''),
-                    "analyst_name": getattr(rating, 'analyst_name', ''),
-                    "rating_current": getattr(rating, 'rating_current', ''),
-                    "rating_prior": getattr(rating, 'rating_prior', ''),
-                    "action_company": getattr(rating, 'action_company', ''),
-                    "action_pt": getattr(rating, 'action_pt', ''),
-                    "pt_current": getattr(rating, 'pt_current', None),
-                    "pt_prior": getattr(rating, 'pt_prior', None),
-                    "date": getattr(rating, 'date', ''),
-                    "time": getattr(rating, 'time', ''),
+                    "id": getattr(rating, "id", ""),
+                    "ticker": getattr(rating, "ticker", symbol),
+                    "analyst": getattr(rating, "analyst", ""),
+                    "analyst_name": getattr(rating, "analyst_name", ""),
+                    "rating_current": getattr(rating, "rating_current", ""),
+                    "rating_prior": getattr(rating, "rating_prior", ""),
+                    "action_company": getattr(rating, "action_company", ""),
+                    "action_pt": getattr(rating, "action_pt", ""),
+                    "pt_current": getattr(rating, "pt_current", None),
+                    "pt_prior": getattr(rating, "pt_prior", None),
+                    "date": getattr(rating, "date", ""),
+                    "time": getattr(rating, "time", ""),
                 }
                 for rating in ratings_list
             ]
@@ -633,31 +635,37 @@ class MassiveMarketDataAdapter:
 
         try:
             if statement_type == "income":
-                financials = list(self.client.list_financials_income_statements(
-                    ticker=symbol,
-                    limit=limit,
-                ))
+                financials = list(
+                    self.client.list_financials_income_statements(
+                        ticker=symbol,
+                        limit=limit,
+                    )
+                )
             elif statement_type == "balance_sheet":
-                financials = list(self.client.list_financials_balance_sheets(
-                    ticker=symbol,
-                    limit=limit,
-                ))
+                financials = list(
+                    self.client.list_financials_balance_sheets(
+                        ticker=symbol,
+                        limit=limit,
+                    )
+                )
             elif statement_type == "cash_flow":
-                financials = list(self.client.list_financials_cash_flow_statements(
-                    ticker=symbol,
-                    limit=limit,
-                ))
+                financials = list(
+                    self.client.list_financials_cash_flow_statements(
+                        ticker=symbol,
+                        limit=limit,
+                    )
+                )
             else:
                 logger.warning(f"Unknown statement type: {statement_type}")
                 return []
 
             return [
                 {
-                    "ticker": getattr(f, 'ticker', symbol),
-                    "fiscal_period": getattr(f, 'fiscal_period', ''),
-                    "fiscal_year": getattr(f, 'fiscal_year', ''),
-                    "filing_date": getattr(f, 'filing_date', ''),
-                    "data": f.__dict__ if hasattr(f, '__dict__') else {},
+                    "ticker": getattr(f, "ticker", symbol),
+                    "fiscal_period": getattr(f, "fiscal_period", ""),
+                    "fiscal_year": getattr(f, "fiscal_year", ""),
+                    "filing_date": getattr(f, "filing_date", ""),
+                    "data": f.__dict__ if hasattr(f, "__dict__") else {},
                 }
                 for f in financials
             ]
@@ -688,23 +696,25 @@ class MassiveMarketDataAdapter:
             return []
 
         try:
-            contracts = list(self.client.list_options_contracts(
-                underlying_ticker=underlying_symbol,
-                expiration_date=expiration_date,
-                contract_type=contract_type,
-                limit=limit,
-            ))
+            contracts = list(
+                self.client.list_options_contracts(
+                    underlying_ticker=underlying_symbol,
+                    expiration_date=expiration_date,
+                    contract_type=contract_type,
+                    limit=limit,
+                )
+            )
 
             return [
                 {
-                    "ticker": getattr(c, 'ticker', ''),
-                    "underlying_ticker": getattr(c, 'underlying_ticker', underlying_symbol),
-                    "contract_type": getattr(c, 'contract_type', ''),
-                    "expiration_date": getattr(c, 'expiration_date', ''),
-                    "strike_price": getattr(c, 'strike_price', 0),
-                    "shares_per_contract": getattr(c, 'shares_per_contract', 100),
-                    "exercise_style": getattr(c, 'exercise_style', ''),
-                    "primary_exchange": getattr(c, 'primary_exchange', ''),
+                    "ticker": getattr(c, "ticker", ""),
+                    "underlying_ticker": getattr(c, "underlying_ticker", underlying_symbol),
+                    "contract_type": getattr(c, "contract_type", ""),
+                    "expiration_date": getattr(c, "expiration_date", ""),
+                    "strike_price": getattr(c, "strike_price", 0),
+                    "shares_per_contract": getattr(c, "shares_per_contract", 100),
+                    "exercise_style": getattr(c, "exercise_style", ""),
+                    "primary_exchange": getattr(c, "primary_exchange", ""),
                 }
                 for c in contracts
             ]
@@ -727,7 +737,9 @@ class MassiveMarketDataAdapter:
 
         try:
             snapshot = self.client.get_snapshot_option(
-                underlying_asset=options_ticker.split(':')[1][:4] if ':' in options_ticker else options_ticker[:4],
+                underlying_asset=options_ticker.split(":")[1][:4]
+                if ":" in options_ticker
+                else options_ticker[:4],
                 option_contract=options_ticker,
             )
 
@@ -736,12 +748,12 @@ class MassiveMarketDataAdapter:
 
             return {
                 "ticker": options_ticker,
-                "day": getattr(snapshot, 'day', {}),
-                "greeks": getattr(snapshot, 'greeks', {}),
-                "implied_volatility": getattr(snapshot, 'implied_volatility', None),
-                "open_interest": getattr(snapshot, 'open_interest', None),
-                "underlying_asset": getattr(snapshot, 'underlying_asset', {}),
-                "break_even_price": getattr(snapshot, 'break_even_price', None),
+                "day": getattr(snapshot, "day", {}),
+                "greeks": getattr(snapshot, "greeks", {}),
+                "implied_volatility": getattr(snapshot, "implied_volatility", None),
+                "open_interest": getattr(snapshot, "open_interest", None),
+                "underlying_asset": getattr(snapshot, "underlying_asset", {}),
+                "break_even_price": getattr(snapshot, "break_even_price", None),
             }
 
         except Exception as e:
@@ -761,10 +773,10 @@ class MassiveMarketDataAdapter:
             status = self.client.get_market_status()
 
             return {
-                "market": getattr(status, 'market', ''),
-                "server_time": getattr(status, 'server_time', ''),
-                "exchanges": getattr(status, 'exchanges', {}),
-                "currencies": getattr(status, 'currencies', {}),
+                "market": getattr(status, "market", ""),
+                "server_time": getattr(status, "server_time", ""),
+                "exchanges": getattr(status, "exchanges", {}),
+                "currencies": getattr(status, "currencies", {}),
             }
 
         except Exception as e:
@@ -788,15 +800,15 @@ class MassiveMarketDataAdapter:
 
             return [
                 {
-                    "date": getattr(y, 'date', ''),
-                    "yield_1m": getattr(y, 'yield_1m', None),
-                    "yield_3m": getattr(y, 'yield_3m', None),
-                    "yield_6m": getattr(y, 'yield_6m', None),
-                    "yield_1y": getattr(y, 'yield_1y', None),
-                    "yield_2y": getattr(y, 'yield_2y', None),
-                    "yield_5y": getattr(y, 'yield_5y', None),
-                    "yield_10y": getattr(y, 'yield_10y', None),
-                    "yield_30y": getattr(y, 'yield_30y', None),
+                    "date": getattr(y, "date", ""),
+                    "yield_1m": getattr(y, "yield_1m", None),
+                    "yield_3m": getattr(y, "yield_3m", None),
+                    "yield_6m": getattr(y, "yield_6m", None),
+                    "yield_1y": getattr(y, "yield_1y", None),
+                    "yield_2y": getattr(y, "yield_2y", None),
+                    "yield_5y": getattr(y, "yield_5y", None),
+                    "yield_10y": getattr(y, "yield_10y", None),
+                    "yield_30y": getattr(y, "yield_30y", None),
                 }
                 for y in yields_data
             ]
@@ -825,14 +837,14 @@ class MassiveMarketDataAdapter:
 
             return {
                 "ticker": symbol,
-                "day": getattr(snapshot, 'day', {}),
-                "prev_day": getattr(snapshot, 'prev_day', {}),
-                "min": getattr(snapshot, 'min', {}),
-                "last_quote": getattr(snapshot, 'last_quote', {}),
-                "last_trade": getattr(snapshot, 'last_trade', {}),
-                "todaysChange": getattr(snapshot, 'todaysChange', None),
-                "todaysChangePerc": getattr(snapshot, 'todaysChangePerc', None),
-                "updated": getattr(snapshot, 'updated', None),
+                "day": getattr(snapshot, "day", {}),
+                "prev_day": getattr(snapshot, "prev_day", {}),
+                "min": getattr(snapshot, "min", {}),
+                "last_quote": getattr(snapshot, "last_quote", {}),
+                "last_trade": getattr(snapshot, "last_trade", {}),
+                "todaysChange": getattr(snapshot, "todaysChange", None),
+                "todaysChangePerc": getattr(snapshot, "todaysChangePerc", None),
+                "updated": getattr(snapshot, "updated", None),
             }
 
         except Exception as e:

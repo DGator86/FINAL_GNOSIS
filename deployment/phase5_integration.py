@@ -6,17 +6,17 @@ Tests multi-leg option orders and option snapshots
 import sys
 from pathlib import Path
 
+from loguru import logger
+
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from loguru import logger
-
 from brokers.alpaca_client import AlpacaClient
-from engines.liquidity.options_execution_v2 import OptionsExecutionModule
+# from engines.liquidity.options_execution_v2 import OptionsExecutionModule
 
 
-def test_option_snapshot():
+def test_option_snapshot() -> bool:
     """Test get_option_snapshot functionality"""
     logger.info("=" * 60)
     logger.info("TEST 1: Option Snapshot Retrieval")
@@ -32,7 +32,7 @@ def test_option_snapshot():
         logger.info(f"Fetching snapshot for: {test_symbol}")
         snapshot = client.get_option_snapshot(test_symbol)
 
-        logger.info(f"Snapshot retrieved successfully:")
+        logger.info("Snapshot retrieved successfully:")
         logger.info(f"  Latest Quote: {snapshot[test_symbol]['latest_quote']}")
         logger.info(f"  Greeks: {snapshot[test_symbol]['greeks']}")
         logger.info(f"  IV: {snapshot[test_symbol]['implied_volatility']}")
@@ -45,15 +45,15 @@ def test_option_snapshot():
         return False
 
 
-def test_multi_leg_order_construction():
+def test_multi_leg_order_construction() -> bool:
     """Test multi-leg order construction (without actual submission)"""
     logger.info("=" * 60)
     logger.info("TEST 2: Multi-Leg Order Construction")
     logger.info("=" * 60)
 
     try:
-        client = AlpacaClient.from_env(mode="paper")
-        execution_module = OptionsExecutionModule(config={}, logger=logger)
+        # client = AlpacaClient.from_env(mode="paper")
+        # execution_module = OptionsExecutionModule(config={}, logger=logger)
 
         # Define a bull call spread
         legs = [
@@ -63,7 +63,9 @@ def test_multi_leg_order_construction():
 
         logger.info("Bull call spread legs:")
         for i, leg in enumerate(legs, 1):
-            logger.info(f"  Leg {i}: {leg['side'].upper()} {leg['symbol']} x{leg['ratio_qty']}")
+            logger.info(
+                f"  Leg {i}: {str(leg['side']).upper()} {leg['symbol']} x{leg['ratio_qty']}"
+            )
 
         # Note: We're not actually submitting the order in this test
         # Just validating the construction logic
@@ -77,21 +79,21 @@ def test_multi_leg_order_construction():
         return False
 
 
-def test_execution_module_integration():
+def test_execution_module_integration() -> bool:
     """Test OptionsExecutionModule execute_order method"""
     logger.info("=" * 60)
     logger.info("TEST 3: Execution Module Integration")
     logger.info("=" * 60)
 
     try:
-        client = AlpacaClient.from_env(mode="paper")
-        execution_module = OptionsExecutionModule(config={}, logger=logger)
+        # client = AlpacaClient.from_env(mode="paper")
+        # execution_module = OptionsExecutionModule(config={}, logger=logger)
 
         # Test single-leg strategy
         single_leg = [{"symbol": "SPY250117C00600000", "side": "buy", "ratio_qty": 1}]
 
         logger.info("Testing single-leg strategy:")
-        logger.info(f"  {single_leg[0]['side'].upper()} {single_leg[0]['symbol']}")
+        logger.info(f"  {str(single_leg[0]['side']).upper()} {single_leg[0]['symbol']}")
 
         # Note: Commenting out actual execution to avoid paper trading orders
         # Uncomment to test live in paper trading:
@@ -113,7 +115,9 @@ def test_execution_module_integration():
 
         logger.info("Testing multi-leg strategy:")
         for i, leg in enumerate(multi_leg, 1):
-            logger.info(f"  Leg {i}: {leg['side'].upper()} {leg['symbol']} x{leg['ratio_qty']}")
+            logger.info(
+                f"  Leg {i}: {str(leg['side']).upper()} {leg['symbol']} x{leg['ratio_qty']}"
+            )
 
         # Note: Commenting out actual execution
         # result = execution_module.execute_order(
@@ -134,7 +138,7 @@ def test_execution_module_integration():
         return False
 
 
-def main():
+def main() -> int:
     """Run all Phase 5 integration tests"""
     logger.info("Starting Phase 5 Integration Tests")
     logger.info("Testing: Multi-Leg Options & Option Snapshots")

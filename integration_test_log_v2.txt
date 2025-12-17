@@ -1,0 +1,322 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.3, pytest-9.0.1, pluggy-1.6.0 -- C:\Users\Darrin Vogeli\AppData\Local\Programs\Python\Python313\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Darrin Vogeli\FINAL_GNOSIS
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: anyio-4.12.0
+collecting ... collected 7 items
+
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_strong_consensus_bullish FAILED [ 14%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_conflicting_signals FAILED [ 28%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_weighted_influence FAILED [ 42%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_all_neutral_signals FAILED [ 57%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_missing_agent_signal FAILED [ 71%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_very_low_confidence_signals FAILED [ 85%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_bearish_consensus FAILED [100%]
+
+================================== FAILURES ===================================
+____________ TestComposerIntegration.test_strong_consensus_bullish ____________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x000001EF619DAAD0>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x000001EF3F3A8590>
+timestamp = datetime.datetime(2025, 12, 13, 1, 24, 11, 523846, tzinfo=datetime.timezone.utc)
+
+    def test_strong_consensus_bullish(self, composer, timestamp):
+        """Test strong bullish consensus from all agents."""
+        # All agents agree on bullish signal
+        hedge_signal = AgentSignal(
+            agent="hedge",
+            timestamp=timestamp,
+            symbol="SPY",
+            signal="bullish",
+            confidence=0.9,
+            reasoning="High call pressure, positive energy asymmetry",
+        )
+    
+        liquidity_signal = AgentSignal(
+            agent="liquidity",
+            timestamp=timestamp,
+            symbol="SPY",
+            signal="bullish",
+            confidence=0.8,
+            reasoning="High liquidity, tight spreads",
+        )
+    
+        sentiment_signal = AgentSignal(
+            agent="sentiment",
+            timestamp=timestamp,
+            symbol="SPY",
+            signal="bullish",
+            confidence=0.85,
+            reasoning="Positive news and flow sentiment",
+        )
+    
+        signals = {
+            "hedge": hedge_signal,
+            "liquidity": liquidity_signal,
+            "sentiment": sentiment_signal,
+        }
+    
+>       decision = composer.compose(signals)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+
+tests\integration\test_composer_integration.py:68: TypeError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:24:11.523 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+______________ TestComposerIntegration.test_conflicting_signals _______________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x000001EF619DB4D0>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x000001EF619DB390>
+timestamp = datetime.datetime(2025, 12, 13, 1, 24, 11, 627622, tzinfo=datetime.timezone.utc)
+
+    def test_conflicting_signals(self, composer, timestamp):
+        """Test resolution when agents disagree."""
+        # Hedge is bullish, sentiment is bearish, liquidity is neutral
+        signals = {
+            "hedge": AgentSignal(
+                agent="hedge",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.8,
+                reasoning="Positive dealer positioning",
+            ),
+            "liquidity": AgentSignal(
+                agent="liquidity",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="neutral",
+                confidence=0.6,
+                reasoning="Moderate liquidity",
+            ),
+            "sentiment": AgentSignal(
+                agent="sentiment",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bearish",
+                confidence=0.7,
+                reasoning="Negative news sentiment",
+            ),
+        }
+    
+>       decision = composer.compose(signals)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+
+tests\integration\test_composer_integration.py:110: TypeError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:24:11.627 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+_______________ TestComposerIntegration.test_weighted_influence _______________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x000001EF61A2DA70>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x000001EF619DB750>
+timestamp = datetime.datetime(2025, 12, 13, 1, 24, 11, 632096, tzinfo=datetime.timezone.utc)
+
+    def test_weighted_influence(self, composer, timestamp):
+        """Test that hedge agent has higher influence (40% vs 20% liquidity)."""
+        # Strong hedge signal, weak liquidity signal
+        signals = {
+            "hedge": AgentSignal(
+                agent="hedge",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.9,
+                reasoning="Strong hedge signal",
+            ),
+            "liquidity": AgentSignal(
+                agent="liquidity",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bearish",
+                confidence=0.8,
+                reasoning="Poor liquidity",
+            ),
+            "sentiment": AgentSignal(
+                agent="sentiment",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="neutral",
+                confidence=0.5,
+                reasoning="Mixed sentiment",
+            ),
+        }
+    
+>       decision = composer.compose(signals)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+
+tests\integration\test_composer_integration.py:147: TypeError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:24:11.631 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+______________ TestComposerIntegration.test_all_neutral_signals _______________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x000001EF61A2DCD0>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x000001EF3F312650>
+timestamp = datetime.datetime(2025, 12, 13, 1, 24, 11, 635762, tzinfo=datetime.timezone.utc)
+
+    def test_all_neutral_signals(self, composer, timestamp):
+        """Test when all agents are neutral."""
+        signals = {
+            "hedge": AgentSignal(
+                agent="hedge",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="neutral",
+                confidence=0.5,
+                reasoning="No clear hedge signal",
+            ),
+            "liquidity": AgentSignal(
+                agent="liquidity",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="neutral",
+                confidence=0.5,
+                reasoning="Average liquidity",
+            ),
+            "sentiment": AgentSignal(
+                agent="sentiment",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="neutral",
+                confidence=0.5,
+                reasoning="Mixed sentiment",
+            ),
+        }
+    
+>       decision = composer.compose(signals)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+
+tests\integration\test_composer_integration.py:183: TypeError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:24:11.635 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+______________ TestComposerIntegration.test_missing_agent_signal ______________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x000001EF61A6D6D0>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x000001EF61A2E3F0>
+timestamp = datetime.datetime(2025, 12, 13, 1, 24, 11, 639251, tzinfo=datetime.timezone.utc)
+
+    def test_missing_agent_signal(self, composer, timestamp):
+        """Test handling when an agent signal is missing."""
+        # Only hedge and sentiment, no liquidity
+        signals = {
+            "hedge": AgentSignal(
+                agent="hedge",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.8,
+                reasoning="Strong hedge signal",
+            ),
+            "sentiment": AgentSignal(
+                agent="sentiment",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.75,
+                reasoning="Positive sentiment",
+            ),
+        }
+    
+>       decision = composer.compose(signals)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+
+tests\integration\test_composer_integration.py:211: TypeError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:24:11.639 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+__________ TestComposerIntegration.test_very_low_confidence_signals ___________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x000001EF61A88F30>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x000001EF61A6D490>
+timestamp = datetime.datetime(2025, 12, 13, 1, 24, 11, 642916, tzinfo=datetime.timezone.utc)
+
+    def test_very_low_confidence_signals(self, composer, timestamp):
+        """Test behavior with very low confidence signals."""
+        signals = {
+            "hedge": AgentSignal(
+                agent="hedge",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.2,
+                reasoning="Weak signal",
+            ),
+            "liquidity": AgentSignal(
+                agent="liquidity",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.15,
+                reasoning="Low liquidity",
+            ),
+            "sentiment": AgentSignal(
+                agent="sentiment",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bullish",
+                confidence=0.25,
+                reasoning="Unclear sentiment",
+            ),
+        }
+    
+>       decision = composer.compose(signals)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+
+tests\integration\test_composer_integration.py:247: TypeError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:24:11.642 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+_______________ TestComposerIntegration.test_bearish_consensus ________________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x000001EF61A89150>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x000001EF61A89F20>
+timestamp = datetime.datetime(2025, 12, 13, 1, 24, 11, 646590, tzinfo=datetime.timezone.utc)
+
+    def test_bearish_consensus(self, composer, timestamp):
+        """Test strong bearish consensus."""
+        signals = {
+            "hedge": AgentSignal(
+                agent="hedge",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bearish",
+                confidence=0.85,
+                reasoning="Heavy put pressure",
+            ),
+            "liquidity": AgentSignal(
+                agent="liquidity",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bearish",
+                confidence=0.75,
+                reasoning="Widening spreads",
+            ),
+            "sentiment": AgentSignal(
+                agent="sentiment",
+                timestamp=timestamp,
+                symbol="SPY",
+                signal="bearish",
+                confidence=0.9,
+                reasoning="Negative news flow",
+            ),
+        }
+    
+>       decision = composer.compose(signals)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+
+tests\integration\test_composer_integration.py:281: TypeError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-12 20:24:11.646 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+=========================== short test summary info ===========================
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_strong_consensus_bullish - TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_conflicting_signals - TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_weighted_influence - TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_all_neutral_signals - TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_missing_agent_signal - TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_very_low_confidence_signals - TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_bearish_consensus - TypeError: ComposerAgentV1.compose() missing 1 required positional argument: 'timestamp'
+============================== 7 failed in 0.59s ==============================

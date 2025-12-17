@@ -164,21 +164,27 @@ class AlpacaClient:
 
         # Submit order
         order = self._trading_client.submit_order(order_data)
+        if isinstance(order, dict):
+            # Should not happen with TradingClient but handling for type safety
+            return order  # It's already a dict
+
+        # Cast to Any for attribute access if type checker is confused
+        order_obj: Any = order
 
         # Convert to dict for return
         return {
-            "id": str(order.id),
-            "client_order_id": order.client_order_id,
-            "status": str(order.status),
-            "order_class": str(order.order_class),
-            "qty": order.qty,
+            "id": str(order_obj.id),
+            "client_order_id": order_obj.client_order_id,
+            "status": str(order_obj.status),
+            "order_class": str(order_obj.order_class),
+            "qty": order_obj.qty,
             "legs": [
                 {
                     "symbol": leg.symbol,
                     "side": str(leg.side),
                     "ratio_qty": leg.ratio_qty,
                 }
-                for leg in (order.legs if hasattr(order, "legs") and order.legs else [])
+                for leg in (order_obj.legs if hasattr(order_obj, "legs") and order_obj.legs else [])
             ],
         }
 

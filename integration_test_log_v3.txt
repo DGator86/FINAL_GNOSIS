@@ -1,0 +1,118 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.3, pytest-9.0.1, pluggy-1.6.0 -- C:\Users\Darrin Vogeli\AppData\Local\Programs\Python\Python313\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Darrin Vogeli\FINAL_GNOSIS
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: anyio-4.12.0
+collecting ... collected 7 items
+
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_strong_consensus_bullish FAILED [ 14%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_conflicting_signals PASSED [ 28%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_weighted_influence PASSED [ 42%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_all_neutral_signals PASSED [ 57%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_missing_agent_signal PASSED [ 71%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_very_low_confidence_signals FAILED [ 85%]
+tests/integration/test_composer_integration.py::TestComposerIntegration::test_bearish_consensus PASSED [100%]
+
+================================== FAILURES ===================================
+____________ TestComposerIntegration.test_strong_consensus_bullish ____________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x00000230772FDA90>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x0000023077358590>
+timestamp = datetime.datetime(2025, 12, 13, 17, 37, 24, 44056, tzinfo=datetime.timezone.utc)
+
+    def test_strong_consensus_bullish(self, composer, timestamp):
+        """Test strong bullish consensus from all agents."""
+        # All agents agree on bullish signal
+        suggestions = [
+            AgentSuggestion(
+                agent_name="hedge",
+                timestamp=timestamp,
+                symbol="SPY",
+                direction=DirectionEnum.LONG,
+                confidence=0.9,
+                reasoning="High call pressure, positive energy asymmetry",
+            ),
+            AgentSuggestion(
+                agent_name="liquidity",
+                timestamp=timestamp,
+                symbol="SPY",
+                direction=DirectionEnum.LONG,
+                confidence=0.8,
+                reasoning="High liquidity, tight spreads",
+            ),
+            AgentSuggestion(
+                agent_name="sentiment",
+                timestamp=timestamp,
+                symbol="SPY",
+                direction=DirectionEnum.LONG,
+                confidence=0.85,
+                reasoning="Positive news and flow sentiment",
+            ),
+        ]
+    
+        decision = composer.compose(suggestions, timestamp)
+    
+        # Verify strong bullish consensus
+        assert decision["direction"] == DirectionEnum.LONG.value
+        assert decision["confidence"] > 0.8
+        assert decision["consensus_value"] > 0.7
+    
+        # Verify weighted consensus score
+        # 0.4 * 0.9 + 0.2 * 0.8 + 0.4 * 0.85 = 0.36 + 0.16 + 0.34 = 0.86
+        expected_consensus = 0.86
+>       assert abs(decision.consensus_score - expected_consensus) < 0.01
+                   ^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'dict' object has no attribute 'consensus_score'
+
+tests\integration\test_composer_integration.py:73: AttributeError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-13 12:37:24.043 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+__________ TestComposerIntegration.test_very_low_confidence_signals ___________
+
+self = <test_composer_integration.TestComposerIntegration object at 0x0000023019A60E20>
+composer = <agents.composer.composer_agent_v1.ComposerAgentV1 object at 0x0000023019A3DD90>
+timestamp = datetime.datetime(2025, 12, 13, 17, 37, 24, 160466, tzinfo=datetime.timezone.utc)
+
+    def test_very_low_confidence_signals(self, composer, timestamp):
+        """Test behavior with very low confidence signals."""
+        suggestions = [
+            AgentSuggestion(
+                agent_name="hedge",
+                timestamp=timestamp,
+                symbol="SPY",
+                direction=DirectionEnum.LONG,
+                confidence=0.2,
+                reasoning="Weak signal",
+            ),
+            AgentSuggestion(
+                agent_name="liquidity",
+                timestamp=timestamp,
+                symbol="SPY",
+                direction=DirectionEnum.LONG,
+                confidence=0.15,
+                reasoning="Low liquidity",
+            ),
+            AgentSuggestion(
+                agent_name="sentiment",
+                timestamp=timestamp,
+                symbol="SPY",
+                direction=DirectionEnum.LONG,
+                confidence=0.25,
+                reasoning="Unclear sentiment",
+            ),
+        ]
+    
+        decision = composer.compose(suggestions, timestamp)
+    
+        # Even if all agree, low confidence should propagate
+>       assert decision["confidence"] < 0.4
+E       assert 1.0 < 0.4
+
+tests\integration\test_composer_integration.py:249: AssertionError
+---------------------------- Captured stderr setup ----------------------------
+2025-12-13 12:37:24.160 | INFO     | agents.composer.composer_agent_v1:__init__:19 - ComposerAgentV1 initialized
+=========================== short test summary info ===========================
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_strong_consensus_bullish - AttributeError: 'dict' object has no attribute 'consensus_score'
+FAILED tests/integration/test_composer_integration.py::TestComposerIntegration::test_very_low_confidence_signals - assert 1.0 < 0.4
+========================= 2 failed, 5 passed in 1.20s =========================

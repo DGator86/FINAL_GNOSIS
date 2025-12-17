@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+from loguru import logger
+
 
 # Load environment variables
 load_dotenv()
@@ -16,12 +18,10 @@ load_dotenv()
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from loguru import logger
-
 from brokers.alpaca_client import AlpacaClient
 
 
-def test_option_snapshot_live():
+def test_option_snapshot_live() -> bool:
     """Test get_option_snapshot with live market data"""
     logger.info("=" * 60)
     logger.info("LIVE TEST 1: Option Snapshot with Real Market Data")
@@ -46,10 +46,9 @@ def test_option_snapshot_live():
                 logger.info(f"\n{symbol}:")
                 logger.info(f"  Bid: ${data['latest_quote']['bid_price']}")
                 logger.info(f"  Ask: ${data['latest_quote']['ask_price']}")
-                logger.info(
-                    f"  Spread: {data['latest_quote']['ask_price'] - data['latest_quote']['bid_price']:.2f}"
-                )
-                logger.info(f"  Greeks:")
+                spread = data["latest_quote"]["ask_price"] - data["latest_quote"]["bid_price"]
+                logger.info(f"  Spread: {spread:.2f}")
+                logger.info("  Greeks:")
                 logger.info(f"    Delta: {data['greeks']['delta']}")
                 logger.info(f"    Gamma: {data['greeks']['gamma']}")
                 logger.info(f"    Theta: {data['greeks']['theta']}")
@@ -69,7 +68,7 @@ def test_option_snapshot_live():
         return False
 
 
-def test_multi_leg_validation():
+def test_multi_leg_validation() -> bool:
     """Test multi-leg order validation without submission"""
     logger.info("=" * 60)
     logger.info("LIVE TEST 2: Multi-Leg Order Validation")
@@ -86,7 +85,9 @@ def test_multi_leg_validation():
 
         logger.info("Bull call spread structure:")
         for i, leg in enumerate(legs, 1):
-            logger.info(f"  Leg {i}: {leg['side'].upper()} {leg['symbol']} x{leg['ratio_qty']}")
+            logger.info(
+                f"  Leg {i}: {str(leg['side']).upper()} {leg['symbol']} x{leg['ratio_qty']}"
+            )
 
         # Validate the order structure (don't submit)
         logger.info("\nValidating order structure...")
@@ -106,7 +107,7 @@ def test_multi_leg_validation():
         return False
 
 
-def test_get_current_spy_price():
+def test_get_current_spy_price() -> bool:
     """Get current SPY price to help construct valid option symbols"""
     logger.info("=" * 60)
     logger.info("HELPER: Get Current SPY Price")
@@ -129,7 +130,7 @@ def test_get_current_spy_price():
 
         # Suggest option strikes
         atm_strike = round(spy_price / 5) * 5  # Round to nearest $5
-        logger.info(f"\nSuggested strikes for testing:")
+        logger.info("\nSuggested strikes for testing:")
         logger.info(f"  ATM: ${atm_strike}")
         logger.info(f"  OTM Call: ${atm_strike + 5}")
         logger.info(f"  OTM Put: ${atm_strike - 5}")
@@ -141,7 +142,7 @@ def test_get_current_spy_price():
         return False
 
 
-def main():
+def main() -> int:
     """Run live market tests"""
     logger.info("Starting Phase 5 LIVE MARKET Tests")
     logger.info(f"Time: {os.environ.get('TZ', 'EST')} - Market should be open")

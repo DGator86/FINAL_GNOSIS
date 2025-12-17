@@ -6,7 +6,7 @@ Volatility Intelligence Module - Addresses all feedback issues
 """
 
 import logging
-from typing import Dict, List, Optional, Protocol, Tuple
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 
 import numpy as np
 
@@ -23,7 +23,7 @@ class CorrelationEngine(Protocol):
     """Protocol for correlation calculations"""
 
     def calculate_effective_greeks(
-        self, positions: List, reference_asset: str
+        self, positions: List[Any], reference_asset: str
     ) -> Dict[str, float]: ...
 
 
@@ -37,8 +37,8 @@ class VolatilityIntelligenceModule:
         self,
         garch_model: Optional[GARCHModel],
         correlation_engine: Optional[CorrelationEngine],
-        config: Dict,
-        vix_history_provider: callable,  # Returns List[float] of VIX history
+        config: Dict[str, Any],
+        vix_history_provider: Callable[[], List[float]],  # Returns List[float] of VIX history
         logger: Optional[logging.Logger] = None,
     ):
         self.garch_model = garch_model
@@ -48,8 +48,8 @@ class VolatilityIntelligenceModule:
         self.logger = logger or logging.getLogger(__name__)
 
     def process_volatility_intelligence(
-        self, market_data: EnhancedMarketData, current_positions: List = None
-    ) -> Dict[str, float]:
+        self, market_data: EnhancedMarketData, current_positions: Optional[List[Any]] = None
+    ) -> Dict[str, Any]:
         """
         Main processing function with proper error handling.
         Returns dict compatible with OptionsIntelligenceOutput.
@@ -72,7 +72,7 @@ class VolatilityIntelligenceModule:
             )
 
             # 3. Macro Stress Score (Fixed z-score handling)
-            macro_stress = self._calculate_macro_stress_score(market_data.macro_vol_data)
+            macro_stress_score = self._calculate_macro_stress_score(market_data.macro_vol_data)
 
             # 4. Correlation-Adjusted Greeks (Properly implemented)
             effective_greeks = self._calculate_portfolio_greeks(
@@ -83,7 +83,7 @@ class VolatilityIntelligenceModule:
                 "regime_classification": regime,
                 "regime_confidence": confidence,
                 "vol_edge": vol_edge,
-                "macro_stress_score": macro_stress,
+                "macro_stress_score": macro_stress_score,
                 "vix_percentile": vix_percentile,
                 **effective_greeks,
             }
@@ -209,7 +209,7 @@ class VolatilityIntelligenceModule:
         return stress_score
 
     def _calculate_portfolio_greeks(
-        self, positions: List, reference_ticker: str
+        self, positions: List[Any], reference_ticker: str
     ) -> Dict[str, float]:
         """
         Correlation-adjusted portfolio Greeks.
@@ -262,7 +262,7 @@ class VolatilityIntelligenceModule:
                 "vega_utilization": 0.0,
             }
 
-    def _get_fallback_output(self) -> Dict[str, float]:
+    def _get_fallback_output(self) -> Dict[str, Any]:
         """Safe fallback values if processing fails"""
         return {
             "regime_classification": "R2",

@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+from loguru import logger
 
 # Load environment variables
 load_dotenv()
@@ -18,8 +19,6 @@ load_dotenv()
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-
-from loguru import logger
 
 from brokers.alpaca_client import AlpacaClient
 
@@ -31,8 +30,9 @@ def display_option_snapshot(symbol: str, snapshot: dict):
     logger.info(f"{'=' * 60}")
 
     # Quote data
+    # Quote data
     quote = snapshot["latest_quote"]
-    logger.info(f"\nLatest Quote:")
+    logger.info("\nLatest Quote:")
     logger.info(f"  Bid: ${quote['bid_price']:.2f} x {quote['bid_size']}")
     logger.info(f"  Ask: ${quote['ask_price']:.2f} x {quote['ask_size']}")
     logger.info(f"  Spread: ${quote['ask_price'] - quote['bid_price']:.2f}")
@@ -40,7 +40,7 @@ def display_option_snapshot(symbol: str, snapshot: dict):
 
     # Greeks
     greeks = snapshot["greeks"]
-    logger.info(f"\nGreeks:")
+    logger.info("\nGreeks:")
     logger.info(f"  Delta: {greeks['delta']:.4f}")
     logger.info(f"  Gamma: {greeks['gamma']:.4f}")
     logger.info(f"  Theta: {greeks['theta']:.4f}")

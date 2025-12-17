@@ -8,31 +8,33 @@ import os
 import sys
 import time
 from datetime import date, datetime
-from typing import Dict
+from typing import Any, Dict, List
 
 # Add project root to path
 sys.path.append(os.getcwd())
 
 from loguru import logger
 
+from models.options_contracts import (
+    EnhancedMarketData,
+    MacroVolatilityData,
+    OptionQuote,
+    OptionsChain,
+    VolatilityMetrics,
+    VolatilityStructure,
+)
+
 # Configure logging
 logger.remove()
 logger.add(
     sys.stderr,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | "
+    "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
 )
 
 
-def create_mock_market_data(ticker: str, regime_scenario: str = "normal"):
+def create_mock_market_data(ticker: str, regime_scenario: str = "normal") -> EnhancedMarketData:
     """Create sample data for testing different scenarios"""
-    from models.options_contracts import (
-        EnhancedMarketData,
-        MacroVolatilityData,
-        OptionQuote,
-        OptionsChain,
-        VolatilityMetrics,
-        VolatilityStructure,
-    )
 
     # Base values
     spot_price = 450.0
@@ -86,11 +88,11 @@ def create_mock_market_data(ticker: str, regime_scenario: str = "normal"):
 
 
 class V2HealthMonitor:
-    def __init__(self):
-        self.pipeline = None
-        self.metrics_history = []
+    def __init__(self) -> None:
+        self.pipeline: Any = None
+        self.metrics_history: List[Dict[str, Any]] = []
 
-    def initialize(self):
+    def initialize(self) -> bool:
         """Initialize the pipeline with V2 enabled"""
         try:
             from config.options_config_v2 import GNOSIS_V2_CONFIG
@@ -119,7 +121,7 @@ class V2HealthMonitor:
             logger.error(f"Initialization failed: {e}")
             return False
 
-    def run_health_check(self, iterations: int = 5):
+    def run_health_check(self, iterations: int = 5) -> bool:
         """Run a series of health checks"""
         logger.info(f"Starting health check ({iterations} iterations)...")
 
@@ -127,6 +129,8 @@ class V2HealthMonitor:
 
         for i in range(iterations):
             try:
+                if self.pipeline is None:
+                    raise RuntimeError("Pipeline not initialized")
                 # 1. Normal Scenario
                 result = self.pipeline.process_ticker("SPY")
                 self._validate_result(result, "normal")
@@ -147,7 +151,7 @@ class V2HealthMonitor:
         logger.info(f"Health check complete: {success_count}/{iterations} passed")
         return success_count == iterations
 
-    def _validate_result(self, result: Dict, scenario: str):
+    def _validate_result(self, result: Dict[str, Any], scenario: str) -> None:
         """Validate pipeline output"""
         if "gnosis_v2" not in result:
             raise ValueError("V2 data missing from result")

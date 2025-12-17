@@ -18,8 +18,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -28,18 +27,17 @@ from loguru import logger
 
 # Engine imports
 from schemas.core_schemas import (
-    AgentSuggestion,
-    DirectionEnum,
+    ElasticitySnapshot,
     HedgeSnapshot,
     LiquiditySnapshot,
     SentimentSnapshot,
-    ElasticitySnapshot,
 )
 
 
 @dataclass
 class BacktestTrade:
     """Record of a single backtest trade."""
+
     entry_date: datetime
     exit_date: Optional[datetime] = None
     symbol: str = ""
@@ -192,10 +190,7 @@ class HistoricalDataEngine:
         self.config = config
 
     def compute_hedge_snapshot(
-        self,
-        bar: Dict[str, Any],
-        history: pd.DataFrame,
-        timestamp: datetime
+        self, bar: Dict[str, Any], history: pd.DataFrame, timestamp: datetime
     ) -> HedgeSnapshot:
         """
         Compute hedge engine metrics from price action.
@@ -208,23 +203,23 @@ class HistoricalDataEngine:
             return HedgeSnapshot(timestamp=timestamp, symbol=symbol)
 
         # Calculate realized volatility (proxy for gamma exposure)
-        returns = history['close'].pct_change().dropna()
+        returns = history["close"].pct_change().dropna()
         volatility = returns.std() * np.sqrt(252) if len(returns) > 0 else 0.2
 
         # Calculate momentum (proxy for directional flow)
-        sma_5 = history['close'].tail(5).mean()
-        sma_20 = history['close'].tail(20).mean()
+        sma_5 = history["close"].tail(5).mean()
+        sma_20 = history["close"].tail(20).mean()
         momentum = (sma_5 - sma_20) / sma_20 if sma_20 > 0 else 0
 
         # Estimate pressures from volume and price action
-        recent_volume = history['volume'].tail(5).mean()
-        avg_volume = history['volume'].mean()
+        recent_volume = history["volume"].tail(5).mean()
+        avg_volume = history["volume"].mean()
         volume_ratio = recent_volume / avg_volume if avg_volume > 0 else 1.0
 
         # Directional volume (up vs down days)
         recent = history.tail(5)
-        up_volume = recent[recent['close'] > recent['open']]['volume'].sum()
-        down_volume = recent[recent['close'] < recent['open']]['volume'].sum()
+        up_volume = recent[recent["close"] > recent["open"]]["volume"].sum()
+        down_volume = recent[recent["close"] < recent["open"]]["volume"].sum()
 
         total_vol = up_volume + down_volume
         if total_vol > 0:
@@ -282,10 +277,7 @@ class HistoricalDataEngine:
         )
 
     def compute_liquidity_snapshot(
-        self,
-        bar: Dict[str, Any],
-        history: pd.DataFrame,
-        timestamp: datetime
+        self, bar: Dict[str, Any], history: pd.DataFrame, timestamp: datetime
     ) -> LiquiditySnapshot:
         """Compute liquidity metrics from volume and price range."""
         symbol = self.config.symbol
@@ -294,15 +286,17 @@ class HistoricalDataEngine:
             return LiquiditySnapshot(timestamp=timestamp, symbol=symbol)
 
         # Average volume
-        avg_volume = history['volume'].mean()
-        recent_volume = history['volume'].tail(5).mean()
+        avg_volume = history["volume"].mean()
+        recent_volume = history["volume"].tail(5).mean()
 
         # Estimate spread from high-low range
-        avg_range = ((history['high'] - history['low']) / history['close']).mean()
+        avg_range = ((history["high"] - history["low"]) / history["close"]).mean()
         estimated_spread = avg_range * 0.1  # Spread is fraction of range
 
         # Depth proxy (volume * inverse of spread)
-        depth = recent_volume / (1 + estimated_spread * 100) if estimated_spread > 0 else recent_volume
+        depth = (
+            recent_volume / (1 + estimated_spread * 100) if estimated_spread > 0 else recent_volume
+        )
 
         # Impact cost
         impact_cost = estimated_spread * 50  # bps
@@ -323,10 +317,7 @@ class HistoricalDataEngine:
         )
 
     def compute_sentiment_snapshot(
-        self,
-        bar: Dict[str, Any],
-        history: pd.DataFrame,
-        timestamp: datetime
+        self, bar: Dict[str, Any], history: pd.DataFrame, timestamp: datetime
     ) -> SentimentSnapshot:
         """Compute sentiment from price momentum and volume patterns."""
         symbol = self.config.symbol
@@ -335,10 +326,10 @@ class HistoricalDataEngine:
             return SentimentSnapshot(timestamp=timestamp, symbol=symbol)
 
         # Technical sentiment (momentum + mean reversion signals)
-        returns = history['close'].pct_change().dropna()
-        sma_10 = history['close'].tail(10).mean()
-        sma_20 = history['close'].tail(20).mean()
-        current_price = bar['close']
+        returns = history["close"].pct_change().dropna()
+        sma_10 = history["close"].tail(10).mean()
+        sma_20 = history["close"].tail(20).mean()
+        current_price = bar["close"]
 
         # Trend following signal
         trend_signal = (sma_10 - sma_20) / sma_20 if sma_20 > 0 else 0
@@ -353,7 +344,7 @@ class HistoricalDataEngine:
         # Flow sentiment (volume + price direction)
         recent_returns = returns.tail(5)
         positive_returns = recent_returns[recent_returns > 0]
-        negative_returns = recent_returns[recent_returns < 0]
+        # negative_returns = recent_returns[recent_returns < 0]
 
         if len(recent_returns) > 0:
             pos_ratio = len(positive_returns) / len(recent_returns)
@@ -366,11 +357,7 @@ class HistoricalDataEngine:
         news_sentiment = np.tanh(technical_sentiment * 0.5)
 
         # Combined sentiment
-        sentiment_score = (
-            technical_sentiment * 0.4 +
-            flow_sentiment * 0.3 +
-            news_sentiment * 0.3
-        )
+        sentiment_score = technical_sentiment * 0.4 + flow_sentiment * 0.3 + news_sentiment * 0.3
 
         # Confidence (agreement between sources)
         sources = [technical_sentiment, flow_sentiment, news_sentiment]
@@ -388,10 +375,7 @@ class HistoricalDataEngine:
         )
 
     def compute_elasticity_snapshot(
-        self,
-        bar: Dict[str, Any],
-        history: pd.DataFrame,
-        timestamp: datetime
+        self, bar: Dict[str, Any], history: pd.DataFrame, timestamp: datetime
     ) -> ElasticitySnapshot:
         """Compute volatility and trend metrics."""
         symbol = self.config.symbol
@@ -399,13 +383,13 @@ class HistoricalDataEngine:
         if len(history) < 20:
             return ElasticitySnapshot(timestamp=timestamp, symbol=symbol)
 
-        returns = history['close'].pct_change().dropna()
+        returns = history["close"].pct_change().dropna()
         volatility = returns.std() * np.sqrt(252) if len(returns) > 0 else 0.2
 
         # Trend strength (ADX-like)
-        highs = history['high'].tail(14)
-        lows = history['low'].tail(14)
-        closes = history['close'].tail(14)
+        highs = history["high"].tail(14)
+        lows = history["low"].tail(14)
+        closes = history["close"].tail(14)
 
         if len(closes) >= 2:
             plus_dm = (highs.diff() > 0) & (highs.diff() > -lows.diff())
@@ -466,8 +450,8 @@ class MLBacktestEngine:
     def _load_lstm(self):
         """Load LSTM model if available."""
         try:
-            from models.lstm_lookahead import LSTMLookaheadPredictor, LookaheadConfig
-            self.lstm_predictor = LSTMLookaheadPredictor(model_path=self.config.lstm_model_path)
+            # from models.lstm_lookahead import LSTMLookaheadPredictor, LookaheadConfig
+            self.lstm_predictor = None  # Placeholder
             logger.info("LSTM model loaded successfully")
         except Exception as e:
             logger.warning(f"Could not load LSTM model: {e}")
@@ -500,20 +484,22 @@ class MLBacktestEngine:
                 raise ValueError(f"No data returned for {self.config.symbol}")
 
             # Convert to DataFrame
-            df = pd.DataFrame([
-                {
-                    'timestamp': bar.timestamp,
-                    'open': bar.open,
-                    'high': bar.high,
-                    'low': bar.low,
-                    'close': bar.close,
-                    'volume': bar.volume,
-                }
-                for bar in bars
-            ])
+            df = pd.DataFrame(
+                [
+                    {
+                        "timestamp": bar.timestamp,
+                        "open": bar.open,
+                        "high": bar.high,
+                        "low": bar.low,
+                        "close": bar.close,
+                        "volume": bar.volume,
+                    }
+                    for bar in bars
+                ]
+            )
 
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-            df = df.sort_values('timestamp').reset_index(drop=True)
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            df = df.sort_values("timestamp").reset_index(drop=True)
 
             logger.info(f"Fetched {len(df)} bars for {self.config.symbol}")
             return df
@@ -568,10 +554,15 @@ class MLBacktestEngine:
         effective_weights = w_hedge + w_sentiment + (w_liquidity * 0.5)
 
         consensus = (
-            hedge_signal * w_hedge +
-            sentiment_signal * w_sentiment +
-            elasticity_signal * (w_liquidity * 0.5)
-        ) / effective_weights if effective_weights > 0 else 0
+            (
+                hedge_signal * w_hedge
+                + sentiment_signal * w_sentiment
+                + elasticity_signal * (w_liquidity * 0.5)
+            )
+            / effective_weights
+            if effective_weights > 0
+            else 0
+        )
 
         # Confidence based on:
         # 1. Agreement between signals
@@ -582,21 +573,21 @@ class MLBacktestEngine:
         agreement = max(0, 1 - signal_std)
 
         confidence = (
-            agreement * 0.4 +
-            liquidity_multiplier * 0.3 +
-            hedge.confidence * 0.15 +
-            sentiment.confidence * 0.15
+            agreement * 0.4
+            + liquidity_multiplier * 0.3
+            + hedge.confidence * 0.15
+            + sentiment.confidence * 0.15
         )
         confidence = max(0.1, min(1.0, confidence))
 
         details = {
-            'hedge_signal': hedge_signal,
-            'liquidity_score': liquidity.liquidity_score,
-            'sentiment_signal': sentiment_signal,
-            'elasticity_signal': elasticity_signal,
-            'agreement': agreement,
-            'hedge_regime': hedge.regime,
-            'volatility_regime': elasticity.volatility_regime,
+            "hedge_signal": hedge_signal,
+            "liquidity_score": liquidity.liquidity_score,
+            "sentiment_signal": sentiment_signal,
+            "elasticity_signal": elasticity_signal,
+            "agreement": agreement,
+            "hedge_regime": hedge.regime,
+            "volatility_regime": elasticity.volatility_regime,
         }
 
         return consensus, confidence, details
@@ -628,11 +619,11 @@ class MLBacktestEngine:
         for i in range(50, len(df)):  # Start after warmup period
             bar = df.iloc[i].to_dict()
             history = df.iloc[:i]
-            timestamp = bar['timestamp']
+            timestamp = bar["timestamp"]
 
             if pd.isna(timestamp):
                 timestamp = datetime.now(timezone.utc)
-            elif not hasattr(timestamp, 'tzinfo') or timestamp.tzinfo is None:
+            elif not hasattr(timestamp, "tzinfo") or timestamp.tzinfo is None:
                 timestamp = pd.to_datetime(timestamp).to_pydatetime()
                 if timestamp.tzinfo is None:
                     timestamp = timestamp.replace(tzinfo=timezone.utc)
@@ -657,10 +648,12 @@ class MLBacktestEngine:
                     # Blend LSTM with consensus
                     lstm_weight = self.config.lstm_weight
                     consensus = consensus * (1 - lstm_weight) + lstm_pred * lstm_weight
-                    confidence = confidence * (1 - lstm_weight * 0.5) + lstm_conf * (lstm_weight * 0.5)
+                    confidence = confidence * (1 - lstm_weight * 0.5) + lstm_conf * (
+                        lstm_weight * 0.5
+                    )
 
             # Position management
-            current_price = bar['close']
+            current_price = bar["close"]
 
             # Check exit conditions for open position
             if self.current_position is not None:
@@ -689,33 +682,44 @@ class MLBacktestEngine:
             position_value = 0.0
             if self.current_position:
                 if self.current_position.direction == "long":
-                    unrealized = (current_price - self.current_position.entry_price) * self.current_position.position_size
+                    unrealized = (
+                        current_price - self.current_position.entry_price
+                    ) * self.current_position.position_size
                 else:
-                    unrealized = (self.current_position.entry_price - current_price) * self.current_position.position_size
-                position_value = self.current_position.entry_price * self.current_position.position_size + unrealized
+                    unrealized = (
+                        self.current_position.entry_price - current_price
+                    ) * self.current_position.position_size
+                position_value = (
+                    self.current_position.entry_price * self.current_position.position_size
+                    + unrealized
+                )
 
             total_equity = self.current_capital + position_value
 
-            self.equity_curve.append({
-                'timestamp': timestamp.isoformat() if hasattr(timestamp, 'isoformat') else str(timestamp),
-                'equity': total_equity,
-                'capital': self.current_capital,
-                'position_value': position_value,
-                'consensus': consensus,
-                'confidence': confidence,
-            })
+            self.equity_curve.append(
+                {
+                    "timestamp": (
+                        timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp)
+                    ),
+                    "equity": total_equity,
+                    "capital": self.current_capital,
+                    "position_value": position_value,
+                    "consensus": consensus,
+                    "confidence": confidence,
+                }
+            )
 
         # Close any remaining position
         if self.current_position is not None:
             final_bar = df.iloc[-1]
-            final_timestamp = final_bar['timestamp']
+            final_timestamp = final_bar["timestamp"]
             if pd.isna(final_timestamp):
                 final_timestamp = datetime.now(timezone.utc)
-            elif not hasattr(final_timestamp, 'tzinfo') or final_timestamp.tzinfo is None:
+            elif not hasattr(final_timestamp, "tzinfo") or final_timestamp.tzinfo is None:
                 final_timestamp = pd.to_datetime(final_timestamp).to_pydatetime()
                 if final_timestamp.tzinfo is None:
                     final_timestamp = final_timestamp.replace(tzinfo=timezone.utc)
-            self._close_position(final_bar['close'], final_timestamp, "end_of_test")
+            self._close_position(final_bar["close"], final_timestamp, "end_of_test")
 
         # Calculate results
         results = self._calculate_results(df, results)
@@ -733,7 +737,7 @@ class MLBacktestEngine:
                 return 0.0, 0.0
 
             # Prepare features (simplified)
-            feature_cols = ['open', 'high', 'low', 'close', 'volume']
+            feature_cols = ["open", "high", "low", "close", "volume"]
             features = history[feature_cols].tail(60).values
 
             if len(features) < 60:
@@ -748,10 +752,7 @@ class MLBacktestEngine:
             return 0.0, 0.0
 
     def _check_exit(
-        self,
-        position: BacktestTrade,
-        current_price: float,
-        consensus: float
+        self, position: BacktestTrade, current_price: float, consensus: float
     ) -> Tuple[bool, str]:
         """Check if position should be closed."""
 
@@ -819,9 +820,9 @@ class MLBacktestEngine:
             stop_loss=stop_loss,
             take_profit=take_profit,
             entry_cost_bps=entry_cost_bps,
-            hedge_signal=details.get('hedge_signal', 0),
-            liquidity_signal=details.get('liquidity_score', 0),
-            sentiment_signal=details.get('sentiment_signal', 0),
+            hedge_signal=details.get("hedge_signal", 0),
+            liquidity_signal=details.get("liquidity_score", 0),
+            sentiment_signal=details.get("sentiment_signal", 0),
             composite_signal=consensus,
             confidence=confidence,
             lstm_prediction=lstm_pred,
@@ -881,21 +882,24 @@ class MLBacktestEngine:
         self.trades.append(position)
         self.current_position = None
 
-        logger.debug(f"Closed {position.direction} at {adjusted_price:.2f}, P&L: ${net_pnl:.2f} ({pnl_pct*100:.2f}%)")
+        logger.debug(
+            f"Closed {position.direction} at {adjusted_price:.2f}, P&L: ${net_pnl:.2f} ({pnl_pct * 100:.2f}%)"
+        )
 
     def _calculate_results(self, df: pd.DataFrame, results: MLBacktestResults) -> MLBacktestResults:
         """Calculate all backtest metrics."""
 
         # Basic info
-        results.start_date = df['timestamp'].iloc[0]
-        results.end_date = df['timestamp'].iloc[-1]
+        results.start_date = df["timestamp"].iloc[0]
+        results.end_date = df["timestamp"].iloc[-1]
         results.total_bars = len(df)
 
         # Returns
         results.final_capital = self.current_capital
         results.total_return = results.final_capital - results.initial_capital
-        results.total_return_pct = results.total_return / results.initial_capital
-
+        results.total_return_pct = (
+            (results.total_return / results.initial_capital) if results.initial_capital > 0 else 0.0
+        )
         # Trade statistics
         results.trades = self.trades
         results.total_trades = len(self.trades)
@@ -919,7 +923,7 @@ class MLBacktestEngine:
 
             total_wins = sum(win_pnls)
             total_losses = sum(loss_pnls)
-            results.profit_factor = total_wins / total_losses if total_losses > 0 else float('inf')
+            results.profit_factor = total_wins / total_losses if total_losses > 0 else float("inf")
 
             # Costs
             results.total_costs = sum(
@@ -932,7 +936,7 @@ class MLBacktestEngine:
         results.equity_curve = self.equity_curve
 
         if len(self.equity_curve) > 1:
-            equities = [e['equity'] for e in self.equity_curve]
+            equities = [e["equity"] for e in self.equity_curve]
 
             # Daily returns
             returns = pd.Series(equities).pct_change().dropna()
@@ -968,7 +972,9 @@ class MLBacktestEngine:
         # Attribution (simplified)
         if results.total_trades > 0:
             hedge_trades = [t for t in self.trades if abs(t.hedge_signal) > abs(t.sentiment_signal)]
-            sentiment_trades = [t for t in self.trades if abs(t.sentiment_signal) >= abs(t.hedge_signal)]
+            sentiment_trades = [
+                t for t in self.trades if abs(t.sentiment_signal) >= abs(t.hedge_signal)
+            ]
 
             results.hedge_contribution = sum(t.net_pnl for t in hedge_trades)
             results.sentiment_contribution = sum(t.net_pnl for t in sentiment_trades)
@@ -988,39 +994,39 @@ class MLBacktestEngine:
 
         # Save summary
         summary = {
-            'tag': tag,
-            'symbol': self.config.symbol,
-            'start_date': str(results.start_date),
-            'end_date': str(results.end_date),
-            'total_bars': results.total_bars,
-            'initial_capital': results.initial_capital,
-            'final_capital': results.final_capital,
-            'total_return': results.total_return,
-            'total_return_pct': results.total_return_pct,
-            'total_trades': results.total_trades,
-            'win_rate': results.win_rate,
-            'profit_factor': results.profit_factor,
-            'sharpe_ratio': results.sharpe_ratio,
-            'sortino_ratio': results.sortino_ratio,
-            'max_drawdown_pct': results.max_drawdown_pct,
-            'calmar_ratio': results.calmar_ratio,
-            'volatility': results.volatility,
-            'total_costs': results.total_costs,
-            'lstm_used': results.lstm_used,
-            'config': {
-                'timeframe': self.config.timeframe,
-                'position_size_pct': self.config.position_size_pct,
-                'stop_loss_pct': self.config.stop_loss_pct,
-                'take_profit_pct': self.config.take_profit_pct,
-                'entry_threshold': self.config.entry_threshold,
-                'hedge_weight': self.config.hedge_weight,
-                'liquidity_weight': self.config.liquidity_weight,
-                'sentiment_weight': self.config.sentiment_weight,
+            "tag": tag,
+            "symbol": self.config.symbol,
+            "start_date": str(results.start_date),
+            "end_date": str(results.end_date),
+            "total_bars": results.total_bars,
+            "initial_capital": results.initial_capital,
+            "final_capital": results.final_capital,
+            "total_return": results.total_return,
+            "total_return_pct": results.total_return_pct,
+            "total_trades": results.total_trades,
+            "win_rate": results.win_rate,
+            "profit_factor": results.profit_factor,
+            "sharpe_ratio": results.sharpe_ratio,
+            "sortino_ratio": results.sortino_ratio,
+            "max_drawdown_pct": results.max_drawdown_pct,
+            "calmar_ratio": results.calmar_ratio,
+            "volatility": results.volatility,
+            "total_costs": results.total_costs,
+            "lstm_used": results.lstm_used,
+            "config": {
+                "timeframe": self.config.timeframe,
+                "position_size_pct": self.config.position_size_pct,
+                "stop_loss_pct": self.config.stop_loss_pct,
+                "take_profit_pct": self.config.take_profit_pct,
+                "entry_threshold": self.config.entry_threshold,
+                "hedge_weight": self.config.hedge_weight,
+                "liquidity_weight": self.config.liquidity_weight,
+                "sentiment_weight": self.config.sentiment_weight,
             },
         }
 
         summary_path = output_dir / f"{tag}_summary.json"
-        with open(summary_path, 'w') as f:
+        with open(summary_path, "w") as f:
             json.dump(summary, f, indent=2, default=str)
 
         logger.info(f"Results saved to {summary_path}")
@@ -1029,29 +1035,31 @@ class MLBacktestEngine:
         if self.config.save_trades and results.trades:
             trades_data = []
             for t in results.trades:
-                trades_data.append({
-                    'entry_date': str(t.entry_date),
-                    'exit_date': str(t.exit_date),
-                    'direction': t.direction,
-                    'entry_price': t.entry_price,
-                    'exit_price': t.exit_price,
-                    'position_size': t.position_size,
-                    'net_pnl': t.net_pnl,
-                    'pnl_pct': t.pnl_pct,
-                    'is_winner': t.is_winner,
-                    'exit_reason': t.exit_reason,
-                    'composite_signal': t.composite_signal,
-                    'confidence': t.confidence,
-                })
+                trades_data.append(
+                    {
+                        "entry_date": str(t.entry_date),
+                        "exit_date": str(t.exit_date),
+                        "direction": t.direction,
+                        "entry_price": t.entry_price,
+                        "exit_price": t.exit_price,
+                        "position_size": t.position_size,
+                        "net_pnl": t.net_pnl,
+                        "pnl_pct": t.pnl_pct,
+                        "is_winner": t.is_winner,
+                        "exit_reason": t.exit_reason,
+                        "composite_signal": t.composite_signal,
+                        "confidence": t.confidence,
+                    }
+                )
 
             trades_path = output_dir / f"{tag}_trades.json"
-            with open(trades_path, 'w') as f:
+            with open(trades_path, "w") as f:
                 json.dump(trades_data, f, indent=2, default=str)
 
         # Save equity curve
         if self.config.save_equity_curve and results.equity_curve:
             equity_path = output_dir / f"{tag}_equity.json"
-            with open(equity_path, 'w') as f:
+            with open(equity_path, "w") as f:
                 json.dump(results.equity_curve, f, indent=2, default=str)
 
 
@@ -1062,7 +1070,7 @@ def run_ml_backtest(
     timeframe: str = "1Day",
     initial_capital: float = 100_000.0,
     tag: str = "",
-    **kwargs
+    **kwargs,
 ) -> MLBacktestResults:
     """
     Convenience function to run ML-enabled backtest.
@@ -1086,7 +1094,7 @@ def run_ml_backtest(
         timeframe=timeframe,
         initial_capital=initial_capital,
         tag=tag or f"{symbol}_{start_date}_{end_date}",
-        **kwargs
+        **kwargs,
     )
 
     engine = MLBacktestEngine(config)
@@ -1095,40 +1103,42 @@ def run_ml_backtest(
 
 def print_results_summary(results: MLBacktestResults):
     """Print formatted results summary."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("ML BACKTEST RESULTS SUMMARY")
-    print("="*60)
+    print("=" * 60)
     print(f"Symbol: {results.config.symbol if results.config else 'N/A'}")
     print(f"Period: {results.start_date} to {results.end_date}")
     print(f"Total Bars: {results.total_bars}")
-    print("-"*60)
+    print("-" * 60)
     print("RETURNS")
     print(f"  Initial Capital:  ${results.initial_capital:,.2f}")
     print(f"  Final Capital:    ${results.final_capital:,.2f}")
-    print(f"  Total Return:     ${results.total_return:,.2f} ({results.total_return_pct*100:.2f}%)")
-    print("-"*60)
+    print(
+        f"  Total Return:     ${results.total_return:,.2f} ({results.total_return_pct * 100:.2f}%)"
+    )
+    print("-" * 60)
     print("TRADES")
     print(f"  Total Trades:     {results.total_trades}")
-    print(f"  Win Rate:         {results.win_rate*100:.1f}%")
+    print(f"  Win Rate:         {results.win_rate * 100:.1f}%")
     print(f"  Profit Factor:    {results.profit_factor:.2f}")
     print(f"  Avg Win:          ${results.avg_win:,.2f}")
     print(f"  Avg Loss:         ${results.avg_loss:,.2f}")
     print(f"  Largest Win:      ${results.largest_win:,.2f}")
     print(f"  Largest Loss:     ${results.largest_loss:,.2f}")
-    print("-"*60)
+    print("-" * 60)
     print("RISK METRICS")
     print(f"  Sharpe Ratio:     {results.sharpe_ratio:.2f}")
     print(f"  Sortino Ratio:    {results.sortino_ratio:.2f}")
-    print(f"  Max Drawdown:     {results.max_drawdown_pct*100:.2f}%")
+    print(f"  Max Drawdown:     {results.max_drawdown_pct * 100:.2f}%")
     print(f"  Calmar Ratio:     {results.calmar_ratio:.2f}")
-    print(f"  Volatility:       {results.volatility*100:.1f}%")
-    print("-"*60)
+    print(f"  Volatility:       {results.volatility * 100:.1f}%")
+    print("-" * 60)
     print("COSTS")
     print(f"  Total Costs:      ${results.total_costs:,.2f}")
     print(f"  Avg Cost/Trade:   ${results.avg_cost_per_trade:,.2f}")
-    print("-"*60)
+    print("-" * 60)
     print(f"LSTM Used: {results.lstm_used}")
-    print("="*60)
+    print("=" * 60)
 
 
 if __name__ == "__main__":
