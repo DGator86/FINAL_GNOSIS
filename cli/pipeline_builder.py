@@ -73,6 +73,11 @@ def build_pipeline(
     )
     news_adapter: NewsAdapter = adapters.get("news") or create_news_adapter(prefer_real=False)
 
+    # Build processors (shared for reuse)
+    technical_processor = TechnicalSentimentProcessor(
+        market_adapter, config.engines.sentiment.model_dump()
+    )
+
     # Build engines
     engines = {
         "hedge": HedgeEngineV3(options_adapter, config.engines.hedge.model_dump()),
@@ -81,11 +86,12 @@ def build_pipeline(
             [
                 NewsSentimentProcessor(news_adapter, config.engines.sentiment.model_dump()),
                 FlowSentimentProcessor(config.engines.sentiment.model_dump()),
-                TechnicalSentimentProcessor(market_adapter, config.engines.sentiment.model_dump()),
+                technical_processor,
             ],
             config.engines.sentiment.model_dump(),
         ),
         "elasticity": ElasticityEngineV1(market_adapter, config.engines.elasticity.model_dump()),
+        "mtf": technical_processor,  # For multi-timeframe analysis
     }
 
     # Build primary agents

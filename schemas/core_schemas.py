@@ -85,6 +85,30 @@ class ElasticitySnapshot(BaseModel):
     trend_strength: float = 0.0
 
 
+class TimeframeSignal(BaseModel):
+    """Signal analysis for a single timeframe."""
+
+    timeframe: str  # "1Min", "5Min", "15Min", "30Min", "1Hour", "4Hour", "1Day"
+    direction: str  # "long", "short", "neutral"
+    strength: float = 0.0  # -1.0 to +1.0
+    confidence: float = 0.5  # 0.0 to 1.0
+    momentum: float = 0.0  # Price momentum
+    trend: str = "neutral"  # "bullish", "bearish", "neutral"
+    reasoning: str = ""
+
+
+class MTFAnalysis(BaseModel):
+    """Multi-timeframe analysis aggregating signals across all timeframes."""
+
+    timestamp: datetime
+    symbol: str
+    signals: List[TimeframeSignal] = Field(default_factory=list)
+    alignment_score: float = 0.0  # How aligned are timeframes (0-1)
+    dominant_timeframe: str = ""  # Which timeframe has strongest signal
+    overall_direction: str = "neutral"  # Weighted consensus direction
+    overall_confidence: float = 0.5
+
+
 class ForecastSnapshot(BaseModel):
     """Time-series forecast payload (Kats-inspired)."""
 
@@ -359,6 +383,7 @@ class PipelineResult(BaseModel):
     liquidity_snapshot: Optional[LiquiditySnapshot] = None
     sentiment_snapshot: Optional[SentimentSnapshot] = None
     elasticity_snapshot: Optional[ElasticitySnapshot] = None
+    mtf_analysis: Optional[MTFAnalysis] = None  # Multi-timeframe analysis
     suggestions: List[AgentSuggestion] = Field(default_factory=list)
     trade_ideas: List[TradeIdea] = Field(default_factory=list)
     order_results: List[OrderResult] = Field(default_factory=list)

@@ -102,6 +102,16 @@ class PipelineRunner:
                 elif name == "elasticity":
                     result.elasticity_snapshot = snapshot
 
+            # Run MTF analysis if processor is available
+            if "mtf" in self.engines:
+                try:
+                    mtf_processor = self.engines["mtf"]
+                    if hasattr(mtf_processor, "analyze_mtf"):
+                        result.mtf_analysis = mtf_processor.analyze_mtf(self.symbol, timestamp)
+                        logger.debug(f"MTF analysis completed for {self.symbol}")
+                except Exception as e:
+                    logger.error(f"Error in MTF analysis: {e}")
+
             # Run ML enhancement engine (e.g., LSTM lookahead predictions)
             # Can be MLEnhancementEngine (composite) or LSTMPredictionEngine (specialized)
             if self.ml_engine:

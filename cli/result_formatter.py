@@ -11,6 +11,8 @@ from schemas.core_schemas import (
     TradeIdea,
     ExpectedMove,
     PriceRange,
+    MTFAnalysis,
+    TimeframeSignal,
 )
 
 
@@ -42,6 +44,14 @@ def format_pipeline_result(result: PipelineResult) -> str:
 
     if result.elasticity_snapshot:
         lines.extend(_format_elasticity_snapshot(result.elasticity_snapshot))
+
+    # Section 1b: Multi-Timeframe Analysis (if available)
+    if result.mtf_analysis:
+        lines.append("")
+        lines.append("-" * 80)
+        lines.append("  MULTI-TIMEFRAME ANALYSIS (All Timeframes)")
+        lines.append("-" * 80)
+        lines.extend(_format_mtf_analysis(result.mtf_analysis))
 
     # Section 2: Agent Suggestions (what each agent thinks)
     if result.suggestions:
@@ -503,3 +513,130 @@ def _create_price_ladder(em: ExpectedMove, entry_price: float) -> str:
         result.append(f"      ${price:>8.2f} {marker} {label:<20} ({pct_str})")
 
     return "\n".join(result)
+
+
+def _format_mtf_analysis(mtf: MTFAnalysis) -> List[str]:
+    """
+    Format multi-timeframe analysis showing each timeframe's signal.
+
+    This is the key feature showing different determinations per timeframe:
+    - 5m might show neutral
+    - 1D might show long
+    - etc.
+    """
+    lines = []
+    lines.append("")
+
+    # Overall summary
+    overall_dir = mtf.overall_direction.upper()
+    if overall_dir == "LONG":
+        overall_indicator = "📈 BULLISH"
+    elif overall_dir == "SHORT":
+        overall_indicator = "📉 BEARISH"
+    else:
+        overall_indicator = "➡️  NEUTRAL"
+
+    lines.append(f"    Overall Direction: {overall_indicator}")
+    lines.append(f"    Overall Confidence: {mtf.overall_confidence:.0%}")
+    lines.append(f"    Timeframe Alignment: {mtf.alignment_score:.0%}")
+
+    if mtf.dominant_timeframe:
+        lines.append(f"    Strongest Signal From: {mtf.dominant_timeframe}")
+
+    # Alignment interpretation
+    if mtf.alignment_score > 0.8:
+        alignment_meaning = "Strong agreement - all timeframes aligned"
+    elif mtf.alignment_score > 0.5:
+        alignment_meaning = "Moderate agreement - most timeframes agree"
+    elif mtf.alignment_score > 0.2:
+        alignment_meaning = "Mixed signals - timeframes conflicting"
+    else:
+        alignment_meaning = "No consensus - highly conflicting signals"
+
+    lines.append(f"      -> {alignment_meaning}")
+
+    # Individual timeframe signals table
+    lines.append("")
+    lines.append("    ┌────────────┬───────────┬──────────┬───────────┬───────────────────────────────────┐")
+    lines.append("    │ TIMEFRAME  │ DIRECTION │ STRENGTH │ CONFIDENCE│ REASONING                         │")
+    lines.append("    ├────────────┼───────────┼──────────┼───────────┼───────────────────────────────────┤")
+
+    for signal in mtf.signals:
+        # Direction with visual indicator
+        direction = signal.direction.upper()
+        if direction == "LONG":
+            dir_display = "🟢 LONG  "
+        elif direction == "SHORT":
+            dir_display = "🔴 SHORT "
+        else:
+            dir_display = "⚪ NEUTR "
+
+        # Strength bar
+        strength_val = signal.strength
+        if strength_val > 0:
+            strength_bar = f"+{strength_val:.2f}"
+        else:
+            strength_bar = f"{strength_val:.2f}"
+
+        # Confidence
+        conf = f"{signal.confidence:.0%}"
+
+        # Reasoning (truncated to fit)
+        reasoning = signal.reasoning[:33] + ".." if len(signal.reasoning) > 35 else signal.reasoning
+
+        lines.append(
+            f"    │ {signal.timeframe:<10} │ {dir_display} │ {strength_bar:>8} │ {conf:>9} │ {reasoning:<35} │"
+        )
+
+    lines.append("    └────────────┴───────────┴──────────┴───────────┴───────────────────────────────────┘")
+
+    # Summary by direction
+    long_tfs = [s.timeframe for s in mtf.signals if s.direction == "long"]
+    short_tfs = [s.timeframe for s in mtf.signals if s.direction == "short"]
+    neutral_tfs = [s.timeframe for s in mtf.signals if s.direction == "neutral"]
+
+    lines.append("")
+    lines.append("    SUMMARY BY DIRECTION:")
+    if long_tfs:
+        lines.append(f"      🟢 Bullish: {', '.join(long_tfs)}")
+    if short_tfs:
+        lines.append(f"      🔴 Bearish: {', '.join(short_tfs)}")
+    if neutral_tfs:
+        lines.append(f"      ⚪ Neutral: {', '.join(neutral_tfs)}")
+
+    # Trading interpretation
+    lines.append("")
+    lines.append("    TRADING INTERPRETATION:")
+
+    if mtf.alignment_score > 0.7 and mtf.overall_direction == "long":
+        lines.append("      -> Strong buy setup: All timeframes confirm bullish trend")
+        lines.append("         Consider long entries with trend")
+    elif mtf.alignment_score > 0.7 and mtf.overall_direction == "short":
+        lines.append("      -> Strong sell setup: All timeframes confirm bearish trend")
+        lines.append("         Consider short entries with trend")
+    elif mtf.alignment_score < 0.3:
+        lines.append("      -> CONFLICTING SIGNALS: Timeframes disagree significantly")
+        lines.append("         Reduce position size or wait for alignment")
+    elif long_tfs and short_tfs:
+        higher_tfs = ["4Hour", "1Day"]
+        lower_tfs = ["1Min", "5Min", "15Min"]
+
+        higher_long = any(tf in long_tfs for tf in higher_tfs)
+        lower_short = any(tf in short_tfs for tf in lower_tfs)
+        higher_short = any(tf in short_tfs for tf in higher_tfs)
+        lower_long = any(tf in long_tfs for tf in lower_tfs)
+
+        if higher_long and lower_short:
+            lines.append("      -> Higher TFs bullish, lower TFs bearish")
+            lines.append("         Potential pullback in larger uptrend - watch for reversal")
+        elif higher_short and lower_long:
+            lines.append("      -> Higher TFs bearish, lower TFs bullish")
+            lines.append("         Potential bounce in larger downtrend - trade cautiously")
+        else:
+            lines.append("      -> Mixed signals across timeframes")
+            lines.append("         Wait for better alignment or trade smaller size")
+    else:
+        lines.append("      -> Mostly neutral conditions")
+        lines.append("         No clear trend - range-bound trading may apply")
+
+    return lines
