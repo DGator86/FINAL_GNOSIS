@@ -103,12 +103,14 @@ class PipelineRunner:
                     result.elasticity_snapshot = snapshot
 
             # Run MTF analysis if processor is available
+            logger.info(f"Checking MTF: 'mtf' in engines = {'mtf' in self.engines}, engines keys = {list(self.engines.keys())}")
             if "mtf" in self.engines:
                 try:
                     mtf_processor = self.engines["mtf"]
+                    logger.info(f"MTF processor type: {type(mtf_processor)}, has analyze_mtf: {hasattr(mtf_processor, 'analyze_mtf')}")
                     if hasattr(mtf_processor, "analyze_mtf"):
                         result.mtf_analysis = mtf_processor.analyze_mtf(self.symbol, timestamp)
-                        logger.debug(f"MTF analysis completed for {self.symbol}")
+                        logger.info(f"MTF analysis completed for {self.symbol}")
                 except Exception as e:
                     logger.error(f"Error in MTF analysis: {e}")
 
