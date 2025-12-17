@@ -1,7 +1,9 @@
 """Test all API connections for GNOSIS trading system."""
 
 import os
-import sys
+
+from alpaca.trading.client import TradingClient
+
 
 # Set credentials programmatically
 os.environ["ALPACA_API_KEY"] = "PKDGAH5CJM4G3RZ2NP5WQNH22U"
@@ -16,15 +18,13 @@ print("=" * 60)
 print("\n[1] ALPACA API (Paper Trading)")
 print("-" * 40)
 try:
-    from alpaca.trading.client import TradingClient
-
     trading = TradingClient(os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_SECRET_KEY"), paper=True)
     account = trading.get_account()
-    print(f"  Status: ✅ CONNECTED")
-    print(f"  Account Status: {account.status}")
-    print(f"  Buying Power: ${float(account.buying_power):,.2f}")
-    print(f"  Portfolio Value: ${float(account.portfolio_value):,.2f}")
-    print(f"  Cash: ${float(account.cash):,.2f}")
+    print("  Status: ✅ CONNECTED")
+    print(f"  Account Status: {getattr(account, 'status', 'UNKNOWN')}")
+    print(f"  Buying Power: ${float(getattr(account, 'buying_power', 0)):,.2f}")
+    print(f"  Portfolio Value: ${float(getattr(account, 'portfolio_value', 0)):,.2f}")
+    print(f"  Cash: ${float(getattr(account, 'cash', 0)):,.2f}")
 except Exception as e:
     print(f"  Status: ❌ FAILED - {e}")
 
@@ -49,7 +49,7 @@ try:
     )
     bars = data_client.get_stock_bars(request)
     bar_count = len(bars["SPY"]) if "SPY" in bars else 0
-    print(f"  Status: ✅ CONNECTED")
+    print("  Status: ✅ CONNECTED")
     print(f"  Retrieved {bar_count} bars for SPY")
     if bar_count > 0:
         latest = bars["SPY"][-1]
@@ -74,14 +74,14 @@ try:
     if r.status_code == 200:
         data = r.json()
         contracts = data.get("data", [])
-        print(f"  Status: ✅ CONNECTED")
+        print("  Status: ✅ CONNECTED")
         print(f"  Retrieved {len(contracts)} option contracts")
     elif r.status_code == 403:
-        print(f"  Status: ⚠️ AUTH ERROR (403)")
-        print(f"  Check subscription tier at unusualwhales.com")
+        print("  Status: ⚠️ AUTH ERROR (403)")
+        print("  Check subscription tier at unusualwhales.com")
     elif r.status_code == 404:
-        print(f"  Status: ⚠️ Endpoint not found (404)")
-        print(f"  Token may be valid but endpoint unavailable")
+        print("  Status: ⚠️ Endpoint not found (404)")
+        print("  Token may be valid but endpoint unavailable")
     else:
         print(f"  Status: ⚠️ HTTP {r.status_code}")
         print(f"  Response: {r.text[:100]}")
@@ -100,10 +100,10 @@ try:
     if r.status_code == 200:
         data = r.json()
         alerts = data.get("data", [])
-        print(f"  Status: ✅ CONNECTED")
+        print("  Status: ✅ CONNECTED")
         print(f"  Retrieved {len(alerts)} flow alerts")
     elif r.status_code == 403:
-        print(f"  Status: ⚠️ Requires higher subscription tier")
+        print("  Status: ⚠️ Requires higher subscription tier")
     else:
         print(f"  Status: ⚠️ HTTP {r.status_code}")
 
@@ -118,18 +118,18 @@ try:
 
     # Massive uses Polygon-compatible API
     r = httpx.get(
-        f"https://api.polygon.io/v2/aggs/ticker/SPY/prev", params={"apiKey": api_key}, timeout=15
+        "https://api.polygon.io/v2/aggs/ticker/SPY/prev", params={"apiKey": api_key}, timeout=15
     )
 
     if r.status_code == 200:
         data = r.json()
-        print(f"  Status: ✅ CONNECTED (via Polygon)")
+        print("  Status: ✅ CONNECTED (via Polygon)")
         if "results" in data and len(data["results"]) > 0:
             result = data["results"][0]
             print(f"  SPY Previous Close: ${result.get('c', 'N/A')}")
     elif r.status_code == 401:
-        print(f"  Status: ⚠️ API Key invalid or not Polygon-compatible")
-        print(f"  Massive.com may use different endpoint format")
+        print("  Status: ⚠️ API Key invalid or not Polygon-compatible")
+        print("  Massive.com may use different endpoint format")
     else:
         print(f"  Status: ⚠️ HTTP {r.status_code}")
 

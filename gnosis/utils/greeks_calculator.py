@@ -46,14 +46,14 @@ class GreeksCalculator:
             # Get latest option quote which includes Greeks
             quote = self.options_adapter.get_latest_quote(symbol)
 
-            if quote and hasattr(quote, 'greeks'):
+            if quote and hasattr(quote, "greeks"):
                 greeks = quote.greeks
                 return {
-                    'delta': greeks.delta,
-                    'gamma': greeks.gamma,
-                    'theta': greeks.theta,
-                    'vega': greeks.vega,
-                    'rho': getattr(greeks, 'rho', 0.0),
+                    "delta": greeks.delta,
+                    "gamma": greeks.gamma,
+                    "theta": greeks.theta,
+                    "vega": greeks.vega,
+                    "rho": getattr(greeks, "rho", 0.0),
                 }
 
             logger.warning(f"No Greeks available from API for {symbol}")
@@ -152,7 +152,8 @@ class GreeksCalculator:
             # Prevent division by zero
             if time_to_expiration <= 0:
                 # At expiration, options have intrinsic value only
-                intrinsic = max(0, spot_price - strike) if option_type == "call" else max(0, strike - spot_price)
+                # Intrinsic calculation: max(0, spot - strike) or max(0, strike - spot)
+                # But Greeks are derivatives, so at expiration delta is 0 or 1.
                 return {
                     "delta": 1.0 if (option_type == "call" and spot_price > strike) else 0.0,
                     "gamma": 0.0,
@@ -162,7 +163,12 @@ class GreeksCalculator:
                 }
 
             # Calculate d1 and d2
-            d1 = (math.log(spot_price / strike) + (risk_free_rate - dividend_yield + 0.5 * volatility**2) * time_to_expiration) / (volatility * math.sqrt(time_to_expiration))
+            # Calculate d1 and d2
+            numerator = (
+                math.log(spot_price / strike)
+                + (risk_free_rate - dividend_yield + 0.5 * volatility**2) * time_to_expiration
+            )
+            d1 = numerator / (volatility * math.sqrt(time_to_expiration))
             d2 = d1 - volatility * math.sqrt(time_to_expiration)
 
             # Standard normal CDF and PDF
@@ -177,30 +183,66 @@ class GreeksCalculator:
                 delta = -math.exp(-dividend_yield * time_to_expiration) * (1 - nd1)
 
             # Gamma (same for calls and puts)
-            gamma = (math.exp(-dividend_yield * time_to_expiration) * npd1) / (spot_price * volatility * math.sqrt(time_to_expiration))
+            # Gamma (same for calls and puts)
+            gamma = (math.exp(-dividend_yield * time_to_expiration) * npd1) / (
+                spot_price * volatility * math.sqrt(time_to_expiration)
+            )
 
             # Theta (daily decay, divide by 365)
             if option_type == "call":
                 theta = (
-                    -spot_price * npd1 * volatility * math.exp(-dividend_yield * time_to_expiration) / (2 * math.sqrt(time_to_expiration))
+                    -spot_price
+                    * npd1
+                    * volatility
+                    * math.exp(-dividend_yield * time_to_expiration)
+                    / (2 * math.sqrt(time_to_expiration))
                     - risk_free_rate * strike * math.exp(-risk_free_rate * time_to_expiration) * nd2
-                    + dividend_yield * spot_price * math.exp(-dividend_yield * time_to_expiration) * nd1
+                    + dividend_yield
+                    * spot_price
+                    * math.exp(-dividend_yield * time_to_expiration)
+                    * nd1
                 ) / 365.0
             else:
                 theta = (
-                    -spot_price * npd1 * volatility * math.exp(-dividend_yield * time_to_expiration) / (2 * math.sqrt(time_to_expiration))
-                    + risk_free_rate * strike * math.exp(-risk_free_rate * time_to_expiration) * (1 - nd2)
-                    - dividend_yield * spot_price * math.exp(-dividend_yield * time_to_expiration) * (1 - nd1)
+                    -spot_price
+                    * npd1
+                    * volatility
+                    * math.exp(-dividend_yield * time_to_expiration)
+                    / (2 * math.sqrt(time_to_expiration))
+                    + risk_free_rate
+                    * strike
+                    * math.exp(-risk_free_rate * time_to_expiration)
+                    * (1 - nd2)
+                    - dividend_yield
+                    * spot_price
+                    * math.exp(-dividend_yield * time_to_expiration)
+                    * (1 - nd1)
                 ) / 365.0
 
             # Vega (per 1% change in volatility, divide by 100)
-            vega = (spot_price * math.exp(-dividend_yield * time_to_expiration) * npd1 * math.sqrt(time_to_expiration)) / 100.0
+            # Vega (per 1% change in volatility, divide by 100)
+            vega = (
+                spot_price
+                * math.exp(-dividend_yield * time_to_expiration)
+                * npd1
+                * math.sqrt(time_to_expiration)
+            ) / 100.0
 
             # Rho (per 1% change in interest rate, divide by 100)
             if option_type == "call":
-                rho = (strike * time_to_expiration * math.exp(-risk_free_rate * time_to_expiration) * nd2) / 100.0
+                rho = (
+                    strike
+                    * time_to_expiration
+                    * math.exp(-risk_free_rate * time_to_expiration)
+                    * nd2
+                ) / 100.0
             else:
-                rho = (-strike * time_to_expiration * math.exp(-risk_free_rate * time_to_expiration) * (1 - nd2)) / 100.0
+                rho = (
+                    -strike
+                    * time_to_expiration
+                    * math.exp(-risk_free_rate * time_to_expiration)
+                    * (1 - nd2)
+                ) / 100.0
 
             return {
                 "delta": round(delta, 4),
@@ -230,7 +272,7 @@ class GreeksCalculator:
         """
         Simple estimation of Greeks without full Black-Scholes.
 
-        DEPRECATED: Use calculate_black_scholes_greeks() instead for accurate calculations.
+        DEPRECATED: Use calculate_black_scholes_greeks() instead for accurate Greeks.
         This method is kept for backwards compatibility only.
 
         Args:
@@ -243,7 +285,8 @@ class GreeksCalculator:
             Dictionary with estimated Greeks
         """
         logger.warning(
-            "estimate_greeks_simple() is DEPRECATED. Use calculate_black_scholes_greeks() for accurate Greeks."
+            "estimate_greeks_simple() is DEPRECATED. "
+            "Use calculate_black_scholes_greeks() for accurate Greeks."
         )
 
         # Use Black-Scholes with assumed volatility and risk-free rate
@@ -369,10 +412,9 @@ class GreeksCalculator:
         terminal_prices = spot_price * np.exp(drift + shock)
 
         # Calculate P&L for each simulation
-        pnls = np.array([
-            self.calculate_strategy_payoff(legs, price) * 100
-            for price in terminal_prices
-        ])
+        pnls = np.array(
+            [self.calculate_strategy_payoff(legs, price) * 100 for price in terminal_prices]
+        )
 
         profitable = pnls > 0
         winners = pnls[profitable]
@@ -415,7 +457,7 @@ class GreeksCalculator:
         prev_pnl = None
 
         for price in prices:
-            pnl = self.calculate_strategy_payoff(legs, price)
+            pnl = float(self.calculate_strategy_payoff(legs, price))
 
             if prev_pnl is not None:
                 # Check for sign change (crossing zero)
@@ -447,10 +489,9 @@ class GreeksCalculator:
         high = spot_price * (1 + price_range_pct)
         prices = np.linspace(low, high, 500)
 
-        pnls = np.array([
-            self.calculate_strategy_payoff(legs, price) * 100
-            for price in prices
-        ])
+        pnls = np.array(
+            [float(self.calculate_strategy_payoff(legs, price)) * 100 for price in prices]
+        )
 
         # Find profit zones (contiguous regions where P&L > 0)
         profit_zones = []
@@ -462,7 +503,7 @@ class GreeksCalculator:
                 zone_start = price
                 in_profit = True
             elif pnl <= 0 and in_profit:
-                profit_zones.append((round(zone_start, 2), round(prices[i-1], 2)))
+                profit_zones.append((round(zone_start, 2), round(prices[i - 1], 2)))
                 in_profit = False
 
         if in_profit:
@@ -479,5 +520,7 @@ class GreeksCalculator:
             "max_loss": round(float(pnls[max_loss_idx]), 2),
             "max_loss_at": round(float(prices[max_loss_idx]), 2),
             "breakevens": self.find_breakevens(legs, spot_price, price_range_pct),
-            "pnl_at_current": round(float(self.calculate_strategy_payoff(legs, spot_price) * 100), 2),
+            "pnl_at_current": round(
+                float(self.calculate_strategy_payoff(legs, spot_price) * 100), 2
+            ),
         }

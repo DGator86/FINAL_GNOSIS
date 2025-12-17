@@ -273,7 +273,8 @@ class OptionsExecutionModule:
 
             if self.logger:
                 self.logger.info(
-                    f"Executing single-leg order: {leg['symbol']}, side={leg['side']}, qty={quantity}"
+                    f"Executing single-leg order: {leg['symbol']}, "
+                    f"side={leg['side']}, qty={quantity}"
                 )
 
             result = alpaca_client.place_multi_leg_option_order(

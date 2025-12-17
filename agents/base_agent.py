@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-"""Lightweight base classes for agent implementations."""
 """Shared agent utilities for advanced trading agents."""
 
 import logging
@@ -41,6 +40,10 @@ class BaseAgent:
         self.agent_id = agent_id
         self.config = config
         self.state: Dict[str, Any] = {}
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.required_features: list[str] = []
+        self.performance_metrics: Dict[str, Any] = {}
+        self.metadata: Dict[str, Any] = {}
 
     def analyze(self, market_data: Dict[str, Any], features: Dict[str, Any]) -> AgentSignal:
         """Analyze inputs and produce an :class:`AgentSignal`."""
@@ -53,10 +56,6 @@ class BaseAgent:
         """Update internal state from market data and optional execution results."""
 
         raise NotImplementedError("update_state must be implemented by subclasses")
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.required_features = []
-        self.state: Dict[str, Any] = {}
-        self.performance_metrics: Dict[str, Any] = {}
 
     def validate_features(self, features: Dict[str, Any]) -> bool:
         """Validate that all required features are available."""

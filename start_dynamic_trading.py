@@ -18,7 +18,7 @@ os.environ["ENABLE_TRADING"] = "true"
 
 from typing import Any, Optional
 
-import yaml
+import yaml  # type: ignore
 from loguru import logger
 
 from engines.engine_factory import EngineFactory
@@ -103,10 +103,12 @@ class DynamicTradingSystem:
                 logger.info(f"  ... and {len(initial_update.current) - 10} more")
         else:
             logger.warning(
-                "Initial universe is empty. No trades will be placed until valid opportunities are detected."
+                "Initial universe is empty. No trades will be placed "
+                "until valid opportunities are detected."
             )
             logger.info(
-                "Validate data sources: ALPACA_API_KEY/SECRET, ALPACA_DATA_FEED (IEX vs SIP), and Unusual Whales token if using flow data."
+                "Validate data sources: ALPACA_API_KEY/SECRET, "
+                "ALPACA_DATA_FEED (IEX vs SIP), and Unusual Whales token if using flow data."
             )
 
         # Load universe into trading bot
@@ -205,11 +207,13 @@ class DynamicTradingSystem:
 
                 # Rescan universe
                 logger.info("Refreshing universe...")
+                assert self.universe_mgr is not None
                 candidate_symbols = self._get_candidate_symbols()
                 update = await self.universe_mgr.refresh_universe(candidate_symbols)
 
                 # Update trading bot
                 if update.added or update.removed:
+                    assert self.trading_bot is not None
                     await self.trading_bot.update_universe(update)
 
                     # Log top 10
@@ -246,13 +250,13 @@ class DynamicTradingSystem:
                 print(f"""
 📈 PERFORMANCE UPDATE ({datetime.now().strftime("%H:%M:%S")}):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   Portfolio Value: ${float(account.portfolio_value):,.2f}  # type: ignore[union-attr]
-   Equity: ${float(account.equity):,.2f}  # type: ignore[union-attr]
-   Cash: ${float(account.cash):,.2f}  # type: ignore[union-attr]
-   Buying Power: ${float(account.buying_power):,.2f}  # type: ignore[union-attr]
-   P&L Today: ${float(account.portfolio_value) - 30000:+,.2f}  # type: ignore[union-attr]
+   Portfolio Value: ${float(getattr(account, "portfolio_value", 0)):,.2f}
+   Equity: ${float(getattr(account, "equity", 0)):,.2f}
+   Cash: ${float(getattr(account, "cash", 0)):,.2f}
+   Buying Power: ${float(getattr(account, "buying_power", 0)):,.2f}
+   P&L Today: ${float(getattr(account, "portfolio_value", 0)) - 30000:+,.2f}
    Open Positions: {len(broker_positions)}
-  Active Universe: {len(self.trading_bot.active_symbols)}  # type: ignore[union-attr]
+   Active Universe: {len(self.trading_bot.active_symbols) if self.trading_bot else 0}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
 
@@ -278,7 +282,7 @@ class DynamicTradingSystem:
     async def run(self) -> None:
         """Main execution loop."""
 
-        tasks: list[asyncio.Task] = []
+        tasks: list[asyncio.Task[Any]] = []
         try:
             # Initialize system
             await self.initialize()
@@ -287,6 +291,8 @@ class DynamicTradingSystem:
             self.running = True
 
             # Create tasks
+            assert self.universe_mgr is not None
+            assert self.trading_bot is not None
             tasks = [
                 asyncio.create_task(self.universe_refresh_loop()),
                 asyncio.create_task(self.trading_bot.run()),
@@ -338,7 +344,7 @@ Press Ctrl+C to stop gracefully.
 
         # Stop trading bot
         if self.trading_bot:
-            await self.trading_bot.stop()
+            await self.trading_bot.stop()  # type: ignore
 
         # Final report
         try:
@@ -391,7 +397,7 @@ async def main() -> None:
 
 ⏰ MARKET STATUS:
    Current Time: {datetime.now().strftime("%H:%M:%S ET")}
-   Market Open: {"✅ YES" if clock.is_open else "❌ NO (will trade when market opens)"}  # noqa: E501
+   Market Open: {"✅ YES" if clock.is_open else "❌ NO (will trade when market opens)"}
    Next Close: {clock.next_close}  # type: ignore[union-attr]
 """)
 

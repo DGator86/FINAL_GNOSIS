@@ -108,7 +108,9 @@ class UnifiedTradingBot:
         logger.info("Initializing TradeAgentRouter...")
         router_config = dict(config)
         router_config["enable_options"] = options_enabled and options_config_enabled
-        self.trade_agent = TradeAgentRouter(config=router_config, options_adapter=self.options_adapter)
+        self.trade_agent = TradeAgentRouter(
+            config=router_config, options_adapter=self.options_adapter
+        )
 
         logger.info("Initializing HedgeAgentV4...")
         self.hedge_agent = HedgeAgentV4(config=config)
@@ -332,7 +334,10 @@ class UnifiedTradingBot:
                         symbol=symbol,
                         direction=direction,
                         confidence=confidence,
-                        reasoning=f"{'Uptrend' if trend_up else 'Downtrend'} detected (Close vs Open/Prev)",
+                        reasoning=(
+                            f"{'Uptrend' if trend_up else 'Downtrend'} detected "
+                            "(Close vs Open/Prev)"
+                        ),
                         target_allocation=0.0,
                     )
                 )
@@ -357,7 +362,8 @@ class UnifiedTradingBot:
             return
 
         logger.info(
-            f"🎯 Trading signal for {symbol}: {direction_str} (confidence: {composer_result['confidence']:.2f})"
+            f"🎯 Trading signal for {symbol}: {direction_str} "
+            f"(confidence: {composer_result['confidence']:.2f})"
         )
 
         # Create ComposerDecision for TradeAgentRouter
@@ -436,7 +442,8 @@ class UnifiedTradingBot:
             quantity = min(quantity, 10)
 
             logger.info(
-                f"Sizing: Risk ${risk_amount:.2f} / Cost ${cost_per_unit:.2f} = {raw_quantity:.2f} -> {quantity} contracts"
+                f"Sizing: Risk ${risk_amount:.2f} / Cost ${cost_per_unit:.2f} = "
+                f"{raw_quantity:.2f} -> {quantity} contracts"
             )
 
             if self.enable_trading and self.options_adapter:

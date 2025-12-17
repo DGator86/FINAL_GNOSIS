@@ -38,7 +38,10 @@ class TradeAgentRouter:
         )
 
         if config.get("enable_options", False) and options_adapter is None:
-            logger.warning("TradeAgentRouter requested options but no adapter available; disabling options path")
+            logger.warning(
+                "TradeAgentRouter requested options but no adapter available; "
+                "disabling options path"
+            )
 
         logger.info(f"TradeAgentRouter initialized (Options Enabled: {self.use_options})")
 

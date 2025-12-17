@@ -78,7 +78,8 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
         )
 
     def _fetch_greeks(self, symbol: str) -> Dict[str, Dict[str, float]]:
-        # NOTE: Unusual Whales Greeks endpoint only returns data for major ETFs (SPY, QQQ, IWM, etc.)
+        # NOTE: Unusual Whales Greeks endpoint only returns data for major ETFs.
+        # Individual stocks like NVDA will return 0 Greeks - API limitation.
         # Individual stocks like NVDA, TSLA, AAPL will return 0 Greeks - this is an API limitation
         """Fetch Greeks from the separate /greeks endpoint and index by option_symbol."""
         greeks_map: Dict[str, Dict[str, float]] = {}
@@ -124,7 +125,9 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             logger.warning(f"Could not fetch Greeks for {symbol}: {error}")
             return {}
 
-    def get_chain(self, symbol: str, timestamp: datetime, expiration: Optional[str] = None) -> List[OptionContract]:
+    def get_chain(
+        self, symbol: str, timestamp: datetime, expiration: Optional[str] = None
+    ) -> List[OptionContract]:
         """Get options chain for a symbol, merging contracts with Greeks from separate endpoints."""
 
         if not self.client:
@@ -157,7 +160,11 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             for option in contracts_data:
                 try:
                     # The API returns "option_symbol" not "symbol" or "occ_symbol"
-                    symbol_str = option.get("option_symbol") or option.get("symbol") or option.get("occ_symbol")
+                    symbol_str = (
+                        option.get("option_symbol")
+                        or option.get("symbol")
+                        or option.get("occ_symbol")
+                    )
                     if not symbol_str:
                         continue
 
@@ -202,12 +209,13 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
 
             if contracts:
                 n_with_greeks = sum(1 for c in contracts if c.delta != 0 or c.gamma != 0)
-                logger.info(f"✅ Retrieved {len(contracts)} option contracts for {symbol} ({n_with_greeks} with Greeks)")
+                logger.info(
+                    f"✅ Retrieved {len(contracts)} option contracts for {symbol} "
+                    f"({n_with_greeks} with Greeks)"
+                )
                 return contracts
 
-            logger.warning(
-                f"No valid contracts parsed for {symbol} from Unusual Whales response"
-            )
+            logger.warning(f"No valid contracts parsed for {symbol} from Unusual Whales response")
             return []
 
         except httpx.HTTPStatusError as error:
@@ -227,16 +235,19 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
 
             if status_code in {400, 422}:
                 raise RuntimeError(
-                    f"Unusual Whales rejected request for {symbol} | status={status_code} | detail={detail}"
+                    f"Unusual Whales rejected request for {symbol} | "
+                    f"status={status_code} | detail={detail}"
                 )
 
             if status_code == 429 or status_code >= 500:
                 raise RuntimeError(
-                    f"Unusual Whales transient/unavailable for {symbol} | status={status_code} | detail={detail}"
+                    f"Unusual Whales transient/unavailable for {symbol} | "
+                    f"status={status_code} | detail={detail}"
                 )
 
             raise RuntimeError(
-                f"Unexpected Unusual Whales response for {symbol} | status={status_code} | detail={detail}"
+                f"Unexpected Unusual Whales response for {symbol} | "
+                f"status={status_code} | detail={detail}"
             )
         except httpx.HTTPError as error:
             logger.error(f"HTTP error getting options chain for {symbol}: {error}")
@@ -314,7 +325,8 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
         if not last or (now - last).total_seconds() > 900:  # 15 minutes
             if status_code == 404:
                 logger.warning(
-                    "⚠️  Unusual Whales returned 404 for {symbol} | url={url} | params={params} | detail={detail}",
+                    "⚠️  Unusual Whales returned 404 for {symbol} | url={url} "
+                    "| params={params} | detail={detail}",
                     symbol=symbol,
                     url=url,
                     params=params,
@@ -322,7 +334,8 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                 )
             else:
                 logger.warning(
-                    "Unusual Whales non-2xx response for {symbol}: {status} | url={url} | params={params} | detail={detail}",
+                    "Unusual Whales non-2xx response for {symbol}: {status} | "
+                    "url={url} | params={params} | detail={detail}",
                     symbol=symbol,
                     status=status_code,
                     url=url,

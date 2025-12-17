@@ -90,7 +90,9 @@ class LSTMLookaheadSnapshot(BaseModel):
     predictions: Dict[int, float] = Field(default_factory=dict)  # horizon -> predicted return %
     uncertainties: Dict[int, float] = Field(default_factory=dict)  # horizon -> uncertainty
     direction: str = "neutral"  # up, down, neutral
-    direction_probs: Dict[str, float] = Field(default_factory=dict)  # {up, down, neutral} -> probability
+    direction_probs: Dict[str, float] = Field(
+        default_factory=dict
+    )  # {up, down, neutral} -> probability
     confidence: float = 0.0
     model_version: str = "lstm_lookahead_v1"
 

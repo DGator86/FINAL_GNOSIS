@@ -16,7 +16,7 @@ Key Features:
 from __future__ import annotations
 
 import json
-import os
+from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -126,8 +126,8 @@ class MLBacktestResults:
     """Results from ML-enabled backtest."""
 
     # Dates
-    start_date: datetime = None
-    end_date: datetime = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     total_bars: int = 0
 
     # Returns
@@ -882,9 +882,11 @@ class MLBacktestEngine:
         self.trades.append(position)
         self.current_position = None
 
-        logger.debug(
-            f"Closed {position.direction} at {adjusted_price:.2f}, P&L: ${net_pnl:.2f} ({pnl_pct * 100:.2f}%)"
+        msg = (
+            f"Closed {position.direction} at {adjusted_price:.2f}, "
+            f"P&L: ${net_pnl:.2f} ({pnl_pct * 100:.2f}%)"
         )
+        logger.debug(msg)
 
     def _calculate_results(self, df: pd.DataFrame, results: MLBacktestResults) -> MLBacktestResults:
         """Calculate all backtest metrics."""

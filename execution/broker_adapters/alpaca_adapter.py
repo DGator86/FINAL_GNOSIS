@@ -42,7 +42,7 @@ from gnosis.utils.option_utils import OptionUtils
 
 class Account(BaseModel):
     """Account information."""
-    
+
     account_id: str
     cash: float
     buying_power: float
@@ -58,7 +58,7 @@ class Account(BaseModel):
 
 class Position(BaseModel):
     """Position information."""
-    
+
     symbol: str
     quantity: float
     avg_entry_price: float
@@ -88,13 +88,17 @@ class AlpacaBrokerAdapter:
         """
         # Allow explicit override or fall back to environment flag
         self.paper = get_alpaca_paper_setting() if paper is None else paper
-        creds = get_alpaca_credentials(api_key=api_key, secret_key=secret_key, base_url=get_alpaca_base_url(self.paper))
+        creds = get_alpaca_credentials(
+            api_key=api_key, secret_key=secret_key, base_url=get_alpaca_base_url(self.paper)
+        )
         self.api_key = creds.api_key
         self.secret_key = creds.secret_key
         self.base_url = creds.base_url
 
         if not self.api_key or not self.secret_key:
-            raise ValueError("Alpaca credentials not found in environment. Set ALPACA_API_KEY and ALPACA_SECRET_KEY.")
+            raise ValueError(
+                "Alpaca credentials not found in environment. Set ALPACA_API_KEY and ALPACA_SECRET_KEY."
+            )
 
         # Initialize trading client
         self.trading_client = TradingClient(
@@ -129,7 +133,7 @@ class AlpacaBrokerAdapter:
             self.max_position_size_pct * 100,
             f"{self.max_daily_loss_usd:,.2f}",
         )
-    
+
     def get_account(self) -> Account:
         """Get account information."""
         try:
@@ -168,7 +172,9 @@ class AlpacaBrokerAdapter:
             logger.error(f"Error getting account info: {e}")
             raise
 
-    def _validate_position_size(self, symbol: str, quantity: float, current_price: Optional[float] = None) -> None:
+    def _validate_position_size(
+        self, symbol: str, quantity: float, current_price: Optional[float] = None
+    ) -> None:
         """
         Validate that the order doesn't exceed position size limits.
 
@@ -195,7 +201,9 @@ class AlpacaBrokerAdapter:
                     quote = self.data_client.get_stock_latest_quote(quote_request)
                     current_price = float(quote[symbol].ask_price)
                 except Exception as e:
-                    logger.warning(f"Could not fetch price for {symbol}, skipping order sizing: {e}")
+                    logger.warning(
+                        f"Could not fetch price for {symbol}, skipping order sizing: {e}"
+                    )
                     raise ValueError(f"Cannot size order for {symbol} without a price") from e
 
         if current_price is None or current_price <= 0:
@@ -205,7 +213,9 @@ class AlpacaBrokerAdapter:
 
         assert_within_max(symbol, order_value, portfolio_value, self.max_position_size_pct)
 
-        logger.debug(f"Position size validation passed: ${order_value:,.2f} <= ${max_position_value:,.2f}")
+        logger.debug(
+            f"Position size validation passed: ${order_value:,.2f} <= ${max_position_value:,.2f}"
+        )
 
     def _fetch_option_price(self, symbol: str) -> Optional[float]:
         try:
@@ -270,7 +280,8 @@ class AlpacaBrokerAdapter:
 
         if active_level is None:
             logger.warning(
-                "Alpaca account does not report an options trading level; cannot validate permissions"
+                "Alpaca account does not report an options trading level; "
+                "cannot validate permissions"
             )
             return
 
@@ -284,39 +295,41 @@ class AlpacaBrokerAdapter:
         if active_level < required_level:
             raise ValueError(
                 "Alpaca options trading level is insufficient. "
-                f"Detected level {active_level} but level {required_level} is required for multi-leg strategies. "
+                f"Detected level {active_level} but level {required_level} is required. "
                 "Visit the Alpaca dashboard to request the highest options tier."
             )
-    
+
     def get_positions(self) -> List[Position]:
         """Get current positions."""
         try:
             positions = self.trading_client.get_all_positions()
-            
+
             result = []
             for pos in positions:
-                result.append(Position(
-                    symbol=pos.symbol,
-                    quantity=float(pos.qty),
-                    avg_entry_price=float(pos.avg_entry_price),
-                    current_price=float(pos.current_price),
-                    market_value=float(pos.market_value),
-                    cost_basis=float(pos.cost_basis),
-                    unrealized_pnl=float(pos.unrealized_pl),
-                    unrealized_pnl_pct=float(pos.unrealized_plpc),
-                    side=pos.side.value,
-                ))
-            
+                result.append(
+                    Position(
+                        symbol=pos.symbol,
+                        quantity=float(pos.qty),
+                        avg_entry_price=float(pos.avg_entry_price),
+                        current_price=float(pos.current_price),
+                        market_value=float(pos.market_value),
+                        cost_basis=float(pos.cost_basis),
+                        unrealized_pnl=float(pos.unrealized_pl),
+                        unrealized_pnl_pct=float(pos.unrealized_plpc),
+                        side=pos.side.value,
+                    )
+                )
+
             return result
         except APIError as e:
             logger.error(f"Error getting positions: {e}")
             return []
-    
+
     def get_position(self, symbol: str) -> Optional[Position]:
         """Get position for a specific symbol."""
         try:
             pos = self.trading_client.get_open_position(symbol)
-            
+
             return Position(
                 symbol=pos.symbol,
                 quantity=float(pos.qty),
@@ -330,7 +343,7 @@ class AlpacaBrokerAdapter:
             )
         except APIError:
             return None
-    
+
     def place_order(
         self,
         symbol: str,
@@ -343,7 +356,7 @@ class AlpacaBrokerAdapter:
     ) -> Optional[str]:
         """
         Place an order.
-        
+
         Args:
             symbol: Trading symbol
             quantity: Order quantity (fractional shares supported)
@@ -352,7 +365,7 @@ class AlpacaBrokerAdapter:
             time_in_force: "day", "gtc", "ioc", "fok"
             limit_price: Limit price (for limit orders)
             stop_price: Stop price (for stop orders)
-            
+
         Returns:
             Order ID if successful, None otherwise
         """
@@ -368,7 +381,7 @@ class AlpacaBrokerAdapter:
             # Convert string enums
             order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
             order_type_lower = order_type.lower()
-            
+
             # Convert time in force
             tif_map = {
                 "day": TimeInForce.DAY,
@@ -377,7 +390,7 @@ class AlpacaBrokerAdapter:
                 "fok": TimeInForce.FOK,
             }
             tif = tif_map.get(time_in_force.lower(), TimeInForce.DAY)
-            
+
             # Create appropriate order request based on type
             if order_type_lower == "market":
                 order_data = MarketOrderRequest(
@@ -387,7 +400,7 @@ class AlpacaBrokerAdapter:
                     time_in_force=tif,
                 )
                 logger.info(f"Submitting MARKET order: {side.upper()} {quantity} {symbol}")
-                
+
             elif order_type_lower == "limit":
                 if limit_price is None:
                     logger.error("Limit price required for limit orders")
@@ -399,8 +412,10 @@ class AlpacaBrokerAdapter:
                     time_in_force=tif,
                     limit_price=limit_price,
                 )
-                logger.info(f"Submitting LIMIT order: {side.upper()} {quantity} {symbol} @ ${limit_price}")
-                
+                logger.info(
+                    f"Submitting LIMIT order: {side.upper()} {quantity} {symbol} @ ${limit_price}"
+                )
+
             elif order_type_lower == "stop":
                 if stop_price is None:
                     logger.error("Stop price required for stop orders")
@@ -412,8 +427,10 @@ class AlpacaBrokerAdapter:
                     time_in_force=tif,
                     stop_price=stop_price,
                 )
-                logger.info(f"Submitting STOP order: {side.upper()} {quantity} {symbol} @ stop ${stop_price}")
-                
+                logger.info(
+                    f"Submitting STOP order: {side.upper()} {quantity} {symbol} @ stop ${stop_price}"
+                )
+
             elif order_type_lower == "stop_limit":
                 if limit_price is None or stop_price is None:
                     logger.error("Both limit and stop prices required for stop-limit orders")
@@ -430,18 +447,21 @@ class AlpacaBrokerAdapter:
                     f"Submitting STOP-LIMIT order: {side.upper()} {quantity} {symbol} "
                     f"@ stop ${stop_price}, limit ${limit_price}"
                 )
-                
+
             else:
-                logger.error(f"Unsupported order type: {order_type}. Supported: market, limit, stop, stop_limit")
+                logger.error(
+                    f"Unsupported order type: {order_type}. Supported: "
+                    "market, limit, stop, stop_limit"
+                )
                 return None
-            
+
             # Submit order
             order = self.trading_client.submit_order(order_data)
-            
+
             logger.info(f"Order submitted successfully - Order ID: {order.id}")
-            
+
             return str(order.id)
-            
+
         except APIError as e:
             logger.error(f"Error placing order: {e}")
             return None
@@ -526,15 +546,15 @@ class AlpacaBrokerAdapter:
         except APIError as e:
             logger.error(f"Error cancelling order {order_id}: {e}")
             return False
-    
+
     def close_position(self, symbol: str, qty: Optional[float] = None) -> bool:
         """
         Close a position (all or partial).
-        
+
         Args:
             symbol: Trading symbol
             qty: Quantity to close (None = close all)
-            
+
         Returns:
             True if successful
         """
@@ -549,17 +569,17 @@ class AlpacaBrokerAdapter:
                 if not pos:
                     logger.warning(f"No position found for {symbol}")
                     return False
-                
+
                 # Determine side for closing order
                 side = "sell" if float(pos.quantity) > 0 else "buy"
                 self.place_order(symbol, abs(qty), side)
                 logger.info(f"Closed {qty} shares of {symbol}")
-            
+
             return True
         except APIError as e:
             logger.error(f"Error closing position {symbol}: {e}")
             return False
-    
+
     def close_all_positions(self) -> bool:
         """Close all positions."""
         try:
@@ -569,13 +589,13 @@ class AlpacaBrokerAdapter:
         except APIError as e:
             logger.error(f"Error closing all positions: {e}")
             return False
-    
+
     def get_latest_quote(self, symbol: str) -> Optional[dict]:
         """Get latest quote for a symbol."""
         try:
             request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
             quote = self.data_client.get_stock_latest_quote(request)
-            
+
             if symbol in quote:
                 q = quote[symbol]
                 return {
@@ -586,7 +606,7 @@ class AlpacaBrokerAdapter:
                     "ask_size": float(q.ask_size),
                     "timestamp": q.timestamp,
                 }
-            
+
             return None
         except APIError as e:
             logger.error(f"Error getting quote for {symbol}: {e}")

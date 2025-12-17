@@ -7,6 +7,7 @@ Shows all tickers with Composer Agent statuses in real-time
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from flask import Flask, jsonify, render_template_string
 
@@ -333,17 +334,23 @@ HTML_TEMPLATE = """
                     // Update status bar
                     const marketStatus = document.getElementById('market-status');
                     marketStatus.textContent = data.market_open ? 'OPEN' : 'CLOSED';
-                    marketStatus.className = 'stat-value ' + (data.market_open ? 'market-open' : 'market-closed');
+                    marketStatus.className = 'stat-value ' + (
+                        data.market_open ? 'market-open' : 'market-closed'
+                    );
                     
                     document.getElementById('portfolio-value').textContent = 
-                        '$' + (data.account.portfolio_value || 0).toLocaleString('en-US', {maximumFractionDigits: 2});
+                        '$' + (data.account.portfolio_value || 0).toLocaleString(
+                            'en-US', {maximumFractionDigits: 2}
+                        );
                     
                     const positions = data.positions || [];
                     document.getElementById('position-count').textContent = positions.length;
                     
                     const pnl = data.account.pnl || 0;
                     const pnlElement = document.getElementById('pnl');
-                    pnlElement.textContent = (pnl >= 0 ? '+' : '') + '$' + pnl.toLocaleString('en-US', {maximumFractionDigits: 2});
+                    pnlElement.textContent = (pnl >= 0 ? '+' : '') + '$' + pnl.toLocaleString(
+                        'en-US', {maximumFractionDigits: 2}
+                    );
                     pnlElement.style.color = pnl >= 0 ? '#4ade80' : '#f87171';
                     
                     document.getElementById('symbol-count').textContent = 
@@ -373,7 +380,9 @@ HTML_TEMPLATE = """
                             
                             // Format Type/Strategy
                             let typeHtml = pos.asset_class === 'option_strategy' 
-                                ? `<span class="strategy-badge">${pos.option_symbol || 'Strategy'}</span>`
+                                ? `<span class="strategy-badge">
+                                    ${pos.option_symbol || 'Strategy'}
+                                   </span>`
                                 : pos.asset_class.toUpperCase();
 
                             return `
@@ -426,7 +435,9 @@ HTML_TEMPLATE = """
                                 <div class="symbol-price">$${(sym.price || 0).toFixed(2)}</div>
                             </div>
                             <div class="composer-status">
-                                <span class="status-badge ${signalClass}">${sym.composer_signal || 'HOLD'}</span>
+                                <span class="status-badge ${signalClass}">
+                                    ${sym.composer_signal || 'HOLD'}
+                                </span>
                                 <span>${confidence.toFixed(0)}% Conf.</span>
                             </div>
                             <div class="confidence-bar">
@@ -455,13 +466,13 @@ HTML_TEMPLATE = """
 
 
 @app.route("/")
-def index():
+def index() -> str:
     """Main dashboard page"""
     return render_template_string(HTML_TEMPLATE)
 
 
 @app.route("/api/state")
-def get_state():
+def get_state() -> Any:
     """API endpoint to get current scanner state"""
     state_file = Path("data/scanner_state/current_state.json")
 

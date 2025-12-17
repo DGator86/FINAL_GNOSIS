@@ -9,6 +9,7 @@ Usage:
 import os
 import sys
 from pathlib import Path
+from typing import Any, Dict
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -20,10 +21,10 @@ load_dotenv()
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from brokers.alpaca_client import AlpacaClient
+from brokers.alpaca_client import AlpacaClient  # noqa: E402
 
 
-def get_current_spy_price():
+def get_current_spy_price() -> float:
     """Helper to get current SPY price for strike selection"""
     from alpaca.data.historical.stock import StockHistoricalDataClient
     from alpaca.data.requests import StockLatestQuoteRequest
@@ -38,7 +39,9 @@ def get_current_spy_price():
     return quote["SPY"].ask_price
 
 
-def place_bull_call_spread(client: AlpacaClient, underlying_price: float, quantity: int = 1):
+def place_bull_call_spread(
+    client: AlpacaClient, underlying_price: float, quantity: int = 1
+) -> Dict[str, Any]:
     """
     Place a bull call spread (bullish strategy with limited risk/reward)
 
@@ -73,7 +76,9 @@ def place_bull_call_spread(client: AlpacaClient, underlying_price: float, quanti
     return result
 
 
-def place_bear_put_spread(client: AlpacaClient, underlying_price: float, quantity: int = 1):
+def place_bear_put_spread(
+    client: AlpacaClient, underlying_price: float, quantity: int = 1
+) -> Dict[str, Any]:
     """
     Place a bear put spread (bearish strategy with limited risk/reward)
 
@@ -107,7 +112,9 @@ def place_bear_put_spread(client: AlpacaClient, underlying_price: float, quantit
     return result
 
 
-def place_long_straddle(client: AlpacaClient, underlying_price: float, quantity: int = 1):
+def place_long_straddle(
+    client: AlpacaClient, underlying_price: float, quantity: int = 1
+) -> Dict[str, Any]:
     """
     Place a long straddle (volatility play - profit from big moves either direction)
 
@@ -140,7 +147,9 @@ def place_long_straddle(client: AlpacaClient, underlying_price: float, quantity:
     return result
 
 
-def place_iron_condor(client: AlpacaClient, underlying_price: float, quantity: int = 1):
+def place_iron_condor(
+    client: AlpacaClient, underlying_price: float, quantity: int = 1
+) -> Dict[str, Any]:
     """
     Place an iron condor (neutral strategy - profit from low volatility)
 
@@ -181,7 +190,7 @@ def place_iron_condor(client: AlpacaClient, underlying_price: float, quantity: i
     return result
 
 
-def main():
+def main() -> int:
     """Interactive menu for multi-leg options trading"""
     logger.info("=" * 60)
     logger.info("Multi-Leg Options Trading (Paper Trading)")

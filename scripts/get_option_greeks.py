@@ -9,6 +9,7 @@ Usage:
 
 import sys
 from pathlib import Path
+from typing import Any, Dict
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -20,10 +21,10 @@ load_dotenv()
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from brokers.alpaca_client import AlpacaClient
+from brokers.alpaca_client import AlpacaClient  # noqa: E402
 
 
-def display_option_snapshot(symbol: str, snapshot: dict):
+def display_option_snapshot(symbol: str, snapshot: Dict[str, Any]) -> None:
     """Display option snapshot in a readable format"""
     logger.info(f"\n{'=' * 60}")
     logger.info(f"Option: {symbol}")
@@ -53,7 +54,7 @@ def display_option_snapshot(symbol: str, snapshot: dict):
         logger.info(f"\nImplied Volatility: {iv * 100:.2f}%")
 
 
-def main():
+def main() -> int:
     """Get option Greeks for specified symbols"""
     if len(sys.argv) < 2:
         logger.error("Usage: python get_option_greeks.py <OPTION_SYMBOL> [<OPTION_SYMBOL2> ...]")

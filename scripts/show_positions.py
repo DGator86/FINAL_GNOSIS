@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 sys.path.append(os.getcwd())
 
 
-def show_positions():
+def show_positions() -> None:
     load_dotenv()
 
     api_key = os.getenv("ALPACA_API_KEY")
@@ -33,7 +33,8 @@ def show_positions():
             print("No open positions.")
         else:
             print(
-                f"{'Symbol':<10} {'Qty':<10} {'Entry':<10} {'Current':<10} {'P/L $':<10} {'P/L %':<10}"
+                f"{'Symbol':<10} {'Qty':<10} {'Entry':<10} {'Current':<10} "
+                f"{'P/L $':<10} {'P/L %':<10}"
             )
             print("-" * 80)
 
@@ -42,7 +43,10 @@ def show_positions():
                 pl_pct = float(p.unrealized_plpc) * 100
 
                 print(
-                    f"{p.symbol:<10} {p.qty:<10} {float(p.avg_entry_price):<10.2f} {float(p.current_price):<10.2f} {pl_dollar:<10.2f} {pl_pct:<10.2f}%"
+                    f"{p.symbol:<10} {p.qty:<10} "
+                    f"{float(p.avg_entry_price):<10.2f} "
+                    f"{float(p.current_price):<10.2f} "
+                    f"{pl_dollar:<10.2f} {pl_pct:<10.2f}%"
                 )
 
         print("-" * 80)
