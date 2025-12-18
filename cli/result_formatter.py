@@ -45,19 +45,11 @@ def format_pipeline_result(result: PipelineResult) -> str:
     if result.elasticity_snapshot:
         lines.extend(_format_elasticity_snapshot(result.elasticity_snapshot))
 
-    # Section 1b: Multi-Timeframe Analysis (if available)
-    if result.mtf_analysis:
-        lines.append("")
-        lines.append("-" * 80)
-        lines.append("  MULTI-TIMEFRAME ANALYSIS (All Timeframes)")
-        lines.append("-" * 80)
-        lines.extend(_format_mtf_analysis(result.mtf_analysis))
-
-    # Section 2: Agent Suggestions (what each agent thinks)
+    # Section 2: Agent Suggestions with PPF (what each agent thinks)
     if result.suggestions:
         lines.append("")
         lines.append("-" * 80)
-        lines.append("  PRIMARY AGENTS (Individual Opinions)")
+        lines.append("  PRIMARY AGENTS (Individual Opinions with PPF Analysis)")
         lines.append("-" * 80)
         for suggestion in result.suggestions:
             lines.extend(_format_suggestion(suggestion))
@@ -66,20 +58,29 @@ def format_pipeline_result(result: PipelineResult) -> str:
     if result.consensus:
         lines.append("")
         lines.append("-" * 80)
-        lines.append("  COMPOSER (Combined Consensus)")
+        lines.append("  COMPOSER (Combined Consensus with MTF Integration)")
         lines.append("-" * 80)
         lines.extend(_format_consensus(result.consensus))
 
-    # Section 4: Trade Ideas (actionable recommendations)
+    # Section 4: Multi-Timeframe Analysis (detailed breakdown)
+    # Shown AFTER composer to provide context for trade decisions
+    if result.mtf_analysis:
+        lines.append("")
+        lines.append("-" * 80)
+        lines.append("  MULTI-TIMEFRAME ANALYSIS (Detailed Breakdown)")
+        lines.append("-" * 80)
+        lines.extend(_format_mtf_analysis(result.mtf_analysis))
+
+    # Section 5: Trade Ideas (actionable recommendations with time-to-profit)
     if result.trade_ideas:
         lines.append("")
         lines.append("-" * 80)
-        lines.append("  TRADE AGENT (Actionable Ideas)")
+        lines.append("  TRADE AGENT (Actionable Ideas with Time-to-Profit)")
         lines.append("-" * 80)
         for i, idea in enumerate(result.trade_ideas, 1):
             lines.extend(_format_trade_idea(idea, i))
 
-    # Section 5: Order Results (what actually happened)
+    # Section 6: Order Results (what actually happened)
     if result.order_results:
         lines.append("")
         lines.append("-" * 80)
@@ -339,21 +340,36 @@ def _format_consensus(consensus: Dict[str, Any]) -> List[str]:
 
 
 def _format_trade_idea(idea: TradeIdea, num: int) -> List[str]:
-    """Format a trade idea."""
+    """Format a trade idea with time-to-profit and options strategy."""
     lines = []
     lines.append("")
 
     direction = idea.direction.value.upper()
     if direction == "LONG":
         action = "BUY"
+        dir_emoji = "🟢"
     elif direction == "SHORT":
         action = "SELL"
+        dir_emoji = "🔴"
     else:
         action = "HOLD"
+        dir_emoji = "⚪"
 
-    lines.append(f"  Trade #{num}: {action} {idea.symbol}")
+    lines.append(f"  Trade #{num}: {dir_emoji} {action} {idea.symbol}")
     lines.append(f"    Strategy: {idea.strategy_type.value.replace('_', ' ').title()}")
     lines.append(f"    Confidence: {idea.confidence:.0%}")
+
+    # MTF source and alignment
+    if idea.source_timeframe:
+        lines.append(f"    Source Timeframe: {idea.source_timeframe} (MTF alignment: {idea.mtf_alignment:.0%})")
+
+    # Options Strategy (from MTF)
+    if idea.options_strategy:
+        lines.append(f"    Options Strategy: {idea.options_strategy}")
+        if idea.options_strategy_details:
+            lines.append(f"      -> {idea.options_strategy_details}")
+        if idea.options_expiry_suggestion:
+            lines.append(f"      Suggested Expiry: {idea.options_expiry_suggestion}")
 
     if idea.entry_price:
         lines.append(f"    Entry Price: ${idea.entry_price:.2f}")
@@ -364,8 +380,31 @@ def _format_trade_idea(idea: TradeIdea, num: int) -> List[str]:
     if idea.take_profit:
         lines.append(f"    Take Profit: ${idea.take_profit:.2f}")
 
+    # Expected ROI and Profit Confidence
+    if idea.expected_roi_pct != 0:
+        lines.append(f"    Expected ROI: {idea.expected_roi_pct:+.2f}%")
+    if idea.profit_confidence > 0:
+        lines.append(f"    Profit Confidence: {idea.profit_confidence:.0%}")
+
     if idea.size > 0:
-        lines.append(f"    Position Size: {idea.size:.1%} of portfolio")
+        lines.append(f"    Position Size: ${idea.size:,.0f}")
+
+    # Time-to-Profit Analysis (NEW)
+    if idea.time_to_profit:
+        ttp = idea.time_to_profit
+        lines.append(f"    ⏱️  Time-to-Profit Analysis:")
+        lines.append(f"      Estimated Time: {ttp.estimated_minutes} minutes")
+        lines.append(f"      Based On: {ttp.based_on}")
+        lines.append(f"      Confidence: {ttp.confidence:.0%}")
+
+        if ttp.target_1_pct:
+            lines.append(f"      Target 1: +{ttp.target_1_pct:.1f}% in ~{ttp.target_1_minutes}min (P={ttp.target_1_prob:.0%})")
+        if ttp.target_2_pct:
+            lines.append(f"      Target 2: +{ttp.target_2_pct:.1f}% in ~{ttp.target_2_minutes}min (P={ttp.target_2_prob:.0%})")
+
+        lines.append(f"      Stops: Initial {ttp.initial_stop_pct:.1f}%, Trailing {ttp.trailing_stop_pct:.1f}%")
+        if ttp.max_loss_pct:
+            lines.append(f"      Max Loss: {ttp.max_loss_pct:.1f}% (P={ttp.max_loss_prob:.0%})")
 
     if idea.reasoning:
         reasoning = idea.reasoning[:200] + "..." if len(idea.reasoning) > 200 else idea.reasoning

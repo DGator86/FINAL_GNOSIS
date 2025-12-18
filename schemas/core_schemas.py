@@ -85,6 +85,137 @@ class ElasticitySnapshot(BaseModel):
     trend_strength: float = 0.0
 
 
+# =============================================================================
+# PPF (Past/Present/Future) Analysis Framework
+# =============================================================================
+
+class PastAnalysis(BaseModel):
+    """Historical context analysis - support/resistance, seasonality, patterns."""
+
+    support_levels: List[float] = Field(default_factory=list)
+    resistance_levels: List[float] = Field(default_factory=list)
+    seasonality_bias: float = 0.0  # -1 to +1 based on historical patterns
+    historical_volatility: float = 0.0
+    regime_history: List[str] = Field(default_factory=list)  # Recent regime states
+    key_levels: Dict[str, float] = Field(default_factory=dict)  # Named price levels
+    pattern_detected: str = ""  # e.g., "double_bottom", "head_shoulders"
+    pattern_confidence: float = 0.0
+
+
+class PresentAnalysis(BaseModel):
+    """Current state analysis - real-time metrics and conditions."""
+
+    current_price: float = 0.0
+    volatility: float = 0.0
+    regime: str = "neutral"
+
+    # Greeks & Hedge Fields
+    gamma_exposure: float = 0.0
+    vanna_exposure: float = 0.0
+    charm_exposure: float = 0.0
+    dealer_position: str = "neutral"  # long_gamma, short_gamma, neutral
+
+    # Flow & Liquidity
+    order_flow_imbalance: float = 0.0  # -1 to +1
+    liquidity_score: float = 0.5
+    volume_ratio: float = 1.0  # Current vs average
+    bid_ask_spread: float = 0.0
+
+    # Options Market
+    open_interest_pcr: float = 1.0  # Put/Call ratio
+    iv_rank: float = 50.0
+    iv_percentile: float = 50.0
+
+    # Technical
+    rsi: float = 50.0
+    macd_signal: str = "neutral"
+    price_vs_vwap: float = 0.0  # % above/below VWAP
+
+    # News/Sentiment
+    news_sentiment: float = 0.0
+    news_intensity: float = 0.0  # How much news activity
+
+
+class FutureAnalysis(BaseModel):
+    """Forward-looking analysis - projections, events, expected conditions."""
+
+    # LSTM Projections
+    projected_move_1m: float = 0.0  # Expected % move in 1 minute
+    projected_move_5m: float = 0.0
+    projected_move_15m: float = 0.0
+    projected_move_60m: float = 0.0
+    move_confidence: float = 0.0
+    projected_direction: str = "neutral"
+
+    # Time to Profit Estimate
+    time_to_target_minutes: Optional[int] = None
+    profit_probability: float = 0.0
+
+    # Future Greek Hedge Fields
+    gamma_flip_price: Optional[float] = None  # Price where dealer gamma flips
+    expected_gamma_at_expiry: float = 0.0
+    charm_decay_impact: float = 0.0  # Expected charm effect
+
+    # Upcoming Events
+    days_to_earnings: Optional[int] = None
+    days_to_fomc: Optional[int] = None
+    days_to_opex: Optional[int] = None
+    event_iv_premium: float = 0.0
+
+    # Future Liquidity
+    expected_volume_change: float = 0.0
+    future_oi_trend: str = "stable"  # increasing, decreasing, stable
+
+    # Statistical Projections
+    one_sigma_range: tuple[float, float] = (0.0, 0.0)
+    two_sigma_range: tuple[float, float] = (0.0, 0.0)
+    max_pain: Optional[float] = None
+
+
+class PPFAnalysis(BaseModel):
+    """Complete Past/Present/Future analysis for an agent's domain."""
+
+    timestamp: datetime
+    symbol: str
+    domain: str  # "hedge", "liquidity", "sentiment", etc.
+
+    past: PastAnalysis = Field(default_factory=PastAnalysis)
+    present: PresentAnalysis = Field(default_factory=PresentAnalysis)
+    future: FutureAnalysis = Field(default_factory=FutureAnalysis)
+
+    # Synthesized Signals
+    directional_bias: float = 0.0  # -1 (bearish) to +1 (bullish)
+    confidence: float = 0.0
+    time_horizon: str = "intraday"  # scalp, intraday, swing, position
+    reasoning: str = ""
+
+
+class TimeToProfitEstimate(BaseModel):
+    """Estimate of when a trade will reach profit target."""
+
+    estimated_minutes: int = 0
+    confidence: float = 0.0
+    based_on: str = ""  # "lstm", "momentum", "mean_reversion"
+
+    # Trailing Stop Logic
+    initial_stop_pct: float = 0.0
+    trailing_stop_pct: float = 0.0
+    breakeven_minutes: Optional[int] = None
+
+    # Profit Scenarios
+    target_1_pct: float = 0.0
+    target_1_prob: float = 0.0
+    target_1_minutes: Optional[int] = None
+
+    target_2_pct: float = 0.0
+    target_2_prob: float = 0.0
+    target_2_minutes: Optional[int] = None
+
+    # Loss Scenario
+    max_loss_pct: float = 0.0
+    max_loss_prob: float = 0.0
+
+
 class TimeframeSignal(BaseModel):
     """Signal analysis for a single timeframe."""
 
@@ -192,6 +323,9 @@ class AgentSuggestion(BaseModel):
     confidence: float = 0.5
     reasoning: str = ""
     target_allocation: float = 0.0
+
+    # PPF Analysis from this agent's domain
+    ppf_analysis: Optional[PPFAnalysis] = None
 
 
 class StrategyType(str, Enum):
@@ -302,6 +436,22 @@ class TradeIdea(BaseModel):
 
     # Expected price movement range (industry standard)
     expected_move: Optional[ExpectedMove] = None
+
+    # Time-to-profit analysis (NEW)
+    time_to_profit: Optional[TimeToProfitEstimate] = None
+
+    # Options Strategy Selection (from MTF)
+    options_strategy: str = ""  # e.g., "Long Call", "Bull Put Spread"
+    options_strategy_details: str = ""
+    options_expiry_suggestion: str = ""  # e.g., "0DTE", "2-4 weeks"
+
+    # MTF-based signal (which timeframe drove this trade)
+    source_timeframe: str = ""  # e.g., "1Day", "4Hour"
+    mtf_alignment: float = 0.0  # How aligned were timeframes (0-1)
+
+    # Profit/ROI projections
+    expected_roi_pct: float = 0.0
+    profit_confidence: float = 0.0  # Confidence in reaching target
 
 
 class WatchlistEntry(BaseModel):

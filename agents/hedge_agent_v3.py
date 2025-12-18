@@ -1,17 +1,25 @@
-"""Hedge Agent v3 - Energy-aware interpretation with LSTM lookahead integration."""
+"""Hedge Agent v3 - Energy-aware interpretation with LSTM lookahead integration and PPF analysis."""
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from schemas.core_schemas import AgentSuggestion, DirectionEnum, PipelineResult
+from schemas.core_schemas import (
+    AgentSuggestion,
+    DirectionEnum,
+    PipelineResult,
+    PPFAnalysis,
+    PastAnalysis,
+    PresentAnalysis,
+    FutureAnalysis,
+)
 
 
 class HedgeAgentV3:
-    """Hedge Agent v3 with energy-aware interpretation and LSTM lookahead predictions."""
+    """Hedge Agent v3 with energy-aware interpretation, LSTM lookahead predictions, and PPF analysis."""
 
     def __init__(self, config: Dict[str, Any]):
         self.config = config
@@ -50,6 +58,9 @@ class HedgeAgentV3:
             # Adjust confidence based on movement energy
             confidence = self._risk_adjust_confidence(snapshot)
 
+        # Build PPF analysis for hedge domain
+        ppf = self._build_ppf_analysis(pipeline_result, timestamp, direction, confidence)
+
         return AgentSuggestion(
             agent_name="hedge_agent_v3",
             timestamp=timestamp,
@@ -58,6 +69,7 @@ class HedgeAgentV3:
             confidence=confidence,
             reasoning=reasoning,
             target_allocation=0.0,
+            ppf_analysis=ppf,
         )
 
     def _get_energy_direction(self, snapshot) -> tuple[DirectionEnum, str]:
@@ -185,3 +197,96 @@ class HedgeAgentV3:
         jump_penalty = snapshot.jump_intensity
         adjusted = base * (1 - var_haircut) * (1 - 0.5 * liquidity_penalty) * (1 - 0.3 * jump_penalty)
         return max(self.risk_floor, min(1.0, adjusted))
+
+    def _build_ppf_analysis(
+        self,
+        pipeline_result: PipelineResult,
+        timestamp: datetime,
+        direction: DirectionEnum,
+        confidence: float,
+    ) -> PPFAnalysis:
+        """
+        Build Past/Present/Future analysis for the hedge domain.
+
+        PAST: Historical regime states, support/resistance from gamma levels
+        PRESENT: Current Greek exposures, dealer positioning, regime
+        FUTURE: LSTM projections, gamma flip price, charm decay impact
+        """
+        snapshot = pipeline_result.hedge_snapshot
+        ml_snapshot = pipeline_result.ml_snapshot
+
+        # === PAST ANALYSIS ===
+        # Historical regime patterns
+        regime_history = []
+        if snapshot.regime_probabilities:
+            # Get top 3 regimes by probability as recent history indicator
+            sorted_regimes = sorted(
+                snapshot.regime_probabilities.items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:3]
+            regime_history = [r[0] for r in sorted_regimes]
+
+        past = PastAnalysis(
+            regime_history=regime_history,
+            historical_volatility=snapshot.movement_energy / 100.0 if snapshot.movement_energy else 0.0,
+            # Key levels from gamma walls (if available in adaptive_weights)
+            key_levels=snapshot.adaptive_weights or {},
+        )
+
+        # === PRESENT ANALYSIS ===
+        # Determine dealer position from gamma sign
+        if snapshot.dealer_gamma_sign > 0.2:
+            dealer_pos = "long_gamma"
+        elif snapshot.dealer_gamma_sign < -0.2:
+            dealer_pos = "short_gamma"
+        else:
+            dealer_pos = "neutral"
+
+        present = PresentAnalysis(
+            regime=snapshot.regime,
+            gamma_exposure=snapshot.gamma_pressure,
+            vanna_exposure=snapshot.vanna_pressure,
+            charm_exposure=snapshot.charm_pressure,
+            dealer_position=dealer_pos,
+            volatility=snapshot.movement_energy / 100.0 if snapshot.movement_energy else 0.0,
+        )
+
+        # === FUTURE ANALYSIS ===
+        future = FutureAnalysis()
+
+        # Extract LSTM projections if available
+        if ml_snapshot and ml_snapshot.forecast:
+            forecast = ml_snapshot.forecast
+            metadata = forecast.metadata or {}
+
+            predictions_pct = metadata.get("predictions_pct", {})
+            future.projected_move_1m = predictions_pct.get(1, 0.0)
+            future.projected_move_5m = predictions_pct.get(5, 0.0)
+            future.projected_move_15m = predictions_pct.get(15, 0.0)
+            future.projected_move_60m = predictions_pct.get(60, 0.0)
+            future.move_confidence = forecast.confidence
+            future.projected_direction = metadata.get("direction", "neutral")
+
+        # Charm decay impact (charm pressure indicates how positions will decay)
+        future.charm_decay_impact = snapshot.charm_pressure
+
+        # Directional bias from synthesis
+        dir_value = 0.0
+        if direction == DirectionEnum.LONG:
+            dir_value = confidence
+        elif direction == DirectionEnum.SHORT:
+            dir_value = -confidence
+
+        return PPFAnalysis(
+            timestamp=timestamp,
+            symbol=pipeline_result.symbol,
+            domain="hedge",
+            past=past,
+            present=present,
+            future=future,
+            directional_bias=dir_value,
+            confidence=confidence,
+            time_horizon="intraday",
+            reasoning=f"Hedge domain PPF: Regime={snapshot.regime}, Dealer={dealer_pos}, Energy={snapshot.energy_asymmetry:.2f}",
+        )

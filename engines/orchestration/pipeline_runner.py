@@ -132,10 +132,15 @@ class PipelineRunner:
                 except Exception as e:
                     logger.error(f"Error in agent {agent_name}: {e}")
             
-            # Run composer for consensus
+            # Run composer for consensus (with MTF integration)
             if self.composer and result.suggestions:
                 try:
-                    result.consensus = self.composer.compose(result.suggestions, timestamp)
+                    # Pass MTF analysis to composer for integration with agent PPF data
+                    result.consensus = self.composer.compose(
+                        result.suggestions,
+                        timestamp,
+                        mtf_analysis=result.mtf_analysis,
+                    )
                 except Exception as e:
                     logger.error(f"Error in composer: {e}")
 
