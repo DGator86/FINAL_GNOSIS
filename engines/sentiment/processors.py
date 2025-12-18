@@ -126,6 +126,90 @@ class TechnicalSentimentProcessor:
             logger.error(f"Error in TechnicalSentimentProcessor: {e}")
             return 0.0
 
+    def _get_strategy_for_signal(
+        self, tf_name: str, direction: str, strength: float, confidence: float, rsi: float
+    ) -> tuple[str, str]:
+        """
+        Determine the recommended options strategy based on timeframe and signal.
+
+        Returns (strategy_name, strategy_details) tuple.
+        """
+        # Map timeframes to expiry suggestions
+        expiry_map = {
+            "1Min": "0DTE",
+            "5Min": "0DTE",
+            "15Min": "0DTE/1DTE",
+            "30Min": "1-3 DTE",
+            "1Hour": "3-5 DTE",
+            "4Hour": "1-2 weeks",
+            "1Day": "2-4 weeks",
+        }
+        expiry = expiry_map.get(tf_name, "1-2 weeks")
+
+        abs_strength = abs(strength)
+
+        # BULLISH strategies
+        if direction == "long":
+            if confidence >= 0.7 and abs_strength >= 0.5:
+                # High conviction bullish
+                strategy = "Long Call"
+                details = f"ATM or slightly OTM call, {expiry} expiry"
+            elif confidence >= 0.5:
+                # Moderate conviction bullish
+                strategy = "Bull Call Spread"
+                details = f"ATM/OTM call debit spread, {expiry} expiry, defined risk"
+            else:
+                # Low conviction bullish
+                strategy = "Bull Put Spread"
+                details = f"OTM put credit spread, {expiry} expiry, collect premium"
+
+            # RSI oversold = extra bullish confirmation
+            if rsi < 30:
+                strategy = "Long Call"
+                details = f"RSI oversold reversal play, ATM call, {expiry} expiry"
+
+        # BEARISH strategies
+        elif direction == "short":
+            if confidence >= 0.7 and abs_strength >= 0.5:
+                # High conviction bearish
+                strategy = "Long Put"
+                details = f"ATM or slightly OTM put, {expiry} expiry"
+            elif confidence >= 0.5:
+                # Moderate conviction bearish
+                strategy = "Bear Put Spread"
+                details = f"ATM/OTM put debit spread, {expiry} expiry, defined risk"
+            else:
+                # Low conviction bearish
+                strategy = "Bear Call Spread"
+                details = f"OTM call credit spread, {expiry} expiry, collect premium"
+
+            # RSI overbought = extra bearish confirmation
+            if rsi > 70:
+                strategy = "Long Put"
+                details = f"RSI overbought reversal play, ATM put, {expiry} expiry"
+
+        # NEUTRAL strategies
+        else:
+            if confidence < 0.3:
+                # Very low conviction - stay out
+                strategy = "No Trade"
+                details = "Insufficient signal clarity, wait for better setup"
+            elif abs_strength < 0.1:
+                # Truly neutral - range-bound strategies
+                strategy = "Iron Condor"
+                details = f"Sell OTM strangle, buy further OTM wings, {expiry} expiry"
+            else:
+                # Slight lean but neutral overall
+                strategy = "Iron Butterfly"
+                details = f"ATM short straddle with OTM wings, {expiry} expiry"
+
+            # High RSI variance suggests potential move
+            if rsi > 65 or rsi < 35:
+                strategy = "Straddle"
+                details = f"ATM straddle for expected breakout, {expiry} expiry"
+
+        return strategy, details
+
     def analyze_mtf(self, symbol: str, timestamp: datetime) -> MTFAnalysis:
         """
         Perform multi-timeframe analysis across all configured timeframes.
@@ -274,6 +358,11 @@ class TechnicalSentimentProcessor:
 
             reasoning = "; ".join(reasons) if reasons else "No strong signals"
 
+            # Get recommended options strategy
+            strategy, strategy_details = self._get_strategy_for_signal(
+                tf_name, direction, strength, confidence, rsi
+            )
+
             return TimeframeSignal(
                 timeframe=tf_name,
                 direction=direction,
@@ -282,6 +371,8 @@ class TechnicalSentimentProcessor:
                 momentum=round(momentum, 4),
                 trend=trend,
                 reasoning=reasoning,
+                strategy=strategy,
+                strategy_details=strategy_details,
             )
 
         except Exception as e:
@@ -294,6 +385,8 @@ class TechnicalSentimentProcessor:
                 momentum=0.0,
                 trend="error",
                 reasoning=str(e)[:100],
+                strategy="No Trade",
+                strategy_details="Error in analysis",
             )
 
     def _calculate_alignment(self, signals: List[TimeframeSignal]) -> float:

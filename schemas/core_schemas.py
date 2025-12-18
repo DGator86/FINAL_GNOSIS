@@ -95,6 +95,8 @@ class TimeframeSignal(BaseModel):
     momentum: float = 0.0  # Price momentum
     trend: str = "neutral"  # "bullish", "bearish", "neutral"
     reasoning: str = ""
+    strategy: str = ""  # Recommended options strategy for this timeframe
+    strategy_details: str = ""  # Additional details (expiry, strikes, etc.)
 
 
 class MTFAnalysis(BaseModel):

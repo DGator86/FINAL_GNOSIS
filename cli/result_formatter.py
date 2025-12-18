@@ -590,6 +590,25 @@ def _format_mtf_analysis(mtf: MTFAnalysis) -> List[str]:
 
     lines.append("    └────────────┴───────────┴──────────┴───────────┴───────────────────────────────────┘")
 
+    # Options Strategies table
+    lines.append("")
+    lines.append("    OPTIONS STRATEGIES BY TIMEFRAME:")
+    lines.append("    ┌────────────┬──────────────────┬─────────────────────────────────────────────────┐")
+    lines.append("    │ TIMEFRAME  │ STRATEGY         │ DETAILS                                         │")
+    lines.append("    ├────────────┼──────────────────┼─────────────────────────────────────────────────┤")
+
+    for signal in mtf.signals:
+        strategy = signal.strategy if signal.strategy else "No Trade"
+        details = signal.strategy_details if signal.strategy_details else "-"
+        # Truncate details if too long
+        details_display = details[:47] + ".." if len(details) > 49 else details
+
+        lines.append(
+            f"    │ {signal.timeframe:<10} │ {strategy:<16} │ {details_display:<49} │"
+        )
+
+    lines.append("    └────────────┴──────────────────┴─────────────────────────────────────────────────┘")
+
     # Summary by direction
     long_tfs = [s.timeframe for s in mtf.signals if s.direction == "long"]
     short_tfs = [s.timeframe for s in mtf.signals if s.direction == "short"]
