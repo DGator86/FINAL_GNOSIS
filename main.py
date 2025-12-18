@@ -81,6 +81,9 @@ def build_pipeline(
         except Exception:
             flow_adapter = None
 
+    # Create technical processor instance for reuse
+    technical_processor = TechnicalSentimentProcessor(market_adapter, config.engines.sentiment.model_dump())
+
     engines = {
         "hedge": HedgeEngineV3(options_adapter, config.engines.hedge.model_dump()),
         "liquidity": LiquidityEngineV1(market_adapter, config.engines.liquidity.model_dump()),
@@ -88,11 +91,12 @@ def build_pipeline(
             [
                 NewsSentimentProcessor(news_adapter, config.engines.sentiment.model_dump()),
                 FlowSentimentProcessor(config.engines.sentiment.model_dump(), flow_adapter=flow_adapter),
-                TechnicalSentimentProcessor(market_adapter, config.engines.sentiment.model_dump()),
+                technical_processor,
             ],
             config.engines.sentiment.model_dump(),
         ),
         "elasticity": ElasticityEngineV1(market_adapter, config.engines.elasticity.model_dump()),
+        "mtf": technical_processor,  # For multi-timeframe analysis
     }
 
     primary_agents = {
