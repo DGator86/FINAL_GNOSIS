@@ -278,13 +278,18 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                         # Get spot price (approximate from underlying_price or use strike as proxy)
                         spot = float(option.get("underlying_price", option.get("stock_price", strike)) or strike)
 
-                        # Calculate DTE
-                        from datetime import date
+                        # Calculate DTE - handle datetime, date, and string types
+                        from datetime import date as date_type
+                        today = date_type.today()
                         if isinstance(exp_date, str):
                             exp_dt = datetime.strptime(exp_date, "%Y-%m-%d").date()
-                        else:
+                        elif isinstance(exp_date, datetime):
+                            exp_dt = exp_date.date()
+                        elif hasattr(exp_date, 'days'):  # Already a date
                             exp_dt = exp_date
-                        dte = max(1, (exp_dt - date.today()).days)
+                        else:
+                            exp_dt = today  # Fallback
+                        dte = max(1, (exp_dt - today).days)
 
                         # Use IV from contract or default
                         iv_for_calc = iv if iv > 0 else 0.3  # Default 30% IV
