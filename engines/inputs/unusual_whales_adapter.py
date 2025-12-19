@@ -10,9 +10,67 @@ from typing import Dict, List, Optional
 import httpx
 from loguru import logger
 
+import math
 from config.credentials import get_unusual_whales_token
 from engines.inputs.options_chain_adapter import OptionContract, OptionsChainAdapter
 from gnosis.utils.option_utils import OptionUtils
+
+
+def _estimate_delta(spot: float, strike: float, option_type: str, iv: float, dte: int) -> float:
+    """Estimate delta using simplified Black-Scholes approximation."""
+    if iv <= 0 or dte <= 0:
+        # Intrinsic value only
+        if option_type == "call":
+            return 1.0 if spot > strike else 0.0
+        else:
+            return -1.0 if spot < strike else 0.0
+
+    # Time in years
+    t = max(dte / 365.0, 0.001)
+
+    # Simplified d1 calculation (assuming r=0)
+    try:
+        d1 = (math.log(spot / strike) + 0.5 * iv * iv * t) / (iv * math.sqrt(t))
+
+        # Approximate N(d1) using logistic function
+        delta = 1 / (1 + math.exp(-1.7 * d1))
+
+        if option_type == "put":
+            delta = delta - 1
+
+        return round(delta, 4)
+    except (ValueError, ZeroDivisionError):
+        return 0.5 if option_type == "call" else -0.5
+
+
+def _estimate_gamma(spot: float, strike: float, iv: float, dte: int) -> float:
+    """Estimate gamma using simplified approximation."""
+    if iv <= 0 or dte <= 0 or spot <= 0:
+        return 0.0
+
+    t = max(dte / 365.0, 0.001)
+    moneyness = abs(math.log(spot / strike)) if strike > 0 else 0
+
+    # Gamma is highest ATM, decays with moneyness
+    try:
+        gamma = math.exp(-0.5 * (moneyness / (iv * math.sqrt(t))) ** 2)
+        gamma = gamma / (spot * iv * math.sqrt(t))
+        return round(min(gamma, 0.1), 6)  # Cap at reasonable value
+    except (ValueError, ZeroDivisionError):
+        return 0.0
+
+
+def _estimate_theta(spot: float, strike: float, option_type: str, iv: float, dte: int, price: float) -> float:
+    """Estimate theta (time decay per day)."""
+    if dte <= 0 or price <= 0:
+        return 0.0
+
+    # Rough estimate: ATM options lose about 1/sqrt(dte) of their value per day
+    try:
+        daily_decay = price / (2 * math.sqrt(max(dte, 1)))
+        return round(-daily_decay, 4)
+    except (ValueError, ZeroDivisionError):
+        return 0.0
 
 
 @dataclass
@@ -78,9 +136,10 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
         )
 
     def _fetch_greeks(self, symbol: str) -> Dict[str, Dict[str, float]]:
-        """Fetch Greeks from the separate /greeks endpoint and index by option_symbol."""
+        """Fetch Greeks from multiple endpoints and index by option_symbol."""
         greeks_map: Dict[str, Dict[str, float]] = {}
 
+        # Try primary greeks endpoint
         try:
             url = f"{self.base_url}/api/stock/{symbol}/greeks"
             response = self.client.get(url)
@@ -115,12 +174,51 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                         "vanna": float(row.get("put_vanna", 0) or 0),
                     }
 
-            logger.debug(f"Fetched Greeks for {len(greeks_map)} option symbols")
-            return greeks_map
+            if greeks_map:
+                logger.debug(f"Fetched Greeks for {len(greeks_map)} option symbols from /greeks")
+                return greeks_map
+
+        except httpx.HTTPStatusError as e:
+            logger.debug(f"Greeks endpoint returned {e.response.status_code} for {symbol}")
+        except Exception as error:
+            logger.debug(f"Could not fetch Greeks from /greeks for {symbol}: {error}")
+
+        # Try alternative: option-chain endpoint which may include Greeks inline
+        try:
+            url = f"{self.base_url}/api/stock/{symbol}/option-chain"
+            response = self.client.get(url, params={"limit": 500})
+            if response.status_code == 200:
+                payload = response.json()
+                chain_data = payload.get("data", [])
+
+                for row in chain_data:
+                    opt_symbol = row.get("option_symbol", "")
+                    if not opt_symbol:
+                        continue
+
+                    # Check if Greeks are inline
+                    delta = row.get("delta")
+                    if delta is not None:
+                        greeks_map[opt_symbol] = {
+                            "delta": float(delta or 0),
+                            "gamma": float(row.get("gamma", 0) or 0),
+                            "theta": float(row.get("theta", 0) or 0),
+                            "vega": float(row.get("vega", 0) or 0),
+                            "rho": float(row.get("rho", 0) or 0),
+                            "charm": float(row.get("charm", 0) or 0),
+                            "vanna": float(row.get("vanna", 0) or 0),
+                        }
+
+                if greeks_map:
+                    logger.debug(f"Fetched Greeks for {len(greeks_map)} options from /option-chain")
+                    return greeks_map
 
         except Exception as error:
-            logger.warning(f"Could not fetch Greeks for {symbol}: {error}")
-            return {}
+            logger.debug(f"Could not fetch Greeks from /option-chain for {symbol}: {error}")
+
+        # Final fallback: estimate Greeks from IV and moneyness
+        logger.debug(f"No Greeks available for {symbol} - will estimate from IV")
+        return greeks_map
 
     def get_chain(self, symbol: str, timestamp: datetime, expiration: Optional[str] = None) -> List[OptionContract]:
         """Get options chain for a symbol, merging contracts with Greeks from separate endpoints."""
@@ -174,6 +272,35 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
 
                     # Look up Greeks by option_symbol
                     greeks = greeks_map.get(symbol_str, {})
+
+                    # If no Greeks from API, estimate them
+                    if not greeks or greeks.get("delta", 0) == 0:
+                        # Get spot price (approximate from underlying_price or use strike as proxy)
+                        spot = float(option.get("underlying_price", option.get("stock_price", strike)) or strike)
+
+                        # Calculate DTE
+                        from datetime import date
+                        if isinstance(exp_date, str):
+                            exp_dt = datetime.strptime(exp_date, "%Y-%m-%d").date()
+                        else:
+                            exp_dt = exp_date
+                        dte = max(1, (exp_dt - date.today()).days)
+
+                        # Use IV from contract or default
+                        iv_for_calc = iv if iv > 0 else 0.3  # Default 30% IV
+
+                        # Mid price for theta estimation
+                        mid_price = (bid + ask) / 2 if bid > 0 and ask > 0 else last
+
+                        greeks = {
+                            "delta": _estimate_delta(spot, strike, option_type, iv_for_calc, dte),
+                            "gamma": _estimate_gamma(spot, strike, iv_for_calc, dte),
+                            "theta": _estimate_theta(spot, strike, option_type, iv_for_calc, dte, mid_price),
+                            "vega": 0.01 * spot * math.sqrt(dte / 365) if spot > 0 else 0,  # Rough vega
+                            "rho": 0.0,
+                            "charm": 0.0,
+                            "vanna": 0.0,
+                        }
 
                     contracts.append(
                         OptionContract(

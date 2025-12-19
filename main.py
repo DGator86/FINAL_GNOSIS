@@ -42,6 +42,9 @@ from engines.sentiment.processors import (
 )
 from engines.sentiment.sentiment_engine_v1 import SentimentEngineV1
 from execution.broker_adapters.settings import get_alpaca_paper_setting
+from execution.autonomous_trader import AutonomousTrader, TraderConfig
+from execution.trailing_stop_manager import TrailingStopConfig
+from execution.exit_rules_engine import ExitRulesConfig
 from feedback.adaptation_agent import AdaptationAgent
 from feedback.tracking_agent import TrackingAgent
 from ledger.ledger_store import LedgerStore
@@ -314,6 +317,193 @@ def live_loop(
                 logger.warning(f"Could not fetch final account info: {e}")
         
         typer.echo("="*80)
+
+
+@app.command()
+def autonomous_trade(
+    symbol: str = typer.Option("SPY", help="Primary symbol to trade."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Dry-run mode (no actual execution)"),
+    interval: int = typer.Option(30, "--interval", help="Monitor interval in seconds (default: 30)"),
+    max_positions: int = typer.Option(5, "--max-positions", help="Maximum concurrent positions"),
+    max_hold_minutes: int = typer.Option(60, "--max-hold", help="Maximum hold time in minutes"),
+    trailing_pct: float = typer.Option(0.5, "--trailing-pct", help="Trailing stop percentage"),
+    stop_pct: float = typer.Option(1.0, "--stop-pct", help="Initial stop loss percentage"),
+) -> None:
+    """
+    Run FULL autonomous trading with position lifecycle management.
+
+    This is the production trading mode with:
+    - Real-time position monitoring
+    - Dynamic trailing stops
+    - Multiple exit conditions (stop, target, time, reversal)
+    - P&L tracking and dashboard
+    - Circuit breaker protection
+
+    Example:
+        # Dry-run to preview
+        python main.py autonomous-trade --symbol SPY --dry-run
+
+        # Start paper trading with custom settings
+        python main.py autonomous-trade --symbol SPY --max-hold 30 --trailing-pct 0.3
+
+        # Live trading (requires ALPACA_PAPER=false)
+        python main.py autonomous-trade --symbol AAPL
+    """
+    config = load_config()
+    paper_mode = get_alpaca_paper_setting()
+
+    # Initialize broker
+    broker = None
+    if not dry_run:
+        try:
+            typer.echo(f"🔌 Connecting to Alpaca {'Paper' if paper_mode else 'LIVE'} Trading...")
+            broker = create_broker_adapter(paper=paper_mode, prefer_real=True)
+            account = broker.get_account()
+            typer.echo(f"✅ Connected to Alpaca")
+            typer.echo(f"   Account: {account.account_id}")
+            typer.echo(f"   Portfolio Value: ${account.portfolio_value:,.2f}")
+            typer.echo(f"   Buying Power: ${account.buying_power:,.2f}")
+        except Exception as e:
+            typer.echo(f"❌ Failed to connect to Alpaca: {e}", err=True)
+            raise typer.Exit(1)
+    else:
+        typer.echo("🔍 DRY-RUN MODE: No actual execution")
+
+    # Configure autonomous trader
+    trader_config = TraderConfig(
+        max_positions=max_positions,
+        default_max_hold_minutes=max_hold_minutes,
+        default_trailing_pct=trailing_pct,
+        default_stop_pct=stop_pct,
+        paper_mode=paper_mode or dry_run,
+    )
+
+    trailing_config = TrailingStopConfig(
+        trailing_pct=trailing_pct,
+        initial_stop_pct=stop_pct,
+        breakeven_trigger_pct=0.5,
+        tighten_after_target_1=True,
+    )
+
+    exit_config = ExitRulesConfig(
+        max_hold_minutes=max_hold_minutes,
+        target_1_pct=0.5,
+        target_2_pct=1.0,
+        exit_on_signal_reversal=True,
+    )
+
+    # Initialize autonomous trader
+    autonomous_trader = AutonomousTrader(
+        broker_adapter=broker,
+        config=trader_config,
+        trailing_config=trailing_config,
+        exit_config=exit_config,
+    )
+
+    # Build pipeline with broker
+    adapters = {}
+    if broker:
+        adapters["broker"] = broker
+
+    runner = build_pipeline(symbol, config, adapters)
+
+    typer.echo("\n" + "=" * 80)
+    typer.echo("🤖 AUTONOMOUS TRADING SYSTEM STARTED")
+    typer.echo("=" * 80)
+    typer.echo(f"   Symbol: {symbol}")
+    mode_label = "DRY-RUN" if dry_run else ("PAPER" if paper_mode else "LIVE")
+    typer.echo(f"   Mode: {mode_label}")
+    typer.echo(f"   Monitor Interval: {interval} seconds")
+    typer.echo(f"   Max Positions: {max_positions}")
+    typer.echo(f"   Max Hold: {max_hold_minutes} minutes")
+    typer.echo(f"   Trailing Stop: {trailing_pct}%")
+    typer.echo(f"   Initial Stop: {stop_pct}%")
+    typer.echo("=" * 80)
+    typer.echo("   Press Ctrl+C to stop\n")
+
+    iteration = 0
+    last_signal_check = 0
+    signal_interval = max(60, interval * 2)  # Check signals less frequently
+
+    try:
+        while True:
+            iteration += 1
+            now = datetime.now(timezone.utc)
+            current_time = time.time()
+
+            typer.echo(f"\n[{now.strftime('%Y-%m-%d %H:%M:%S')}] Iteration #{iteration}")
+            typer.echo("-" * 60)
+
+            try:
+                # 1. MONITOR existing positions (every iteration)
+                typer.echo("📊 Monitoring positions...")
+                monitor_result = autonomous_trader.monitor_positions(now)
+
+                if monitor_result["positions_checked"] > 0:
+                    typer.echo(
+                        f"   Checked: {monitor_result['positions_checked']} | "
+                        f"Stops Updated: {monitor_result['stops_updated']} | "
+                        f"Exits: {monitor_result['exits_executed']}"
+                    )
+
+                # 2. CHECK for new signals (less frequently)
+                if current_time - last_signal_check >= signal_interval:
+                    typer.echo("🔍 Running pipeline for new signals...")
+                    result = runner.run_once(now)
+                    last_signal_check = current_time
+
+                    if hasattr(result, "trade_ideas") and result.trade_ideas:
+                        typer.echo(f"   Generated {len(result.trade_ideas)} trade ideas")
+
+                        # 3. PROCESS trade ideas (open new positions)
+                        if not dry_run:
+                            opened = autonomous_trader.process_trade_ideas(
+                                result.trade_ideas,
+                                result,
+                                now,
+                            )
+                            if opened:
+                                typer.echo(f"   ✅ Opened {len(opened)} new positions")
+                        else:
+                            typer.echo("   (Dry-run: skipping execution)")
+
+                    # Update exit engine with latest signals
+                    if hasattr(result, "consensus") and result.consensus:
+                        autonomous_trader.exit_engine.update_signal(
+                            symbol,
+                            {
+                                "direction": result.consensus.get("direction", "neutral"),
+                                "confidence": result.consensus.get("confidence", 0),
+                            },
+                        )
+
+                # 4. DISPLAY dashboard
+                typer.echo("\n" + autonomous_trader.get_dashboard_summary())
+
+            except Exception as e:
+                typer.echo(f"   ❌ Error: {e}", err=True)
+                logger.exception(f"Error in iteration {iteration}")
+
+            # Wait for next iteration
+            typer.echo(f"\n⏳ Next check in {interval} seconds...")
+            time.sleep(interval)
+
+    except KeyboardInterrupt:
+        typer.echo("\n\n" + "=" * 80)
+        typer.echo("🛑 AUTONOMOUS TRADING STOPPED")
+        typer.echo("=" * 80)
+
+        # Close all positions if requested
+        if autonomous_trader.position_manager.positions:
+            typer.echo(f"\n   Open Positions: {len(autonomous_trader.position_manager.positions)}")
+            close_all = typer.confirm("   Close all open positions?", default=False)
+            if close_all:
+                closed = autonomous_trader.close_all_positions("shutdown")
+                typer.echo(f"   Closed {closed} positions")
+
+        # Final summary
+        typer.echo("\n" + autonomous_trader.get_dashboard_summary())
+        typer.echo("=" * 80)
 
 
 @app.command()
