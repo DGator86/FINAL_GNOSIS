@@ -43,6 +43,7 @@ from engines.sentiment.processors import (
 from engines.sentiment.sentiment_engine_v1 import SentimentEngineV1
 from execution.broker_adapters.settings import get_alpaca_paper_setting
 from execution.autonomous_trader import AutonomousTrader, TraderConfig
+from execution.trading_attitude import TradingAttitude
 from execution.trailing_stop_manager import TrailingStopConfig
 from execution.exit_rules_engine import ExitRulesConfig
 from feedback.adaptation_agent import AdaptationAgent
@@ -328,6 +329,10 @@ def autonomous_trade(
     max_hold_minutes: int = typer.Option(60, "--max-hold", help="Maximum hold time in minutes"),
     trailing_pct: float = typer.Option(0.5, "--trailing-pct", help="Trailing stop percentage"),
     stop_pct: float = typer.Option(1.0, "--stop-pct", help="Initial stop loss percentage"),
+    attitude: str = typer.Option(
+        "auto", "--attitude",
+        help="Trading attitude: scalper, day_trader, swing_trader, position_trader, or 'auto' for adaptive"
+    ),
 ) -> None:
     """
     Run FULL autonomous trading with position lifecycle management.
@@ -338,16 +343,27 @@ def autonomous_trade(
     - Multiple exit conditions (stop, target, time, reversal)
     - P&L tracking and dashboard
     - Circuit breaker protection
+    - ADAPTIVE ATTITUDE: Adjusts parameters based on volatility regime
+
+    Attitudes:
+      scalper        - High vol, 0DTE, tight stops (0.3%), 15 min max hold
+      day_trader     - Medium vol, 1-7 DTE, moderate stops (0.75%), 2 hr hold
+      swing_trader   - Low vol, 14-45 DTE, wide stops (2%), multi-day hold
+      position_trader - Very low vol, 45-180 DTE, widest stops (5%), weeks hold
+      auto           - Dynamically select based on market conditions
 
     Example:
         # Dry-run to preview
         python main.py autonomous-trade --symbol SPY --dry-run
 
-        # Start paper trading with custom settings
-        python main.py autonomous-trade --symbol SPY --max-hold 30 --trailing-pct 0.3
+        # Start paper trading with adaptive attitude (default)
+        python main.py autonomous-trade --symbol SPY
 
-        # Live trading (requires ALPACA_PAPER=false)
-        python main.py autonomous-trade --symbol AAPL
+        # Force scalping mode for high volatility trading
+        python main.py autonomous-trade --symbol SPY --attitude scalper
+
+        # Swing trading mode for multi-day positions
+        python main.py autonomous-trade --symbol SPY --attitude swing_trader
     """
     config = load_config()
     paper_mode = get_alpaca_paper_setting()
@@ -369,6 +385,20 @@ def autonomous_trade(
     else:
         typer.echo("🔍 DRY-RUN MODE: No actual execution")
 
+    # Parse attitude setting
+    enable_adaptive = attitude.lower() == "auto"
+    attitude_map = {
+        "scalper": TradingAttitude.SCALPER,
+        "day_trader": TradingAttitude.DAY_TRADER,
+        "swing_trader": TradingAttitude.SWING_TRADER,
+        "position_trader": TradingAttitude.POSITION_TRADER,
+        "auto": TradingAttitude.DAY_TRADER,  # Default for adaptive
+    }
+    selected_attitude = attitude_map.get(attitude.lower(), TradingAttitude.DAY_TRADER)
+
+    typer.echo(f"📊 Attitude: {attitude.upper()}" +
+               (" (adaptive)" if enable_adaptive else " (fixed)"))
+
     # Configure autonomous trader
     trader_config = TraderConfig(
         max_positions=max_positions,
@@ -376,6 +406,8 @@ def autonomous_trade(
         default_trailing_pct=trailing_pct,
         default_stop_pct=stop_pct,
         paper_mode=paper_mode or dry_run,
+        default_attitude=selected_attitude,
+        enable_adaptive_attitude=enable_adaptive,
     )
 
     trailing_config = TrailingStopConfig(
@@ -400,6 +432,10 @@ def autonomous_trade(
         exit_config=exit_config,
     )
 
+    # Set fixed attitude override if not adaptive
+    if not enable_adaptive:
+        autonomous_trader.set_attitude_override(selected_attitude)
+
     # Build pipeline with broker
     adapters = {}
     if broker:
@@ -413,11 +449,14 @@ def autonomous_trade(
     typer.echo(f"   Symbol: {symbol}")
     mode_label = "DRY-RUN" if dry_run else ("PAPER" if paper_mode else "LIVE")
     typer.echo(f"   Mode: {mode_label}")
+    typer.echo(f"   Attitude: {attitude.upper()}" +
+               (" (adapts to volatility)" if enable_adaptive else " (fixed)"))
+    if autonomous_trader.current_attitude_profile:
+        profile = autonomous_trader.current_attitude_profile
+        typer.echo(f"     → Stop: {profile.initial_stop_pct:.1f}% | Trail: {profile.trailing_stop_pct:.1f}%")
+        typer.echo(f"     → Hold: {profile.max_hold_minutes} min | DTE: {profile.preferred_dte_min}-{profile.preferred_dte_max}")
     typer.echo(f"   Monitor Interval: {interval} seconds")
     typer.echo(f"   Max Positions: {max_positions}")
-    typer.echo(f"   Max Hold: {max_hold_minutes} minutes")
-    typer.echo(f"   Trailing Stop: {trailing_pct}%")
-    typer.echo(f"   Initial Stop: {stop_pct}%")
     typer.echo("=" * 80)
     typer.echo("   Press Ctrl+C to stop\n")
 

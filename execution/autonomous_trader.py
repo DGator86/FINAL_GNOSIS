@@ -23,6 +23,14 @@ from execution.exit_rules_engine import (
     ExitRulesEngine,
     ExitSignal,
 )
+from execution.trading_attitude import (
+    TradingAttitude,
+    AttitudeProfile,
+    AttitudeSelector,
+    MarketConditions,
+    create_conditions_from_pipeline,
+    ATTITUDE_PROFILES,
+)
 from schemas.core_schemas import TradeIdea, PipelineResult
 
 
@@ -56,6 +64,10 @@ class TraderConfig:
     # Safety
     paper_mode: bool = True
     confirm_before_trade: bool = False
+
+    # Attitude settings
+    default_attitude: TradingAttitude = TradingAttitude.DAY_TRADER
+    enable_adaptive_attitude: bool = True  # Auto-select attitude from conditions
 
 
 @dataclass
@@ -121,6 +133,12 @@ class AutonomousTrader:
             ),
         )
 
+        # Attitude selector for adaptive parameter adjustment
+        self.attitude_selector = AttitudeSelector(
+            default_attitude=self.config.default_attitude
+        )
+        self.current_attitude_profile: Optional[AttitudeProfile] = None
+
         # State
         self.state = TraderState()
         self._init_session()
@@ -135,6 +153,86 @@ class AutonomousTrader:
             f"AutonomousTrader initialized ({mode} mode, "
             f"max_positions={self.config.max_positions})"
         )
+
+    def update_attitude_from_conditions(
+        self,
+        pipeline_result: PipelineResult,
+        time_to_close: Optional[int] = None,
+    ) -> AttitudeProfile:
+        """
+        Update trading attitude based on current market conditions.
+
+        Args:
+            pipeline_result: Latest pipeline result with volatility data
+            time_to_close: Minutes until market close
+
+        Returns:
+            The selected AttitudeProfile
+        """
+        if not self.config.enable_adaptive_attitude:
+            # Use default profile
+            profile = ATTITUDE_PROFILES[self.config.default_attitude]
+            self.current_attitude_profile = profile
+            return profile
+
+        # Create conditions from pipeline
+        conditions = create_conditions_from_pipeline(pipeline_result, time_to_close)
+
+        # Select attitude
+        profile = self.attitude_selector.select_attitude(conditions)
+        self.current_attitude_profile = profile
+
+        # Apply profile settings to components
+        self._apply_attitude_profile(profile)
+
+        return profile
+
+    def _apply_attitude_profile(self, profile: AttitudeProfile) -> None:
+        """Apply attitude profile settings to all components."""
+
+        # Update config
+        self.config.min_confidence = profile.min_confidence
+        self.config.min_mtf_alignment = profile.min_mtf_alignment
+        self.config.require_mtf_agreement = profile.require_mtf_agreement
+        self.config.max_positions = profile.max_positions
+        self.config.max_position_size_pct = profile.max_position_size_pct
+        self.config.default_stop_pct = profile.initial_stop_pct
+        self.config.default_trailing_pct = profile.trailing_stop_pct
+        self.config.default_target_1_pct = profile.target_1_pct
+        self.config.default_target_2_pct = profile.target_2_pct
+        self.config.default_max_hold_minutes = profile.max_hold_minutes
+
+        # Update trailing stop manager
+        self.trailing_manager.config.initial_stop_pct = profile.initial_stop_pct
+        self.trailing_manager.config.trailing_pct = profile.trailing_stop_pct
+        self.trailing_manager.config.activation_pct = profile.trailing_activation_pct
+        self.trailing_manager.config.breakeven_trigger_pct = profile.breakeven_trigger_pct
+        self.trailing_manager.config.tighten_after_target_1 = profile.tighten_after_target_1
+        self.trailing_manager.config.tightened_trail_pct = profile.tightened_trail_pct
+
+        # Update exit rules engine
+        self.exit_engine.config.max_hold_minutes = profile.max_hold_minutes
+        self.exit_engine.config.target_1_pct = profile.target_1_pct
+        self.exit_engine.config.target_2_pct = profile.target_2_pct
+        self.exit_engine.config.partial_exit_at_target_1 = profile.partial_exit_at_target_1
+        self.exit_engine.config.partial_exit_pct = profile.partial_exit_pct
+        self.exit_engine.config.market_close_exit_minutes = profile.exit_before_close_minutes
+
+        logger.debug(f"Applied attitude profile: {profile.describe()}")
+
+    def set_attitude_override(self, attitude: Optional[TradingAttitude]) -> None:
+        """Set manual attitude override (bypasses adaptive selection)."""
+        self.attitude_selector.set_override(attitude)
+        if attitude:
+            profile = ATTITUDE_PROFILES[attitude]
+            self._apply_attitude_profile(profile)
+            self.current_attitude_profile = profile
+
+    def get_current_attitude(self) -> str:
+        """Get current trading attitude name and settings."""
+        if self.current_attitude_profile:
+            return self.current_attitude_profile.describe()
+        return "Not set"
 
     def _init_session(self) -> None:
         """Initialize trading session state."""
@@ -156,6 +254,7 @@ class AutonomousTrader:
         trade_ideas: List[TradeIdea],
         pipeline_result: PipelineResult,
         timestamp: datetime,
+        time_to_close: Optional[int] = None,
     ) -> List[ManagedPosition]:
         """
         Process trade ideas and open positions.
@@ -164,6 +263,7 @@ class AutonomousTrader:
             trade_ideas: List of trade ideas from TradeAgent
             pipeline_result: Full pipeline result for context
             timestamp: Current timestamp
+            time_to_close: Minutes until market close (for attitude selection)
 
         Returns:
             List of newly opened positions
@@ -171,6 +271,10 @@ class AutonomousTrader:
         if self.state.is_trading_halted:
             logger.warning(f"Trading halted: {self.state.halt_reason}")
             return []
+
+        # Update trading attitude based on market conditions
+        if self.config.enable_adaptive_attitude:
+            self.update_attitude_from_conditions(pipeline_result, time_to_close)
 
         opened_positions = []
 
@@ -532,6 +636,16 @@ class AutonomousTrader:
         session_duration = datetime.utcnow() - self.state.session_start
         lines.append(f"  Session Duration: {session_duration}")
         lines.append(f"  Mode: {'PAPER' if self.config.paper_mode else 'LIVE'}")
+
+        # Current attitude
+        if self.current_attitude_profile:
+            lines.append(f"  Attitude: {self.current_attitude_profile.attitude.value.upper()}")
+            lines.append(f"    Aggressiveness: {self.current_attitude_profile.aggressiveness:.0%}")
+            lines.append(f"    Stop: {self.current_attitude_profile.initial_stop_pct:.1f}% | "
+                        f"Trail: {self.current_attitude_profile.trailing_stop_pct:.1f}%")
+            lines.append(f"    Max Hold: {self.current_attitude_profile.max_hold_minutes} min | "
+                        f"DTE: {self.current_attitude_profile.preferred_dte_min}-"
+                        f"{self.current_attitude_profile.preferred_dte_max}")
 
         if self.state.is_trading_halted:
             lines.append(f"  STATUS: HALTED - {self.state.halt_reason}")
