@@ -173,6 +173,35 @@ class LiquidityRequirements:
 
 
 @dataclass
+class DynamicProfitThresholds:
+    """
+    Dynamic profit thresholds for options based on market conditions.
+    
+    World-class traders adjust profit targets based on:
+    - IV environment (take profits faster in high IV)
+    - Strategy type (credit vs debit strategies)
+    - DTE remaining (accelerate near expiration)
+    - Market regime (trend vs range)
+    - Theta decay profile
+    """
+    # Target profit as % of max profit
+    target_profit_pct: float
+    # Early profit threshold (take quick wins)
+    early_profit_pct: float
+    # Stop loss as % of max loss
+    stop_loss_pct: float
+    # Time-based adjustments
+    dte_acceleration_factor: float  # Increase urgency as DTE decreases
+    # Trailing profit settings
+    trailing_activation_pct: float  # Activate trail at this % of target
+    trailing_distance_pct: float    # Trail this far behind peak
+    # Scaling out levels
+    scale_out_levels: List[Tuple[float, float]]  # [(profit_pct, exit_pct), ...]
+    # Reasoning
+    reasoning: str = ""
+
+
+@dataclass
 class MarketContext:
     """Current market context for decision making."""
     symbol: str
@@ -318,6 +347,105 @@ class EliteTradeAgent:
             OptionStrategy.LONG_STRANGLE,
             OptionStrategy.CALENDAR_SPREAD,
         ],
+    }
+    
+    # ==========================================================================
+    # DYNAMIC PROFIT THRESHOLD CONFIGURATIONS
+    # ==========================================================================
+    # Base profit targets by strategy category (as % of max profit)
+    STRATEGY_PROFIT_TARGETS: Dict[str, Dict[str, float]] = {
+        # Credit strategies: Take profits early due to gamma risk near expiration
+        "credit": {
+            "target_profit_pct": 0.50,      # 50% of max profit
+            "early_profit_pct": 0.25,       # Quick win at 25%
+            "stop_loss_pct": 2.0,           # 200% of credit received (2x loss)
+            "trailing_activation": 0.35,    # Start trailing at 35%
+            "trailing_distance": 0.15,      # Trail 15% behind
+        },
+        # Debit strategies: Let winners run, defined risk
+        "debit": {
+            "target_profit_pct": 1.00,      # 100% gain on premium
+            "early_profit_pct": 0.50,       # Take 50% as quick win
+            "stop_loss_pct": 0.50,          # 50% of premium (cut losers)
+            "trailing_activation": 0.50,    # Start trailing at 50%
+            "trailing_distance": 0.25,      # Trail 25% behind
+        },
+        # Neutral/volatility strategies: Time-sensitive
+        "neutral": {
+            "target_profit_pct": 0.40,      # 40% of max profit
+            "early_profit_pct": 0.20,       # Quick win at 20%
+            "stop_loss_pct": 1.50,          # 150% of credit/debit
+            "trailing_activation": 0.25,    # Trail early
+            "trailing_distance": 0.10,      # Tight trail
+        },
+        # Equity: Standard trend following
+        "equity": {
+            "target_profit_pct": 1.50,      # 150% R:R target
+            "early_profit_pct": 0.75,       # Quick win at 75%
+            "stop_loss_pct": 1.00,          # 100% of risk (1:1)
+            "trailing_activation": 0.50,
+            "trailing_distance": 0.30,
+        },
+    }
+    
+    # IV adjustment multipliers for profit targets
+    IV_PROFIT_ADJUSTMENTS: Dict[IVEnvironment, Dict[str, float]] = {
+        IVEnvironment.HIGH: {
+            "target_multiplier": 0.75,      # Take profits 25% faster
+            "stop_multiplier": 1.25,        # Wider stops (more noise)
+            "urgency_factor": 1.5,          # Higher urgency
+        },
+        IVEnvironment.MEDIUM: {
+            "target_multiplier": 1.0,       # Standard targets
+            "stop_multiplier": 1.0,         # Standard stops
+            "urgency_factor": 1.0,          # Normal urgency
+        },
+        IVEnvironment.LOW: {
+            "target_multiplier": 1.25,      # Let winners run longer
+            "stop_multiplier": 0.80,        # Tighter stops (less noise)
+            "urgency_factor": 0.75,         # Less urgency
+        },
+    }
+    
+    # DTE-based acceleration (multiply urgency as expiration approaches)
+    DTE_ACCELERATION: Dict[str, float] = {
+        "0-7": 2.0,     # Critical zone - aggressive profit taking
+        "7-14": 1.5,    # Elevated urgency
+        "14-30": 1.0,   # Normal
+        "30-60": 0.8,   # Relaxed
+        "60+": 0.6,     # Very relaxed
+    }
+    
+    # Regime-based adjustments
+    REGIME_PROFIT_ADJUSTMENTS: Dict[MarketRegime, Dict[str, float]] = {
+        MarketRegime.TRENDING_BULL: {
+            "target_multiplier": 1.3,   # Let winners run in trends
+            "stop_multiplier": 1.2,     # Wider stops for pullbacks
+        },
+        MarketRegime.TRENDING_BEAR: {
+            "target_multiplier": 1.3,
+            "stop_multiplier": 1.2,
+        },
+        MarketRegime.HIGH_VOLATILITY: {
+            "target_multiplier": 0.7,   # Quick profits in chaos
+            "stop_multiplier": 1.5,     # Wide stops for whipsaws
+        },
+        MarketRegime.LOW_VOLATILITY: {
+            "target_multiplier": 1.1,   # Slightly extended
+            "stop_multiplier": 0.8,     # Tighter stops
+        },
+        MarketRegime.RANGE_BOUND: {
+            "target_multiplier": 0.9,   # Mean reversion targets
+            "stop_multiplier": 0.9,     # Tighter stops
+        },
+        MarketRegime.MEAN_REVERTING: {
+            "target_multiplier": 0.85,
+            "stop_multiplier": 0.85,
+        },
+        MarketRegime.BREAKOUT: {
+            "target_multiplier": 1.5,   # Let breakouts run
+            "stop_multiplier": 1.0,
+        },
     }
     
     def __init__(
@@ -624,6 +752,249 @@ class EliteTradeAgent:
             "confidence_adjustment": confidence_boost,
             "direction_scores": direction_scores,
         }
+    
+    # =========================================================================
+    # DYNAMIC PROFIT THRESHOLD CALCULATION
+    # =========================================================================
+    
+    def _calculate_dynamic_profit_thresholds(
+        self,
+        strategy: OptionStrategy,
+        context: MarketContext,
+        timeframe: Timeframe,
+        confidence: float,
+        target_dte: int,
+    ) -> DynamicProfitThresholds:
+        """
+        Calculate dynamic profit thresholds based on market conditions.
+        
+        This is the core of institutional-grade options profit management.
+        Adjusts targets based on:
+        - Strategy type (credit vs debit)
+        - IV environment
+        - DTE remaining
+        - Market regime
+        - Signal confidence
+        
+        Args:
+            strategy: The options strategy being traded
+            context: Current market context
+            timeframe: Trading timeframe
+            confidence: Signal confidence (0-1)
+            target_dte: Days to expiration
+            
+        Returns:
+            DynamicProfitThresholds with all calculated thresholds
+        """
+        # Determine strategy category
+        strategy_category = self._get_strategy_category(strategy)
+        base_targets = self.STRATEGY_PROFIT_TARGETS[strategy_category]
+        
+        # Get IV adjustments
+        iv_adj = self.IV_PROFIT_ADJUSTMENTS[context.iv_environment]
+        
+        # Get regime adjustments
+        regime_adj = self.REGIME_PROFIT_ADJUSTMENTS.get(
+            context.regime,
+            {"target_multiplier": 1.0, "stop_multiplier": 1.0}
+        )
+        
+        # Calculate DTE acceleration factor
+        dte_factor = self._get_dte_acceleration(target_dte)
+        
+        # Confidence adjustment (higher confidence = more aggressive targets)
+        confidence_factor = 0.8 + (confidence * 0.4)  # Range: 0.8 to 1.2
+        
+        # =====================================================================
+        # CALCULATE FINAL THRESHOLDS
+        # =====================================================================
+        
+        # Target profit: Base * IV * Regime * Confidence
+        target_profit_pct = (
+            base_targets["target_profit_pct"]
+            * iv_adj["target_multiplier"]
+            * regime_adj["target_multiplier"]
+            * confidence_factor
+        )
+        
+        # Early profit: Accelerated by DTE
+        early_profit_pct = (
+            base_targets["early_profit_pct"]
+            * iv_adj["target_multiplier"]
+            * dte_factor  # More urgent as expiration approaches
+        )
+        
+        # Stop loss: Adjusted for volatility
+        stop_loss_pct = (
+            base_targets["stop_loss_pct"]
+            * iv_adj["stop_multiplier"]
+            * regime_adj["stop_multiplier"]
+        )
+        
+        # Trailing activation and distance
+        trailing_activation_pct = base_targets["trailing_activation"]
+        trailing_distance_pct = base_targets["trailing_distance"]
+        
+        # In high IV, trail tighter
+        if context.iv_environment == IVEnvironment.HIGH:
+            trailing_distance_pct *= 0.8
+        
+        # Calculate scale-out levels based on strategy type
+        scale_out_levels = self._calculate_scale_out_levels(
+            strategy_category=strategy_category,
+            target_profit_pct=target_profit_pct,
+            iv_environment=context.iv_environment,
+        )
+        
+        # Build reasoning string
+        reasoning = (
+            f"Dynamic thresholds: {strategy_category} strategy | "
+            f"IV={context.iv_environment.value} (adj={iv_adj['target_multiplier']:.2f}) | "
+            f"Regime={context.regime.value} | "
+            f"DTE={target_dte} (accel={dte_factor:.2f}) | "
+            f"Conf={confidence:.1%}"
+        )
+        
+        logger.debug(
+            f"📊 Profit Thresholds for {strategy.value}: "
+            f"target={target_profit_pct:.0%} | early={early_profit_pct:.0%} | "
+            f"stop={stop_loss_pct:.0%} | DTE_factor={dte_factor:.1f}"
+        )
+        
+        return DynamicProfitThresholds(
+            target_profit_pct=target_profit_pct,
+            early_profit_pct=early_profit_pct,
+            stop_loss_pct=stop_loss_pct,
+            dte_acceleration_factor=dte_factor,
+            trailing_activation_pct=trailing_activation_pct,
+            trailing_distance_pct=trailing_distance_pct,
+            scale_out_levels=scale_out_levels,
+            reasoning=reasoning,
+        )
+    
+    def _get_strategy_category(self, strategy: OptionStrategy) -> str:
+        """Categorize strategy for profit threshold calculation."""
+        
+        # Credit strategies (sell premium)
+        credit_strategies = {
+            OptionStrategy.BULL_PUT_SPREAD,
+            OptionStrategy.BEAR_CALL_SPREAD,
+            OptionStrategy.IRON_CONDOR,
+            OptionStrategy.IRON_BUTTERFLY,
+            OptionStrategy.SHORT_STRANGLE,
+            OptionStrategy.SHORT_STRADDLE,
+        }
+        
+        # Debit strategies (buy premium)
+        debit_strategies = {
+            OptionStrategy.LONG_CALL,
+            OptionStrategy.LONG_PUT,
+            OptionStrategy.BULL_CALL_SPREAD,
+            OptionStrategy.BEAR_PUT_SPREAD,
+        }
+        
+        # Volatility/neutral strategies
+        neutral_strategies = {
+            OptionStrategy.LONG_STRADDLE,
+            OptionStrategy.LONG_STRANGLE,
+            OptionStrategy.CALENDAR_SPREAD,
+            OptionStrategy.DIAGONAL_SPREAD,
+        }
+        
+        # Equity strategies
+        equity_strategies = {
+            OptionStrategy.EQUITY_LONG,
+            OptionStrategy.EQUITY_SHORT,
+        }
+        
+        if strategy in credit_strategies:
+            return "credit"
+        elif strategy in debit_strategies:
+            return "debit"
+        elif strategy in neutral_strategies:
+            return "neutral"
+        elif strategy in equity_strategies:
+            return "equity"
+        else:
+            return "debit"  # Default to debit behavior
+    
+    def _get_dte_acceleration(self, dte: int) -> float:
+        """Get DTE-based acceleration factor for profit taking."""
+        
+        if dte <= 7:
+            return self.DTE_ACCELERATION["0-7"]      # 2.0x - Critical zone
+        elif dte <= 14:
+            return self.DTE_ACCELERATION["7-14"]     # 1.5x - Elevated
+        elif dte <= 30:
+            return self.DTE_ACCELERATION["14-30"]    # 1.0x - Normal
+        elif dte <= 60:
+            return self.DTE_ACCELERATION["30-60"]    # 0.8x - Relaxed
+        else:
+            return self.DTE_ACCELERATION["60+"]      # 0.6x - Very relaxed
+    
+    def _calculate_scale_out_levels(
+        self,
+        strategy_category: str,
+        target_profit_pct: float,
+        iv_environment: IVEnvironment,
+    ) -> List[Tuple[float, float]]:
+        """
+        Calculate scale-out levels for partial profit taking.
+        
+        Returns list of (profit_threshold, exit_percentage) tuples.
+        Example: [(0.25, 0.33), (0.50, 0.33), (0.75, 0.34)] means:
+        - At 25% profit, exit 33% of position
+        - At 50% profit, exit another 33%
+        - At 75% profit, exit remaining 34%
+        """
+        
+        if strategy_category == "credit":
+            # Credit strategies: Scale out aggressively
+            if iv_environment == IVEnvironment.HIGH:
+                # In high IV, take profits very fast
+                return [
+                    (0.25, 0.40),  # 25% profit → exit 40%
+                    (0.40, 0.35),  # 40% profit → exit 35%
+                    (0.50, 0.25),  # 50% profit → exit remaining
+                ]
+            else:
+                return [
+                    (0.30, 0.33),
+                    (0.50, 0.33),
+                    (0.65, 0.34),
+                ]
+        
+        elif strategy_category == "debit":
+            # Debit strategies: Let winners run longer
+            if iv_environment == IVEnvironment.LOW:
+                # In low IV, very patient
+                return [
+                    (0.50, 0.25),
+                    (0.75, 0.25),
+                    (1.00, 0.50),
+                ]
+            else:
+                return [
+                    (0.40, 0.33),
+                    (0.70, 0.33),
+                    (1.00, 0.34),
+                ]
+        
+        elif strategy_category == "neutral":
+            # Neutral strategies: Quick, even exits
+            return [
+                (0.20, 0.33),
+                (0.35, 0.33),
+                (0.50, 0.34),
+            ]
+        
+        else:  # equity
+            # Equity: Standard scale-out
+            return [
+                (0.50, 0.33),
+                (1.00, 0.33),
+                (1.50, 0.34),
+            ]
     
     # =========================================================================
     # MARKET CONTEXT BUILDING
@@ -939,21 +1310,62 @@ class EliteTradeAgent:
         timeframe: Timeframe,
         pipeline_result: PipelineResult,
     ) -> Optional[TradeProposal]:
-        """Build complete trade proposal with all details."""
+        """Build complete trade proposal with all details including dynamic profit thresholds."""
         
         tf_config = self.TIMEFRAME_CONFIGS[timeframe]
+        target_dte = (tf_config.min_dte + tf_config.max_dte) // 2
         
-        # Calculate stop loss and take profit
-        if direction == DirectionEnum.LONG:
-            stop_loss = context.spot_price * (1 - tf_config.stop_loss_pct)
-            take_profit = context.spot_price * (1 + tf_config.take_profit_pct)
-        elif direction == DirectionEnum.SHORT:
-            stop_loss = context.spot_price * (1 + tf_config.stop_loss_pct)
-            take_profit = context.spot_price * (1 - tf_config.take_profit_pct)
+        # =====================================================================
+        # CALCULATE DYNAMIC PROFIT THRESHOLDS (Institutional Edge)
+        # =====================================================================
+        dynamic_thresholds = self._calculate_dynamic_profit_thresholds(
+            strategy=strategy,
+            context=context,
+            timeframe=timeframe,
+            confidence=confidence,
+            target_dte=target_dte,
+        )
+        
+        # =====================================================================
+        # APPLY DYNAMIC THRESHOLDS TO STOP/PROFIT LEVELS
+        # =====================================================================
+        is_options = strategy not in [OptionStrategy.EQUITY_LONG, OptionStrategy.EQUITY_SHORT]
+        
+        if is_options:
+            # For options: use dynamic thresholds based on premium/max profit
+            # Base ATR move for underlying reference
+            base_move = context.atr * self.risk_params.stop_loss_atr_multiple
+            
+            if direction == DirectionEnum.LONG:
+                # For long directional trades
+                stop_loss = context.spot_price * (1 - dynamic_thresholds.stop_loss_pct * context.atr_pct)
+                take_profit = context.spot_price * (1 + dynamic_thresholds.target_profit_pct * context.atr_pct * 2)
+            elif direction == DirectionEnum.SHORT:
+                stop_loss = context.spot_price * (1 + dynamic_thresholds.stop_loss_pct * context.atr_pct)
+                take_profit = context.spot_price * (1 - dynamic_thresholds.target_profit_pct * context.atr_pct * 2)
+            else:
+                # Neutral strategies - tighter range
+                stop_loss = context.spot_price * (1 - dynamic_thresholds.stop_loss_pct * context.atr_pct * 0.75)
+                take_profit = context.spot_price * (1 + dynamic_thresholds.early_profit_pct * context.atr_pct)
+            
+            logger.info(
+                f"📊 Dynamic Options Thresholds for {strategy.value}: "
+                f"TP={dynamic_thresholds.target_profit_pct:.0%} | "
+                f"SL={dynamic_thresholds.stop_loss_pct:.0%} | "
+                f"Scale-out={len(dynamic_thresholds.scale_out_levels)} levels | "
+                f"DTE_accel={dynamic_thresholds.dte_acceleration_factor:.1f}x"
+            )
         else:
-            # Neutral strategies
-            stop_loss = context.spot_price * (1 - tf_config.stop_loss_pct * 1.5)
-            take_profit = context.spot_price  # Exit at entry for neutral
+            # For equity: use standard ATR-based stops with dynamic adjustments
+            if direction == DirectionEnum.LONG:
+                stop_loss = context.spot_price - (context.atr * self.risk_params.stop_loss_atr_multiple * dynamic_thresholds.stop_loss_pct)
+                take_profit = context.spot_price + (context.atr * self.risk_params.take_profit_atr_multiple * dynamic_thresholds.target_profit_pct)
+            elif direction == DirectionEnum.SHORT:
+                stop_loss = context.spot_price + (context.atr * self.risk_params.stop_loss_atr_multiple * dynamic_thresholds.stop_loss_pct)
+                take_profit = context.spot_price - (context.atr * self.risk_params.take_profit_atr_multiple * dynamic_thresholds.target_profit_pct)
+            else:
+                stop_loss = context.spot_price * (1 - tf_config.stop_loss_pct * 1.5)
+                take_profit = context.spot_price
         
         risk_per_share = abs(context.spot_price - stop_loss)
         reward_per_share = abs(take_profit - context.spot_price)
@@ -963,9 +1375,16 @@ class EliteTradeAgent:
         
         risk_reward = reward_per_share / risk_per_share
         
-        # Check minimum R:R
-        if risk_reward < self.risk_params.min_reward_risk:
-            logger.debug(f"R:R {risk_reward:.2f} below minimum {self.risk_params.min_reward_risk}")
+        # Check minimum R:R (adjusted for strategy type)
+        min_rr = self.risk_params.min_reward_risk
+        strategy_category = self._get_strategy_category(strategy)
+        
+        # Credit strategies can have lower R:R due to high win rate
+        if strategy_category == "credit":
+            min_rr = min_rr * 0.5  # Accept 0.75:1 for credit spreads
+        
+        if risk_reward < min_rr:
+            logger.debug(f"R:R {risk_reward:.2f} below minimum {min_rr:.2f} for {strategy_category}")
             return None
         
         # Calculate position size
@@ -980,19 +1399,22 @@ class EliteTradeAgent:
         if quantity <= 0:
             return None
         
-        # Trailing stop config
+        # Trailing stop config with dynamic thresholds
         trailing_stop_config = {
             "enabled": True,
-            "activation_pct": self.risk_params.trailing_stop_activation,
-            "trail_pct": self.risk_params.trailing_stop_distance,
+            "activation_pct": dynamic_thresholds.trailing_activation_pct,
+            "trail_pct": dynamic_thresholds.trailing_distance_pct,
             "initial_stop": stop_loss,
+            "scale_out_levels": dynamic_thresholds.scale_out_levels,
+            "early_profit_threshold": dynamic_thresholds.early_profit_pct,
+            "dte_acceleration": dynamic_thresholds.dte_acceleration_factor,
         }
         
         # Build options order if applicable
         options_order = None
         legs = []
         
-        if strategy not in [OptionStrategy.EQUITY_LONG, OptionStrategy.EQUITY_SHORT]:
+        if is_options:
             options_order = self._build_options_order(
                 symbol=symbol,
                 strategy=strategy,
@@ -1003,8 +1425,15 @@ class EliteTradeAgent:
             )
             if options_order:
                 legs = options_order.legs
+                # Update options order with dynamic thresholds
+                options_order.dynamic_thresholds = {
+                    "target_profit_pct": dynamic_thresholds.target_profit_pct,
+                    "early_profit_pct": dynamic_thresholds.early_profit_pct,
+                    "stop_loss_pct": dynamic_thresholds.stop_loss_pct,
+                    "scale_out_levels": dynamic_thresholds.scale_out_levels,
+                }
         
-        # Build reasoning
+        # Build reasoning with dynamic threshold info
         reasoning = self._build_reasoning(
             strategy=strategy,
             direction=direction,
@@ -1013,6 +1442,7 @@ class EliteTradeAgent:
             timeframe=timeframe,
             risk_reward=risk_reward,
         )
+        reasoning += f" | DynTP={dynamic_thresholds.target_profit_pct:.0%}"
         
         return TradeProposal(
             symbol=symbol,
