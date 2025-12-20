@@ -242,6 +242,33 @@ python main.py scan-opportunities --top 25
 - **Portfolio heat limit** - Maximum 20% total portfolio risk exposure
 - **Health monitoring** - Tracks broker, data adapters, circuit breakers
 
+## Institutional Risk Management Suite
+
+### Portfolio Greeks Manager
+Real-time monitoring of portfolio-level Greek exposures:
+- **Delta Limit**: Max 30% net directional exposure
+- **Gamma Limit**: Max 2% portfolio impact per 1% underlying move
+- **Theta Limit**: Max 0.5% daily time decay loss
+- **Vega Limit**: Max 3% impact per 1% IV change
+- **Sector Concentration**: Max 30% in any sector
+- Pre-trade validation blocks trades that would breach limits
+
+### Event Risk Manager
+Earnings, economic events, and dividend tracking:
+- **FOMC/CPI/NFP Calendar**: High-impact economic events
+- **Earnings Calendar**: Symbol-specific with historical move data
+- **Risk Actions**: AVOID, REDUCE_SIZE, WIDEN_STOPS, DEFINED_RISK
+- **Position Adjustment**: Automatic size reduction before events
+- **Strategy Filtering**: Only defined-risk strategies before earnings
+
+### Position Lifecycle Manager
+Professional position management:
+- **Stage Tracking**: Open → Active → Profit/Risk → Close
+- **Scale-Out Levels**: 25% at 25%, 35% at 50%, 25% at 75%, 15% at 100%
+- **DTE Acceleration**: Take profits faster as expiration approaches
+- **Roll Recommendations**: Same-strike, diagonal, inverted rolls
+- **Assignment Risk**: ITM warning for short options
+
 ## Elite Trade Agent Features
 
 The EliteTradeAgent implements institutional-grade execution:
