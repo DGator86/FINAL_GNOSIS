@@ -1,4 +1,13 @@
-"""Universe-aware TradeAgent with explicit symbol handling."""
+"""Universe-aware TradeAgent with explicit symbol handling.
+
+.. deprecated:: v3.0
+    This is an experimental version for universe-wide optimization.
+    The canonical version for single-symbol trading is TradeAgentV1.
+    For advanced options strategies, see TradeAgentV3.
+    
+    To use in pipeline, explicitly import:
+        from trade.trade_agent_v2 import TradeAgent
+"""
 
 from __future__ import annotations
 

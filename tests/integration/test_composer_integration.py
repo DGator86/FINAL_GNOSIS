@@ -105,8 +105,9 @@ class TestComposerIntegration:
 
         # With conflicting signals, decision should be neutral or low confidence
         assert decision.confidence < 0.7
-        # Consensus score should reflect disagreement
-        assert decision.consensus_score < 0.6
+        # Strength should reflect disagreement (close to zero when signals conflict)
+        # consensus_score reflects weighted average of input confidences (data quality)
+        assert decision.strength < 0.3  # Low agreement between signals
 
     def test_weighted_influence(self, composer, timestamp):
         """Test that hedge agent has higher influence (40% vs 20% liquidity)."""

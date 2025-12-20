@@ -1,4 +1,22 @@
-"""Multi-Timeframe Liquidity Agent v3 - Enhanced with 0DTE scalp assessment."""
+"""Multi-Timeframe Liquidity Agent v3 - Enhanced with 0DTE scalp assessment.
+
+.. deprecated:: v3.0
+    This is an EXPERIMENTAL version for advanced use cases only.
+    The canonical version is LiquidityAgentV1 which is used in production pipelines.
+    
+    Use this version only for:
+    - 0DTE scalping strategies
+    - Advanced gamma squeeze detection
+    - Multi-timeframe depth analysis experiments
+    
+    To use in pipeline, explicitly import:
+        from agents.liquidity_agent_v3 import LiquidityAgentV3
+        
+Version History:
+- v1: Basic liquidity scoring (CANONICAL/DEFAULT)
+- v2: Multi-timeframe depth analysis (experimental)
+- v3: 0DTE scalp assessment + gamma squeeze (experimental)
+"""
 
 from __future__ import annotations
 

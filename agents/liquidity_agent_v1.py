@@ -1,4 +1,13 @@
-"""Liquidity Agent v1."""
+"""Liquidity Agent v1.
+
+NOTE: This is the CANONICAL version used in production pipelines.
+For advanced multi-timeframe analysis, see LiquidityAgentV2/V3.
+
+Version History:
+- v1: Basic liquidity scoring and tradability assessment (CURRENT DEFAULT)
+- v2: Multi-timeframe depth analysis with bid/ask imbalance
+- v3: Advanced regime-aware liquidity with LSTM forecasting
+"""
 
 from __future__ import annotations
 

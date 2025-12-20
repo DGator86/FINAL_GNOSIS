@@ -47,7 +47,7 @@ from feedback.tracking_agent import TrackingAgent
 from ledger.ledger_store import LedgerStore
 from models.features.feature_builder import EnhancedFeatureBuilder, FeatureConfig
 from models.lookahead_model import LookaheadModel
-from trade.trade_agent_v1 import TradeAgentV1
+from trade.elite_trade_agent import create_elite_trade_agent, EliteTradeAgent
 from universe.watchlist_loader import load_active_watchlist
 from watchlist import AdaptiveWatchlist
 from cli.result_formatter import format_pipeline_result
@@ -105,11 +105,12 @@ def build_pipeline(
         config.agents.composer.weights,
         config.agents.composer.model_dump(),
     )
-    trade_agent = TradeAgentV1(
-        options_adapter,
-        market_adapter,
-        config.agents.trade.model_dump(),
+    # Use EliteTradeAgent for institutional-grade execution
+    trade_agent = create_elite_trade_agent(
+        options_adapter=options_adapter,
+        market_adapter=market_adapter,
         broker=adapters.get("broker"),
+        config=config.agents.trade.model_dump(),
     )
     active_universe = load_active_watchlist()
     watchlist_universe = list({*active_universe, symbol})

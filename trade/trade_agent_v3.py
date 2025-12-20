@@ -2,6 +2,23 @@
 
 Generates dynamic trading strategies based on Composer decisions,
 with timeframe-specific risk parameters and exit strategies.
+
+.. deprecated:: v3.0
+    This is an ADVANCED version for multi-timeframe strategy generation.
+    The canonical version is TradeAgentV1 which is used in production pipelines.
+    
+    Use this version only for:
+    - Multi-timeframe strategy generation
+    - Advanced exit strategy management
+    - Trailing stop configurations
+    
+    To use in pipeline, explicitly import:
+        from trade.trade_agent_v3 import TradeAgentV3
+        
+Version History:
+- v1: Basic trade idea generation (CANONICAL/DEFAULT)
+- v2: Universe-wide optimization with CVXPY (experimental)
+- v3: Multi-timeframe strategy with advanced exits (advanced)
 """
 
 from __future__ import annotations

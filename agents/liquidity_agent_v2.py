@@ -2,6 +2,13 @@
 
 Analyzes order book depth, imbalances, and support/resistance across
 multiple timeframes to generate confidence-weighted signals.
+
+.. deprecated:: v3.0
+    This is an experimental version. The canonical version is LiquidityAgentV1.
+    Use this version only for advanced multi-timeframe analysis experiments.
+    
+    To use in pipeline, explicitly import:
+        from agents.liquidity_agent_v2 import LiquidityAgentV2
 """
 
 from __future__ import annotations

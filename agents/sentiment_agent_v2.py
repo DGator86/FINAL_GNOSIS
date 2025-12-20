@@ -2,6 +2,18 @@
 
 Analyzes market sentiment trends and shifts across multiple timeframes
 to detect sentiment confluence and divergences.
+
+.. deprecated:: v3.0
+    This is an EXPERIMENTAL version. The canonical version is SentimentAgentV1.
+    Use this version only for advanced multi-timeframe sentiment experiments.
+    
+    To use in pipeline, explicitly import:
+        from agents.sentiment_agent_v2 import SentimentAgentV2
+        
+Version History:
+- v1: Basic sentiment scoring (CANONICAL/DEFAULT)
+- v2: Multi-timeframe trend detection (experimental)
+- v3: Advanced NLP-based sentiment with intensity (experimental)
 """
 
 from __future__ import annotations

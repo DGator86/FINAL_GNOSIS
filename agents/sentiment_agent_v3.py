@@ -1,4 +1,22 @@
-"""Multi-Timeframe Sentiment Agent v3 - Enhanced with flow conviction scoring."""
+"""Multi-Timeframe Sentiment Agent v3 - Enhanced with flow conviction scoring.
+
+.. deprecated:: v3.0
+    This is an EXPERIMENTAL version for advanced use cases only.
+    The canonical version is SentimentAgentV1 which is used in production pipelines.
+    
+    Use this version only for:
+    - Flow conviction analysis (requires Unusual Whales API)
+    - Advanced sentiment divergence detection
+    - Multi-timeframe sentiment experiments
+    
+    To use in pipeline, explicitly import:
+        from agents.sentiment_agent_v3 import SentimentAgentV3
+        
+Version History:
+- v1: Basic sentiment scoring (CANONICAL/DEFAULT)
+- v2: Multi-timeframe trend detection (experimental)
+- v3: Flow conviction + divergence detection (experimental)
+"""
 
 from __future__ import annotations
 

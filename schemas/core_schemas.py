@@ -156,6 +156,31 @@ class DirectionEnum(str, Enum):
     NEUTRAL = "neutral"
 
 
+class AgentSignal(BaseModel):
+    """
+    Structured trading signal produced by an agent.
+    
+    Used by composer for consensus building and by ML forecasting agents.
+    Compatible with both Pydantic validation and dataclass-style usage.
+    """
+
+    timestamp: datetime
+    symbol: str
+    signal: str = "neutral"  # "bullish", "bearish", "neutral"
+    confidence: float = 0.5
+    reasoning: str = ""
+    # Optional fields for extended use cases
+    agent_id: Optional[str] = None
+    target_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    position_size: Optional[float] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    # Composer-specific fields
+    strength: float = 0.0
+    consensus_score: float = 0.0
+
+
 class AgentSuggestion(BaseModel):
     """Suggestion from a primary agent."""
 
