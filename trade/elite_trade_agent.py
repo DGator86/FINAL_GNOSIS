@@ -70,6 +70,42 @@ from schemas.core_schemas import (
     TradeIdea,
 )
 
+# Import risk management components
+try:
+    from trade.portfolio_greeks import (
+        PortfolioGreeksManager,
+        GreekLimits,
+        create_portfolio_greeks_manager,
+    )
+    HAS_GREEKS_MANAGER = True
+except ImportError:
+    HAS_GREEKS_MANAGER = False
+    logger.warning("PortfolioGreeksManager not available")
+
+try:
+    from trade.event_risk_manager import (
+        EventRiskManager,
+        EventRiskAssessment,
+        RiskAction,
+        create_event_risk_manager,
+    )
+    HAS_EVENT_MANAGER = True
+except ImportError:
+    HAS_EVENT_MANAGER = False
+    logger.warning("EventRiskManager not available")
+
+try:
+    from trade.position_lifecycle_manager import (
+        PositionLifecycleManager,
+        PositionMetrics,
+        LifecycleDecision,
+        create_lifecycle_manager,
+    )
+    HAS_LIFECYCLE_MANAGER = True
+except ImportError:
+    HAS_LIFECYCLE_MANAGER = False
+    logger.warning("PositionLifecycleManager not available")
+
 
 # =============================================================================
 # ENUMS AND TYPE DEFINITIONS
@@ -488,11 +524,58 @@ class EliteTradeAgent:
         self.current_positions: List[str] = []
         self.portfolio_heat: float = 0.0
         
+        # =================================================================
+        # INSTITUTIONAL-GRADE RISK COMPONENTS
+        # =================================================================
+        
+        # Greeks-based portfolio risk management
+        self.greeks_manager: Optional[PortfolioGreeksManager] = None
+        if HAS_GREEKS_MANAGER:
+            try:
+                self.greeks_manager = create_portfolio_greeks_manager(
+                    portfolio_value=self.portfolio_value,
+                    custom_limits={
+                        "max_net_delta_pct": float(self.config.get("max_delta_pct", 0.30)),
+                        "max_gamma_pct": float(self.config.get("max_gamma_pct", 0.02)),
+                        "max_vega_pct": float(self.config.get("max_vega_pct", 0.03)),
+                    }
+                )
+                logger.info("PortfolioGreeksManager initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize GreeksManager: {e}")
+        
+        # Event risk calendar (earnings, FOMC, etc.)
+        self.event_manager: Optional[EventRiskManager] = None
+        if HAS_EVENT_MANAGER:
+            try:
+                self.event_manager = create_event_risk_manager(
+                    lookforward_days=int(self.config.get("event_lookforward_days", 14))
+                )
+                logger.info("EventRiskManager initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize EventManager: {e}")
+        
+        # Position lifecycle management (roll, close, adjust)
+        self.lifecycle_manager: Optional[PositionLifecycleManager] = None
+        if HAS_LIFECYCLE_MANAGER:
+            try:
+                self.lifecycle_manager = create_lifecycle_manager(
+                    profit_target_pct=float(self.config.get("profit_target_pct", 50.0)),
+                    stop_loss_pct=float(self.config.get("stop_loss_pct", 100.0)),
+                    dte_exit=int(self.config.get("dte_exit", 7)),
+                )
+                logger.info("PositionLifecycleManager initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize LifecycleManager: {e}")
+        
         logger.info(
             f"EliteTradeAgent initialized | "
             f"max_position={self.risk_params.max_position_pct:.1%} | "
             f"max_heat={self.risk_params.max_portfolio_heat:.1%} | "
-            f"kelly={self.risk_params.kelly_fraction:.0%}"
+            f"kelly={self.risk_params.kelly_fraction:.0%} | "
+            f"greeks={self.greeks_manager is not None} | "
+            f"events={self.event_manager is not None} | "
+            f"lifecycle={self.lifecycle_manager is not None}"
         )
     
     # =========================================================================
@@ -554,6 +637,30 @@ class EliteTradeAgent:
             logger.debug(f"Skipping {symbol}: neutral direction")
             return []
         
+        # =================================================================
+        # EVENT RISK CHECK (Earnings, FOMC, etc.)
+        # =================================================================
+        event_risk_assessment = None
+        if self.event_manager:
+            event_risk_assessment = self.event_manager.assess_event_risk(
+                symbol=symbol,
+                dte=30,  # Default lookforward
+            )
+            
+            # Check if we should avoid trading due to events
+            if event_risk_assessment.recommended_action == RiskAction.AVOID:
+                logger.warning(
+                    f"⚠️ AVOIDING {symbol}: Event risk too high | "
+                    f"risk_level={event_risk_assessment.risk_level} | "
+                    f"next_event={event_risk_assessment.next_event.event_type.value if event_risk_assessment.next_event else 'none'} "
+                    f"in {event_risk_assessment.days_to_next_event} days"
+                )
+                return []
+            
+            # Log warnings
+            for warning in event_risk_assessment.warnings:
+                logger.warning(f"EVENT: {symbol} - {warning}")
+        
         # Build market context
         context = self._build_market_context(pipeline_result)
         if context is None:
@@ -584,6 +691,7 @@ class EliteTradeAgent:
             context=context,
             timeframe=timeframe,
             pipeline_result=pipeline_result,
+            event_risk_assessment=event_risk_assessment,
         )
         
         if proposal is None:
@@ -1309,11 +1417,32 @@ class EliteTradeAgent:
         context: MarketContext,
         timeframe: Timeframe,
         pipeline_result: PipelineResult,
+        event_risk_assessment: Optional[Any] = None,
     ) -> Optional[TradeProposal]:
         """Build complete trade proposal with all details including dynamic profit thresholds."""
         
         tf_config = self.TIMEFRAME_CONFIGS[timeframe]
         target_dte = (tf_config.min_dte + tf_config.max_dte) // 2
+        
+        # =====================================================================
+        # EVENT RISK ADJUSTMENTS (Earnings, FOMC, etc.)
+        # =====================================================================
+        event_size_multiplier = 1.0
+        event_stop_multiplier = 1.0
+        event_warnings: List[str] = []
+        
+        if event_risk_assessment:
+            event_size_multiplier = event_risk_assessment.position_size_multiplier
+            event_stop_multiplier = event_risk_assessment.stop_loss_multiplier
+            event_warnings = event_risk_assessment.warnings
+            
+            if event_size_multiplier < 1.0:
+                logger.info(
+                    f"📅 EVENT RISK ADJUSTMENT for {symbol}: "
+                    f"size={event_size_multiplier:.0%}x | "
+                    f"stop_width={event_stop_multiplier:.0%}x | "
+                    f"risk_level={event_risk_assessment.risk_level}"
+                )
         
         # =====================================================================
         # CALCULATE DYNAMIC PROFIT THRESHOLDS (Institutional Edge)
@@ -1395,6 +1524,17 @@ class EliteTradeAgent:
             timeframe=timeframe,
             risk_per_share=risk_per_share,
         )
+        
+        # Apply event risk adjustment to position size
+        if event_size_multiplier < 1.0:
+            original_quantity = quantity
+            quantity = max(1, int(quantity * event_size_multiplier))
+            position_value *= event_size_multiplier
+            risk_amount *= event_size_multiplier
+            logger.debug(
+                f"Event-adjusted quantity: {original_quantity} -> {quantity} "
+                f"({event_size_multiplier:.0%})"
+            )
         
         if quantity <= 0:
             return None
@@ -1713,7 +1853,7 @@ class EliteTradeAgent:
     # =========================================================================
     
     def _validate_proposal(self, proposal: TradeProposal) -> bool:
-        """Validate trade proposal against risk rules."""
+        """Validate trade proposal against risk rules including Greeks limits."""
         
         # Check R:R ratio
         if proposal.risk_reward_ratio < self.risk_params.min_reward_risk:
@@ -1740,6 +1880,50 @@ class EliteTradeAgent:
         if proposal.quantity <= 0:
             logger.warning(f"Invalid quantity: {proposal.quantity}")
             return False
+        
+        # =================================================================
+        # GREEKS VALIDATION (Portfolio-Level Risk Check)
+        # =================================================================
+        if self.greeks_manager and proposal.options_order:
+            try:
+                # Estimate Greeks for the new position
+                # Use simplified estimates based on strategy type
+                is_credit = proposal.strategy in [
+                    OptionStrategy.BULL_PUT_SPREAD, 
+                    OptionStrategy.BEAR_CALL_SPREAD,
+                    OptionStrategy.IRON_CONDOR,
+                    OptionStrategy.IRON_BUTTERFLY,
+                    OptionStrategy.SHORT_STRANGLE,
+                    OptionStrategy.SHORT_STRADDLE,
+                ]
+                
+                # Estimate delta based on direction and strategy
+                if proposal.direction == DirectionEnum.LONG:
+                    estimated_delta = 0.30 if not is_credit else -0.15
+                elif proposal.direction == DirectionEnum.SHORT:
+                    estimated_delta = -0.30 if not is_credit else 0.15
+                else:
+                    estimated_delta = 0.05  # Neutral strategies
+                
+                # Check if position would breach Greek limits
+                can_add, reason = self.greeks_manager.check_new_position(
+                    underlying=proposal.symbol,
+                    delta=estimated_delta,
+                    gamma=0.01,   # Simplified estimate
+                    theta=-0.05,  # Simplified estimate
+                    vega=0.1,     # Simplified estimate
+                    quantity=proposal.quantity,
+                    underlying_price=proposal.entry_price,
+                )
+                
+                if not can_add:
+                    logger.warning(
+                        f"⚠️ GREEK LIMIT BREACH for {proposal.symbol}: {reason}"
+                    )
+                    return False
+                    
+            except Exception as e:
+                logger.debug(f"Greeks validation skipped: {e}")
         
         return True
     
@@ -1934,6 +2118,123 @@ class EliteTradeAgent:
         """Update risk parameters from adaptation agent."""
         self.risk_params.max_position_pct = risk_pct
         logger.info(f"Risk per trade updated to {risk_pct:.2%}")
+    
+    # =========================================================================
+    # POSITION LIFECYCLE MANAGEMENT
+    # =========================================================================
+    
+    def analyze_position_lifecycle(
+        self,
+        symbol: str,
+        entry_price: float,
+        current_price: float,
+        quantity: int,
+        entry_time: datetime,
+        is_option: bool = False,
+        option_type: str = "",
+        strike: float = 0.0,
+        expiration: Optional[datetime] = None,
+        delta: float = 0.0,
+        gamma: float = 0.0,
+        theta: float = 0.0,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Analyze a position and get lifecycle management recommendations.
+        
+        Returns decision on whether to hold, close, roll, or adjust.
+        """
+        if not self.lifecycle_manager:
+            return None
+        
+        # Build position metrics
+        underlying = symbol.split("_")[0] if "_" in symbol else symbol
+        days_held = (datetime.utcnow() - entry_time).days if entry_time else 0
+        dte = (expiration - datetime.utcnow()).days if expiration else 999
+        
+        unrealized_pnl = (current_price - entry_price) * quantity * (100 if is_option else 1)
+        unrealized_pnl_pct = ((current_price - entry_price) / entry_price) * 100 if entry_price != 0 else 0
+        
+        # Calculate moneyness for options
+        underlying_price = self._get_spot_price(underlying) or entry_price
+        moneyness = 0.0
+        if is_option and strike > 0:
+            if option_type == "call":
+                moneyness = (underlying_price - strike) / strike
+            else:
+                moneyness = (strike - underlying_price) / strike
+        
+        metrics = PositionMetrics(
+            symbol=symbol,
+            underlying=underlying,
+            entry_price=entry_price,
+            current_price=current_price,
+            quantity=quantity,
+            unrealized_pnl=unrealized_pnl,
+            unrealized_pnl_pct=unrealized_pnl_pct,
+            entry_time=entry_time,
+            days_held=days_held,
+            is_option=is_option,
+            option_type=option_type,
+            strike=strike,
+            expiration=expiration,
+            dte=dte,
+            delta=delta,
+            gamma=gamma,
+            theta=theta,
+            underlying_price=underlying_price,
+            moneyness=moneyness,
+        )
+        
+        # Get lifecycle decision
+        decision = self.lifecycle_manager.analyze_position(metrics)
+        
+        result = {
+            "symbol": symbol,
+            "stage": decision.stage.value,
+            "action": decision.action,
+            "urgency": decision.urgency,
+            "reasons": decision.reasons,
+            "warnings": decision.warnings,
+            "unrealized_pnl": unrealized_pnl,
+            "unrealized_pnl_pct": unrealized_pnl_pct,
+            "days_held": days_held,
+            "dte": dte if is_option else None,
+        }
+        
+        if decision.exit_reason:
+            result["exit_reason"] = decision.exit_reason.value
+        if decision.roll_type and decision.roll_type.value != "none":
+            result["roll_type"] = decision.roll_type.value
+            result["roll_details"] = self.lifecycle_manager.get_roll_details(
+                metrics, decision.roll_type
+            )
+        if decision.scale_out_quantity > 0:
+            result["scale_out_quantity"] = decision.scale_out_quantity
+            result["scale_out_pct"] = decision.scale_out_pct
+        if decision.adjustment_type:
+            result["adjustment_type"] = decision.adjustment_type.value
+        
+        return result
+    
+    def get_portfolio_greeks_summary(self) -> Optional[Dict[str, Any]]:
+        """Get current portfolio Greeks summary for risk dashboard."""
+        if not self.greeks_manager:
+            return None
+        
+        return self.greeks_manager.get_summary()
+    
+    def get_upcoming_events(self, symbols: List[str], days: int = 7) -> Dict[str, Any]:
+        """Get upcoming events that may affect trading decisions."""
+        if not self.event_manager:
+            return {"events": [], "warnings": []}
+        
+        result = {
+            "economic_events": self.event_manager.get_upcoming_high_impact_events(days),
+            "earnings_calendar": self.event_manager.get_earnings_calendar(symbols, days),
+            "summary": self.event_manager.get_summary(),
+        }
+        
+        return result
 
 
 # =============================================================================
