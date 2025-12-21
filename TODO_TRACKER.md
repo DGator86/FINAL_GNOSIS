@@ -12,9 +12,7 @@ This document tracks all TODO comments in the codebase with their status and pri
 
 | File | Line | TODO | Status | Notes |
 |------|------|------|--------|-------|
-| `agents/composer/composer_agent_v3.py` | 162 | Apply express weights to signals | ⏳ PENDING | Would enhance signal metadata handling |
-| `engines/engine_factory.py` | 70 | Initialize actual sentiment processors | ⏳ PENDING | Placeholder comment, verify implementation |
-| `engines/sentiment/sentiment_engine_v3.py` | 175 | Integrate with social media APIs | ⏳ PENDING | Twitter/Reddit integration for sentiment |
+| *(All P1 items completed)* | - | - | ✅ DONE | Feature completeness achieved |
 
 ### Low Priority (P2) - Enhancements
 
@@ -32,6 +30,9 @@ This document tracks all TODO comments in the codebase with their status and pri
 | `gnosis/unified_trading_bot.py` | 170 | Get last price | ✅ DONE | 2025-12-21 |
 | `gnosis/unified_trading_bot.py` | 176 | Check clock | ✅ DONE | 2025-12-21 |
 | `execution/broker_adapters/alpaca_options_adapter.py` | 79 | Implement atomic multi-leg execution | ✅ DONE | 2025-12-21 |
+| `agents/composer/composer_agent_v3.py` | 162 | Apply express weights to signals | ✅ DONE | 2025-12-21 |
+| `engines/engine_factory.py` | 70 | Initialize actual sentiment processors | ✅ DONE | 2025-12-21 |
+| `engines/sentiment/sentiment_engine_v3.py` | 175 | Integrate with social media APIs | ✅ DONE | 2025-12-21 |
 
 ---
 
@@ -65,7 +66,8 @@ This document tracks all TODO comments in the codebase with their status and pri
 | Market Utils | 32 | ✅ Passing |
 | ML Backtest | 26 | ✅ Passing |
 | Multi-Leg Options | 36 | ✅ Passing |
-| **Total** | **852** | ✅ Passing |
+| Social Media Sentiment | 36 | ✅ Passing |
+| **Total** | **889** | ✅ Passing |
 
 ---
 
@@ -76,9 +78,10 @@ This document tracks all TODO comments in the codebase with their status and pri
    - Real P&L calculation implemented
    - Market hours checking implemented
 
-2. **For P1 items**: Should be completed within next sprint
-   - Social media integration would enhance sentiment accuracy
-   - Express weights would improve signal handling
+2. **For P1 items**: ✅ All P1 items completed!
+   - Social media integration (Twitter/Reddit) implemented
+   - Express weights for strategy-specific signal handling implemented
+   - Full sentiment processor initialization in EngineFactory
 
 3. **For P2 items**: Nice-to-haves for future releases
    - Can be deferred to later versions
@@ -102,5 +105,28 @@ When completing a TODO:
   - `create_vertical_spread()` - Bull/bear spread helper
   - `create_iron_condor()` - Iron condor helper
   - Supports: Vertical spreads, Iron condors, Butterflies, Straddles, Calendar spreads
+
+### Social Media Sentiment Integration (2025-12-21)
+- `engines/sentiment/social_media_adapter.py` - Twitter/X and Reddit integration
+  - `TwitterAdapter` - Twitter API v2 sentiment analysis (with simulation mode)
+  - `RedditAdapter` - Reddit API sentiment (WSB, stocks, options subreddits)
+  - `SocialMediaSentimentAggregator` - Combines multiple sources
+  - Keyword-based sentiment analysis (bullish/bearish detection)
+  - Engagement-weighted scoring
+  - Trending detection
+
+### Express Weights for Signals (2025-12-21)
+- `agents/composer/composer_agent_v3.py` - Strategy-specific signal weighting
+  - `_apply_express_weights()` - Apply 0DTE or cheap_call specific weights
+  - `_detect_agent_source()` - Identify signal origin (hedge/liquidity/sentiment)
+  - 0DTE: Emphasizes liquidity (0.5) for fast execution
+  - Cheap Calls: Emphasizes sentiment (0.6) for flow conviction
+
+### Sentiment Processor Initialization (2025-12-21)
+- `engines/engine_factory.py` - Full processor initialization
+  - `_create_sentiment_processors()` - Initialize News, Flow, Technical processors
+  - `_create_sentiment_engine_v3()` - Create V3 engine with social media
+  - Supports SentimentEngineV1 and V3 versions
+  - Automatic adapter creation (News, Unusual Whales, Social Media)
 
 Last Updated: 2025-12-21

@@ -73,6 +73,8 @@ class SentimentSnapshot(BaseModel):
     intensity: Optional[float] = None
     relevance: Optional[float] = None
     mtf_score: Optional[float] = None
+    # V3.1: Extended metadata for social media and other sources
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class ElasticitySnapshot(BaseModel):

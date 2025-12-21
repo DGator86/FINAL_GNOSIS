@@ -26,6 +26,13 @@ from schemas.core_schemas import AgentSuggestion, DirectionEnum
 
 
 @dataclass
+class WeightedTimeframeSignal(TimeframeSignal):
+    """Extended TimeframeSignal with agent source and express weighting support."""
+    agent_source: str = "unknown"  # hedge, liquidity, sentiment
+    original_strength: float = 0.0  # Pre-weighted strength for comparison
+
+
+@dataclass
 class ComposerDecision:
     """Decision output from Composer Agent."""
 
@@ -160,13 +167,13 @@ class ComposerAgentV3:
 
         V3: Supports Express Lane routing with strategy-specific weighting.
         """
-        # V3: Get strategy-specific weights
-        if strategy_source in self.express_weights:
-            logger.info(f"Using Express Lane weights for {strategy_source}")
-            # TODO: Apply express weights to signals (would require signal metadata)
+        # V3: Apply strategy-specific weights to signals
+        weighted_signals = self._apply_express_weights(
+            all_timeframe_signals, strategy_source
+        )
 
-        # Step 1: Calculate confidence using ConfidenceBuilder
-        confidence_score = self.confidence_builder.calculate_confidence(all_timeframe_signals)
+        # Step 1: Calculate confidence using ConfidenceBuilder with weighted signals
+        confidence_score = self.confidence_builder.calculate_confidence(weighted_signals)
 
         logger.info(
             f"Composer analyzing {symbol} ({strategy_source}) | "
@@ -415,6 +422,99 @@ class ComposerAgentV3:
 
         return " | ".join(parts)
 
+    def _apply_express_weights(
+        self,
+        signals: List[TimeframeSignal],
+        strategy_source: str,
+    ) -> List[TimeframeSignal]:
+        """
+        Apply Express Lane strategy-specific weights to signals.
+        
+        This adjusts signal strength based on agent source and strategy type:
+        - 0DTE: Emphasizes liquidity (critical for fast execution)
+        - Cheap Calls: Emphasizes sentiment/flow conviction
+        - Standard: Uses balanced weights
+        
+        Args:
+            signals: Original timeframe signals
+            strategy_source: Strategy type (standard, 0dte, cheap_call)
+            
+        Returns:
+            List of signals with adjusted strengths
+        """
+        if strategy_source == "standard" or strategy_source not in self.express_weights:
+            return signals
+        
+        express_weights = self.express_weights[strategy_source]
+        standard_weights = self.agent_weights
+        weighted_signals = []
+        
+        logger.info(f"Applying Express Lane weights for {strategy_source}: {express_weights}")
+        
+        for signal in signals:
+            # Try to determine agent source from signal
+            agent_source = self._detect_agent_source(signal)
+            
+            if agent_source:
+                # Calculate weight adjustment factor
+                express_weight = express_weights.get(agent_source, 0.33)
+                standard_weight = standard_weights.get(agent_source, 0.33)
+                
+                # Avoid division by zero
+                if standard_weight > 0:
+                    weight_factor = express_weight / standard_weight
+                else:
+                    weight_factor = 1.0
+                
+                # Apply weight adjustment to signal strength
+                # Clamp to valid range [0, 1]
+                adjusted_strength = min(1.0, max(0.0, signal.strength * weight_factor))
+                
+                # Create new signal with adjusted strength
+                weighted_signal = TimeframeSignal(
+                    timeframe=signal.timeframe,
+                    direction=signal.direction,
+                    strength=adjusted_strength,
+                    confidence=signal.confidence,
+                    reasoning=f"{signal.reasoning} [Express: {strategy_source}, factor={weight_factor:.2f}]",
+                )
+                weighted_signals.append(weighted_signal)
+                
+                logger.debug(
+                    f"Signal adjusted: {signal.timeframe} {agent_source} | "
+                    f"strength {signal.strength:.2f} -> {adjusted_strength:.2f} "
+                    f"(factor={weight_factor:.2f})"
+                )
+            else:
+                # No agent source detected, keep original
+                weighted_signals.append(signal)
+        
+        return weighted_signals
+    
+    def _detect_agent_source(self, signal: TimeframeSignal) -> Optional[str]:
+        """
+        Detect the agent source from a TimeframeSignal.
+        
+        Analyzes the signal reasoning to determine which agent produced it.
+        
+        Args:
+            signal: TimeframeSignal to analyze
+            
+        Returns:
+            Agent source ('hedge', 'liquidity', 'sentiment') or None
+        """
+        reasoning_lower = signal.reasoning.lower()
+        
+        # Check for agent indicators in reasoning
+        if any(kw in reasoning_lower for kw in ['hedge', 'gamma', 'delta', 'options', 'greek', 'skew']):
+            return 'hedge'
+        elif any(kw in reasoning_lower for kw in ['liquidity', 'volume', 'spread', 'depth', 'bid', 'ask']):
+            return 'liquidity'
+        elif any(kw in reasoning_lower for kw in ['sentiment', 'news', 'flow', 'social', 'mood', 'bullish', 'bearish']):
+            return 'sentiment'
+        
+        return None
+
     def _get_agent_weight(self, agent_name: str, strategy_source: str = "standard") -> float:
         """Get weight for an agent (with V3 Express Lane support)."""
         # V3: Use express weights if applicable
@@ -432,4 +532,4 @@ class ComposerAgentV3:
         return 0.33
 
 
-__all__ = ["ComposerAgentV3", "ComposerDecision"]
+__all__ = ["ComposerAgentV3", "ComposerDecision", "WeightedTimeframeSignal"]

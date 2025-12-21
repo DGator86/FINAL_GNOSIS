@@ -90,7 +90,10 @@ class TestTradingSafetyManager:
     
     @pytest.fixture
     def safety_manager(self):
-        return TradingSafetyManager(portfolio_value=100000.0)
+        manager = TradingSafetyManager(portfolio_value=100000.0)
+        # Mock session time to always return True for testing
+        manager._check_session_time = lambda: True
+        return manager
     
     def test_initialization(self, safety_manager):
         assert safety_manager.portfolio_value == 100000.0
@@ -386,6 +389,8 @@ class TestSafetyIntegration:
             portfolio_value=100000.0,
             max_daily_loss=5000.0,
         )
+        # Mock session time check to always return True for testing
+        manager._check_session_time = lambda: True
         
         # Morning: some winning trades
         for i in range(3):
