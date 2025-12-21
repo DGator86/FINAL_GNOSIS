@@ -6,6 +6,7 @@ Main API server with:
 - WebSocket streaming for real-time data
 - Prometheus metrics endpoint
 - Health checks
+- Trading Hub integration (connects all trading components)
 
 Author: Super Gnosis Elite Trading System
 Version: 1.0.0
@@ -21,7 +22,7 @@ from typing import Any, Dict
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, HTMLResponse
 from loguru import logger
 
 # Import routers
@@ -31,6 +32,9 @@ from routers.websocket_api import router as websocket_router, start_websocket_pu
 # Import utilities
 from utils.metrics import metrics, record_api_request
 from utils.redis_cache import cache, initialize_cache, close_cache
+
+# Import Trading Hub
+from integration import get_trading_hub, start_trading_hub, stop_trading_hub, HubConfig
 
 
 # =============================================================================
@@ -51,6 +55,24 @@ async def lifespan(app: FastAPI):
     await start_websocket_publisher()
     logger.info("WebSocket publisher started")
     
+    # Start Trading Hub (central integration layer)
+    hub_config = HubConfig(
+        enable_paper_trading=os.getenv("ENABLE_PAPER_TRADING", "false").lower() == "true",
+        enable_websocket=True,
+        enable_anomaly_detection=True,
+        enable_flow_scanner=True,
+        enable_notifications=os.getenv("ENABLE_NOTIFICATIONS", "false").lower() == "true",
+        enable_greeks_hedger=True,
+        enable_portfolio_analytics=True,
+        auto_hedge_enabled=os.getenv("AUTO_HEDGE_ENABLED", "false").lower() == "true",
+    )
+    
+    try:
+        await start_trading_hub(hub_config)
+        logger.info("Trading Hub started")
+    except Exception as e:
+        logger.warning(f"Trading Hub startup warning (non-fatal): {e}")
+    
     logger.info("Super Gnosis Trading System started successfully!")
     
     yield
@@ -58,6 +80,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Super Gnosis Trading System...")
     
+    await stop_trading_hub()
     await stop_websocket_publisher()
     await close_cache()
     
@@ -179,7 +202,133 @@ async def root() -> Dict[str, Any]:
         "docs": "/docs",
         "metrics": "/metrics",
         "websocket": "/ws/stream",
+        "dashboard": "/dashboard",
+        "hub_status": "/hub/status",
     }
+
+
+# =============================================================================
+# Trading Hub Endpoints
+# =============================================================================
+
+@app.get("/hub/status", tags=["trading"])
+async def hub_status() -> Dict[str, Any]:
+    """Get Trading Hub status and metrics."""
+    hub = get_trading_hub()
+    return hub.get_status()
+
+
+@app.post("/hub/alert", tags=["trading"])
+async def send_hub_alert(
+    alert_type: str,
+    title: str,
+    message: str,
+    symbol: str = None,
+    priority: str = "medium",
+) -> Dict[str, Any]:
+    """Send an alert through the Trading Hub.
+    
+    Args:
+        alert_type: Type of alert (e.g., 'manual', 'test')
+        title: Alert title
+        message: Alert message
+        symbol: Optional symbol
+        priority: Alert priority (low, medium, high, critical)
+    """
+    from integration import TradingAlert, AlertPriority
+    
+    priority_map = {
+        "low": AlertPriority.LOW,
+        "medium": AlertPriority.MEDIUM,
+        "high": AlertPriority.HIGH,
+        "critical": AlertPriority.CRITICAL,
+    }
+    
+    hub = get_trading_hub()
+    
+    alert = TradingAlert(
+        alert_type=alert_type,
+        priority=priority_map.get(priority, AlertPriority.MEDIUM),
+        title=title,
+        message=message,
+        symbol=symbol,
+        source="api",
+    )
+    
+    hub._dispatch_alert(alert)
+    
+    return {"status": "sent", "alert": alert.to_dict()}
+
+
+@app.post("/hub/market-data", tags=["trading"])
+async def process_market_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Process market data through anomaly detection.
+    
+    Args:
+        data: Market data point with symbol, price, volume, etc.
+    """
+    hub = get_trading_hub()
+    await hub.process_market_data(data)
+    return {"status": "processed"}
+
+
+@app.post("/hub/options-flow", tags=["trading"])
+async def process_options_flow(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Process options trade through flow scanner.
+    
+    Args:
+        data: Options trade data
+    """
+    hub = get_trading_hub()
+    await hub.process_options_flow(data)
+    return {"status": "processed"}
+
+
+@app.post("/hub/portfolio", tags=["trading"])
+async def update_portfolio(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Update portfolio state in the hub.
+    
+    Args:
+        data: Portfolio state data
+    """
+    hub = get_trading_hub()
+    hub.update_portfolio_state(data)
+    return {"status": "updated"}
+
+
+@app.post("/hub/greeks", tags=["trading"])
+async def update_greeks(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Update portfolio Greeks and check hedging needs.
+    
+    Args:
+        data: Greeks data (delta, gamma, theta, vega)
+    """
+    hub = get_trading_hub()
+    await hub.update_portfolio_greeks(data)
+    return {"status": "updated"}
+
+
+@app.get("/dashboard", response_class=HTMLResponse, tags=["ui"])
+async def trading_dashboard() -> str:
+    """Serve the trading dashboard HTML."""
+    try:
+        from dashboard.trading_dashboard import TradingDashboard
+        dashboard = TradingDashboard()
+        return dashboard.generate_html()
+    except Exception as e:
+        logger.error(f"Dashboard generation error: {e}")
+        return f"<html><body><h1>Dashboard Error</h1><p>{str(e)}</p></body></html>"
+
+
+@app.get("/analytics", tags=["trading"])
+async def portfolio_analytics() -> Dict[str, Any]:
+    """Get portfolio analytics report."""
+    hub = get_trading_hub()
+    
+    if hub.portfolio_analytics:
+        return hub.portfolio_analytics.generate_full_report()
+    
+    return {"error": "Portfolio analytics not available"}
 
 
 # =============================================================================
