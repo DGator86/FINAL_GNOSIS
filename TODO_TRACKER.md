@@ -55,6 +55,27 @@ This document tracks all TODO comments in the codebase with their status and pri
 ### ML Backtesting
 - `backtesting/ml_hyperparameter_backtest.py` - Walk-forward, sensitivity analysis
 
+### Recent Additions (2025-12-21 - Part 2)
+
+### Options Greeks Calculator API
+- `routers/options_greeks.py` - Full REST API for options Greeks
+  - Black-Scholes Greeks calculation (delta, gamma, theta, vega, rho)
+  - Strategy analysis (PoP, breakevens, profit zones)
+  - Implied volatility calculation
+  - Option chain Greeks
+  - Position aggregation
+
+### Portfolio Optimizer
+- `trade/portfolio_optimizer.py` - Institutional-grade portfolio optimization
+  - Mean-Variance (Markowitz) optimization
+  - Maximum Sharpe ratio optimization
+  - Minimum volatility optimization
+  - Risk parity optimization
+  - Greeks-aware optimization for options portfolios
+  - Black-Litterman model with market views
+  - Efficient frontier generation
+  - Rebalancing trade calculations
+
 ---
 
 ## Test Coverage
@@ -69,7 +90,11 @@ This document tracks all TODO comments in the codebase with their status and pri
 | Multi-Leg Options | 36 | ✅ Passing |
 | Social Media Sentiment | 36 | ✅ Passing |
 | Scanner Integration | 20 | ✅ Passing |
-| **Total** | **909** | ✅ Passing |
+| Model Registry | 28 | ✅ Passing |
+| Paper Trading Integration | 26 | ✅ Passing |
+| Options Greeks API | 48 | ✅ Passing |
+| Portfolio Optimizer | 54 | ✅ Passing |
+| **Total** | **1065** | ✅ Passing |
 
 ---
 
