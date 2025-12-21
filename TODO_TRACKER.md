@@ -6,10 +6,7 @@ This document tracks all TODO comments in the codebase with their status and pri
 
 | File | Line | TODO | Status | Notes |
 |------|------|------|--------|-------|
-| `execution/broker_adapters/alpaca_options_adapter.py` | 79 | Implement atomic multi-leg when supported/verified | ⏳ PENDING | Multi-leg options orders need atomic execution |
-| `gnosis/unified_trading_bot.py` | 155 | Calculate real PnL | ⏳ PENDING | Currently returns 0.0, need actual P&L tracking |
-| `gnosis/unified_trading_bot.py` | 170 | Get last price | ⏳ PENDING | Price fetch needed for position valuation |
-| `gnosis/unified_trading_bot.py` | 176 | Check clock | ⏳ PENDING | Market hours validation needed |
+| *(All P0 items completed)* | - | - | ✅ DONE | All production blockers resolved |
 
 ### Medium Priority (P1) - Feature Completeness
 
@@ -31,15 +28,53 @@ This document tracks all TODO comments in the codebase with their status and pri
 | File | Line | TODO | Status | Completion Date |
 |------|------|------|--------|-----------------|
 | `gnosis/utils/greeks_calculator.py` | 46 | Implement actual Alpaca API call | ✅ DONE | 2025-12-03 |
+| `gnosis/unified_trading_bot.py` | 155 | Calculate real PnL | ✅ DONE | 2025-12-21 |
+| `gnosis/unified_trading_bot.py` | 170 | Get last price | ✅ DONE | 2025-12-21 |
+| `gnosis/unified_trading_bot.py` | 176 | Check clock | ✅ DONE | 2025-12-21 |
+| `execution/broker_adapters/alpaca_options_adapter.py` | 79 | Implement atomic multi-leg execution | ✅ DONE | 2025-12-21 |
+
+---
+
+## Recent Additions (2025-12-21)
+
+### ML Integration Components
+- `ml/hyperparameter_manager.py` - Central ML hyperparameter management
+- `ml/adaptive_pipeline.py` - ML-integrated trading decisions
+- `ml/optimization_engine.py` - Hyperparameter optimization
+- `ml/pipeline_integration.py` - Full engine integration
+
+### Trading Safety
+- `trade/ml_trading_engine.py` - ML-driven trading engine
+- `trade/trading_safety.py` - Circuit breakers, position limits, safety controls
+
+### Market Utilities
+- `gnosis/market_utils.py` - Price fetching, P&L calculation, market hours
+
+### ML Backtesting
+- `backtesting/ml_hyperparameter_backtest.py` - Walk-forward, sensitivity analysis
+
+---
+
+## Test Coverage
+
+| Component | Tests | Status |
+|-----------|-------|--------|
+| ML Integration | 71 | ✅ Passing |
+| ML Trading Engine | 24 | ✅ Passing |
+| Trading Safety | 36 | ✅ Passing |
+| Market Utils | 32 | ✅ Passing |
+| ML Backtest | 26 | ✅ Passing |
+| Multi-Leg Options | 36 | ✅ Passing |
+| **Total** | **852** | ✅ Passing |
 
 ---
 
 ## Action Items
 
-1. **For P0 items**: These must be completed before live trading
-   - Real P&L calculation is critical for risk management
-   - Market hours check prevents trading when closed
-   - Multi-leg atomic execution prevents partial fills
+1. **For P0 items**: ✅ All P0 items completed!
+   - Multi-leg atomic execution implemented via Alpaca mleg order_class
+   - Real P&L calculation implemented
+   - Market hours checking implemented
 
 2. **For P1 items**: Should be completed within next sprint
    - Social media integration would enhance sentiment accuracy
@@ -58,4 +93,14 @@ When completing a TODO:
 3. Update relevant documentation
 4. Create PR referencing this tracker
 
-Last Updated: 2025-12-03
+### Multi-Leg Options Atomic Execution (2025-12-21)
+- `execution/broker_adapters/alpaca_options_adapter.py` - Full atomic multi-leg support
+  - `place_multileg_order()` - Atomic order submission via Alpaca mleg order_class
+  - `close_multileg_position()` - Atomic position closing with inverted sides
+  - `OptionLeg` dataclass - Type-safe leg representation
+  - `MultiLegOrderResult` - Comprehensive result tracking
+  - `create_vertical_spread()` - Bull/bear spread helper
+  - `create_iron_condor()` - Iron condor helper
+  - Supports: Vertical spreads, Iron condors, Butterflies, Straddles, Calendar spreads
+
+Last Updated: 2025-12-21
