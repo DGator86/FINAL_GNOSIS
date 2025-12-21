@@ -68,6 +68,7 @@ def default_config():
         "news_weight": 0.3,
         "flow_weight": 0.4,
         "technical_weight": 0.3,
+        "enable_social_media": False,  # Disable for deterministic tests
     }
 
 
@@ -80,10 +81,12 @@ def sentiment_engine(
     default_config
 ):
     """Create a SentimentEngineV3 instance with mocked dependencies."""
+    # Ensure social media is disabled for deterministic tests
+    config = {**default_config, "enable_social_media": False}
     return SentimentEngineV3(
         processors=[mock_news_processor, mock_flow_processor, mock_technical_processor],
         unusual_whales_adapter=mock_unusual_whales_adapter,
-        config=default_config,
+        config=config,
     )
 
 
@@ -95,10 +98,12 @@ def sentiment_engine_no_uw(
     default_config
 ):
     """Create a SentimentEngineV3 without Unusual Whales."""
+    # Ensure social media is disabled for deterministic tests
+    config = {**default_config, "enable_social_media": False}
     return SentimentEngineV3(
         processors=[mock_news_processor, mock_flow_processor, mock_technical_processor],
         unusual_whales_adapter=None,
-        config=default_config,
+        config=config,
     )
 
 
@@ -222,13 +227,14 @@ class TestWeightedSentimentCalculation:
         timestamp = datetime.now(timezone.utc)
         result = sentiment_engine_no_uw.run("SPY", timestamp)
         
-        # V3.1: Social media is now included, so expected calculation changes
-        # The exact value depends on social media simulation randomness
-        # Just verify the sentiment is in a reasonable range
-        assert -1.0 <= result.sentiment_score <= 1.0
-        # Check that flow and news contributed
+        # With social media disabled, calculation is deterministic:
+        # (news*0.3 + flow*0.4 + tech*0.3) / 1.0
+        # = (0.3*0.3 + 0.5*0.4 + 0.2*0.3) = 0.09 + 0.20 + 0.06 = 0.35
+        expected = 0.3 * 0.3 + 0.5 * 0.4 + 0.2 * 0.3
+        assert abs(result.sentiment_score - expected) < 0.01
+        # Check that processors contributed correctly
         assert result.news_sentiment == 0.3  # From mock
-        assert abs(result.flow_sentiment - 0.5) < 0.01 or result.flow_sentiment != 0  # May be blended
+        assert result.flow_sentiment == 0.5  # From mock (no UW blending)
     
     def test_custom_weights_applied(
         self, mock_news_processor, mock_flow_processor, mock_technical_processor
