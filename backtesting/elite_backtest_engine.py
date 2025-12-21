@@ -689,10 +689,12 @@ class EliteBacktestEngine:
             "regime": hedge.regime,
         }
         
+        # Store price in consensus for access
+        consensus["price"] = bar['close']
+        
         return PipelineResult(
             timestamp=timestamp,
             symbol=symbol,
-            price=bar['close'],
             hedge_snapshot=hedge,
             liquidity_snapshot=liquidity,
             sentiment_snapshot=sentiment,
@@ -1248,7 +1250,7 @@ class EliteBacktestEngine:
             
             # Monthly returns
             dates = [pd.to_datetime(e['timestamp']) for e in self.equity_curve]
-            monthly_eq = pd.Series(equities, index=dates).resample('M').last()
+            monthly_eq = pd.Series(equities, index=dates).resample('ME').last()
             monthly_returns = monthly_eq.pct_change().dropna()
             results.monthly_returns = {str(k): float(v) for k, v in monthly_returns.items()}
         
