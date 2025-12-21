@@ -65,6 +65,14 @@ from ml.optimization_engine import (
     create_optimization_engine,
 )
 
+from ml.pipeline_integration import (
+    MLPipelineConfig,
+    TrainingResult,
+    PipelineState,
+    IntegratedMLPipeline,
+    create_integrated_pipeline,
+)
+
 
 __all__ = [
     # Hyperparameter Management
@@ -99,4 +107,11 @@ __all__ = [
     "MLOptimizationEngine",
     "AutoMLTuner",
     "create_optimization_engine",
+    
+    # Pipeline Integration
+    "MLPipelineConfig",
+    "TrainingResult",
+    "PipelineState",
+    "IntegratedMLPipeline",
+    "create_integrated_pipeline",
 ]

@@ -58,6 +58,14 @@ from ml.optimization_engine import (
     create_optimization_engine,
 )
 
+from ml.pipeline_integration import (
+    MLPipelineConfig,
+    TrainingResult,
+    PipelineState,
+    IntegratedMLPipeline,
+    create_integrated_pipeline,
+)
+
 
 # =============================================================================
 # HYPERPARAMETER MANAGER TESTS
@@ -599,6 +607,137 @@ class TestFullMLIntegration:
             manager2.load_config("test_persist")
             
             assert manager2.current.lstm.hidden_dim == 512
+
+
+# =============================================================================
+# PIPELINE INTEGRATION TESTS
+# =============================================================================
+
+class TestMLPipelineConfig:
+    """Tests for MLPipelineConfig."""
+    
+    def test_default_values(self):
+        config = MLPipelineConfig()
+        assert config.preset == "balanced"
+        assert config.use_lstm is True
+        assert config.use_feature_builder is True
+    
+    def test_custom_values(self):
+        config = MLPipelineConfig(
+            preset="aggressive",
+            auto_optimize=True,
+            optimization_trials=50,
+        )
+        assert config.preset == "aggressive"
+        assert config.auto_optimize is True
+        assert config.optimization_trials == 50
+
+
+class TestTrainingResult:
+    """Tests for TrainingResult."""
+    
+    def test_successful_result(self):
+        result = TrainingResult(
+            success=True,
+            model_path="/path/to/model",
+            metrics={"loss": 0.01},
+            n_samples=1000,
+        )
+        assert result.success is True
+        assert result.n_samples == 1000
+        assert result.timestamp is not None
+    
+    def test_failed_result(self):
+        result = TrainingResult(success=False)
+        assert result.success is False
+        assert result.model_path == ""
+
+
+class TestPipelineState:
+    """Tests for PipelineState."""
+    
+    def test_initial_state(self):
+        state = PipelineState()
+        assert state.predictions_made == 0
+        assert state.decisions_made == 0
+        assert state.current_regime is None
+    
+    def test_state_updates(self):
+        state = PipelineState()
+        state.predictions_made += 5
+        state.decisions_made += 3
+        state.current_regime = MarketRegime.HIGH_VOLATILITY
+        
+        assert state.predictions_made == 5
+        assert state.decisions_made == 3
+        assert state.current_regime == MarketRegime.HIGH_VOLATILITY
+
+
+class TestIntegratedMLPipeline:
+    """Tests for IntegratedMLPipeline."""
+    
+    @pytest.fixture
+    def pipeline(self):
+        return IntegratedMLPipeline()
+    
+    def test_initialization(self, pipeline):
+        assert pipeline.hp_manager is not None
+        assert pipeline.adaptive_pipeline is not None
+        assert pipeline.optimizer is not None
+    
+    def test_process_symbol(self, pipeline):
+        decision = pipeline.process_symbol("AAPL")
+        assert isinstance(decision, MLTradeDecision)
+        assert pipeline.state.predictions_made >= 1
+    
+    def test_update_hyperparameters(self, pipeline):
+        original = pipeline.hp_manager.current.lstm.hidden_dim
+        pipeline.update_hyperparameters({"lstm.hidden_dim": 256})
+        assert pipeline.hp_manager.current.lstm.hidden_dim == 256
+    
+    def test_set_regime(self, pipeline):
+        pipeline.set_regime(MarketRegime.CRISIS)
+        assert pipeline.state.current_regime == MarketRegime.CRISIS
+    
+    def test_get_status(self, pipeline):
+        status = pipeline.get_status()
+        assert "preset" in status
+        assert "current_regime" in status
+        assert "hyperparameters" in status
+    
+    def test_save_and_load_state(self, pipeline):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "state.json"
+            
+            # Modify state
+            pipeline.state.predictions_made = 100
+            pipeline.state.current_regime = MarketRegime.TRENDING_BULL
+            
+            # Save
+            pipeline.save_state(path)
+            
+            # Create new pipeline and load
+            new_pipeline = IntegratedMLPipeline()
+            new_pipeline.load_state(path)
+            
+            assert new_pipeline.state.predictions_made == 100
+            assert new_pipeline.state.current_regime == MarketRegime.TRENDING_BULL
+
+
+class TestCreateIntegratedPipeline:
+    """Tests for create_integrated_pipeline factory."""
+    
+    def test_balanced_preset(self):
+        pipeline = create_integrated_pipeline(preset="balanced")
+        assert pipeline.config.preset == "balanced"
+    
+    def test_aggressive_preset(self):
+        pipeline = create_integrated_pipeline(preset="aggressive")
+        assert pipeline.config.preset == "aggressive"
+    
+    def test_with_auto_optimize(self):
+        pipeline = create_integrated_pipeline(auto_optimize=True)
+        assert pipeline.config.auto_optimize is True
 
 
 if __name__ == "__main__":
