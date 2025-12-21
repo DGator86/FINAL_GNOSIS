@@ -8,7 +8,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Set
+from typing import Any, Dict, Optional, Set
 
 from alpaca.data.live import StockDataStream
 from loguru import logger
@@ -22,6 +22,16 @@ from execution.broker_adapters.alpaca_options_adapter import AlpacaOptionsAdapte
 from execution.broker_adapters.settings import get_required_options_level
 from gnosis.dynamic_universe_manager import UniverseUpdate
 from gnosis.timeframe_manager import TimeframeManager
+from gnosis.market_utils import (
+    MarketHoursChecker,
+    MarketStatus,
+    PriceFetcher,
+    PnLCalculator,
+    PortfolioPnL,
+    create_market_hours_checker,
+    create_price_fetcher,
+    create_pnl_calculator,
+)
 from schemas.core_schemas import OptionsOrderRequest, Position
 from trade.trade_agent_router import TradeAgentRouter
 
@@ -126,6 +136,19 @@ class UnifiedTradingBot:
         logger.info("Initializing StockDataStream...")
         self.stream = StockDataStream(os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_SECRET_KEY"))
         logger.info("StockDataStream initialized.")
+        
+        # Initialize market utilities for P0 features
+        logger.info("Initializing market utilities...")
+        self.market_hours_checker = create_market_hours_checker(broker_adapter=self.adapter)
+        self.price_fetcher = create_price_fetcher(broker_adapter=self.adapter)
+        self.pnl_calculator = create_pnl_calculator(broker_adapter=self.adapter)
+        
+        # Cache for last known prices
+        self._last_prices: Dict[str, float] = {}
+        
+        # Portfolio P&L tracking
+        self._portfolio_pnl: Optional[PortfolioPnL] = None
+        logger.info("Market utilities initialized.")
 
     async def add_symbol(self, symbol: str):
         """Add a symbol to monitor and trade."""
@@ -229,44 +252,124 @@ class UnifiedTradingBot:
         # Export state for dashboard
         await self.export_state()
 
+    def get_price(self, symbol: str) -> Optional[float]:
+        """Get current price for a symbol."""
+        price = self.price_fetcher.get_price(symbol)
+        if price:
+            self._last_prices[symbol] = price
+            return price
+        return self._last_prices.get(symbol)
+    
+    def get_portfolio_pnl(self) -> Optional[PortfolioPnL]:
+        """Calculate real portfolio P&L."""
+        try:
+            # Build position list for calculator
+            positions_list = []
+            for symbol, pos in self.positions.items():
+                current_price = self.get_price(symbol)
+                positions_list.append({
+                    "symbol": symbol,
+                    "quantity": pos.quantity if hasattr(pos, 'quantity') else (pos.size / pos.entry_price if pos.entry_price > 0 else 0),
+                    "entry_price": pos.entry_price,
+                    "side": pos.side,
+                    "current_price": current_price,
+                })
+            
+            # Get current equity from broker
+            current_equity = self.daily_start_value
+            try:
+                account = self.adapter.get_account()
+                current_equity = float(account.equity)
+            except Exception:
+                pass
+            
+            self._portfolio_pnl = self.pnl_calculator.calculate_portfolio_pnl(
+                positions=positions_list,
+                starting_equity=self.daily_start_value,
+                current_equity=current_equity,
+            )
+            
+            return self._portfolio_pnl
+        except Exception as e:
+            logger.debug(f"Error calculating portfolio P&L: {e}")
+            return None
+    
+    def is_market_open(self) -> bool:
+        """Check if market is currently open."""
+        return self.market_hours_checker.is_market_open()
+    
+    def get_market_status(self) -> MarketStatus:
+        """Get current market status."""
+        return self.market_hours_checker.get_market_status()
+    
     async def export_state(self):
         """Export current state to JSON for dashboard."""
         try:
-            # Prepare positions data
+            # Prepare positions data with real P&L
             positions_data = []
             for symbol, pos in self.positions.items():
                 pos_dict = pos.dict()
+                # Add current price and unrealized P&L
+                current_price = self.get_price(symbol)
+                if current_price:
+                    pos_dict["current_price"] = current_price
+                    entry_price = pos.entry_price
+                    quantity = pos.quantity if hasattr(pos, 'quantity') else (pos.size / entry_price if entry_price > 0 else 0)
+                    if pos.side == "long":
+                        pos_dict["unrealized_pnl"] = (current_price - entry_price) * quantity
+                    else:
+                        pos_dict["unrealized_pnl"] = (entry_price - current_price) * quantity
                 positions_data.append(pos_dict)
 
-            # Prepare account data (simplified)
+            # Prepare account data with real P&L calculation
+            portfolio_pnl = self.get_portfolio_pnl()
             account_data = {
-                "portfolio_value": self.daily_start_value,  # Approx
-                "pnl": 0.0,  # TODO: Calculate real PnL
+                "portfolio_value": self.daily_start_value,
+                "pnl": 0.0,
+                "realized_pnl": 0.0,
+                "unrealized_pnl": 0.0,
+                "pnl_pct": 0.0,
             }
             try:
                 acct = self.adapter.get_account()
                 account_data["portfolio_value"] = float(acct.portfolio_value)
-                account_data["pnl"] = float(acct.equity) - float(acct.last_equity)
+                account_data["buying_power"] = float(acct.buying_power)
+                account_data["cash"] = float(acct.cash)
+                
+                if portfolio_pnl:
+                    account_data["pnl"] = portfolio_pnl.total_pnl
+                    account_data["realized_pnl"] = portfolio_pnl.realized_pnl
+                    account_data["unrealized_pnl"] = portfolio_pnl.unrealized_pnl
+                    account_data["pnl_pct"] = portfolio_pnl.total_pnl_pct * 100  # As percentage
+                else:
+                    # Fallback to simple calculation
+                    account_data["pnl"] = float(acct.equity) - float(acct.last_equity)
             except Exception:
                 pass
 
-            # Prepare symbols data (from active symbols)
+            # Prepare symbols data with real prices
             symbols_data = {}
             for sym in self.active_symbols:
-                # Placeholder for scanner data
+                price = self.get_price(sym)
                 symbols_data[sym] = {
                     "symbol": sym,
-                    "price": 0.0,  # TODO: Get last price
-                    "composer_confidence": 0.5,  # Placeholder
+                    "price": price or 0.0,
+                    "composer_confidence": 0.5,  # Placeholder until we track this
                     "composer_signal": "HOLD",
                 }
 
+            # Get market status
+            market_status = self.get_market_status()
+            market_open = market_status == MarketStatus.OPEN
+            
             state = {
-                "market_open": True,  # TODO: Check clock
+                "market_open": market_open,
+                "market_status": market_status.value,
                 "account": account_data,
                 "positions": positions_data,
                 "symbols": symbols_data,
                 "last_update": datetime.now().isoformat(),
+                "circuit_breaker_triggered": self.circuit_breaker_triggered,
             }
 
             # Write to file
@@ -633,9 +736,9 @@ class UnifiedTradingBot:
                 self.circuit_breaker_triggered = True
                 logger.error(f"⛔ CIRCUIT BREAKER | Daily loss {daily_pnl_pct * 100:.2f}%")
                 for symbol in list(self.positions.keys()):
-                    # We need current price to close.
-                    # Simplified: use 0 or last known price if available
-                    await self.close_position(symbol, 0.0, reason="Circuit breaker")
+                    # Get current price for proper closing
+                    current_price = self.get_price(symbol) or 0.0
+                    await self.close_position(symbol, current_price, reason="Circuit breaker")
         except Exception:
             pass
 

@@ -14,15 +14,39 @@ try:
         run_ml_backtest,
         print_results_summary,
     )
+    
+    # ML Hyperparameter backtest integration
+    from backtesting.ml_hyperparameter_backtest import (
+        MLBacktestMode,
+        MLBacktestHyperparameters,
+        MLBacktestPeriod,
+        MLHyperparameterBacktestConfig,
+        MLHyperparameterBacktestResults,
+        MLHyperparameterBacktester,
+        create_ml_hyperparameter_backtester,
+        run_ml_parameter_backtest,
+    )
+    
     __all__ = [
+        # Composer backtest
         "BacktestConfig",
         "BacktestResult",
         "run_composer_backtest",
+        # ML backtest engine
         "MLBacktestConfig",
         "MLBacktestEngine",
         "MLBacktestResults",
         "run_ml_backtest",
         "print_results_summary",
+        # ML Hyperparameter backtest
+        "MLBacktestMode",
+        "MLBacktestHyperparameters",
+        "MLBacktestPeriod",
+        "MLHyperparameterBacktestConfig",
+        "MLHyperparameterBacktestResults",
+        "MLHyperparameterBacktester",
+        "create_ml_hyperparameter_backtester",
+        "run_ml_parameter_backtest",
     ]
 except ImportError:
     # ML dependencies not installed
