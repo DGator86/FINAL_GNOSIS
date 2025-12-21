@@ -244,30 +244,112 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             raise
 
     def get_flow_snapshot(self, symbol: str, timestamp: datetime) -> Dict[str, float]:
-        """Retrieve aggregated options flow for sentiment scoring."""
-
+        """Retrieve aggregated options flow for sentiment scoring.
+        
+        Tries multiple endpoints in order of preference:
+        1. /api/stock/{symbol}/flow-recent (most reliable)
+        2. /api/stock/{symbol}/flow (legacy, often 404)
+        3. Returns empty dict with defaults on failure
+        """
         if not self.client:
-            raise RuntimeError("Unusual Whales client not initialized")
+            return self._empty_flow_snapshot()
 
-        params = {"start": timestamp.strftime("%Y-%m-%d"), "end": timestamp.strftime("%Y-%m-%d")}
-        url = f"{self.base_url}/api/stock/{symbol}/flow"
+        # Try flow-recent endpoint first (more reliable)
+        endpoints = [
+            (f"{self.base_url}/api/stock/{symbol}/flow-recent", {"limit": 50}),
+            (f"{self.base_url}/api/stock/{symbol}/flow", {
+                "start": timestamp.strftime("%Y-%m-%d"),
+                "end": timestamp.strftime("%Y-%m-%d")
+            }),
+        ]
 
-        try:
-            response = self.client.get(url, params=params)
-            response.raise_for_status()
-            payload = response.json() or {}
-            data = payload.get("data", {}) or payload
+        for url, params in endpoints:
+            try:
+                response = self.client.get(url, params=params)
+                response.raise_for_status()
+                payload = response.json()
+                
+                # Handle different response formats
+                # API may return: {"data": [...]}, {"data": {...}}, [...], or {...}
+                if payload is None:
+                    continue
+                    
+                # Extract data from nested structure if present
+                if isinstance(payload, dict):
+                    data = payload.get("data", payload)
+                else:
+                    data = payload
 
-            return {
-                "call_volume": float(data.get("call_volume", 0) or 0),
-                "put_volume": float(data.get("put_volume", 0) or 0),
-                "call_premium": float(data.get("call_premium", 0) or 0),
-                "put_premium": float(data.get("put_premium", 0) or 0),
-                "sweep_ratio": float(data.get("sweep_ratio", data.get("sweep_percentage", 0)) or 0),
-            }
-        except httpx.HTTPError as error:
-            logger.error(f"Error fetching Unusual Whales flow for {symbol}: {error}")
-            return {}
+                # Handle list response (flow-recent returns list of trades)
+                if isinstance(data, list) and data:
+                    # Aggregate from list of flow items
+                    call_vol = 0.0
+                    put_vol = 0.0
+                    call_prem = 0.0
+                    put_prem = 0.0
+                    sweeps = 0
+                    
+                    for item in data:
+                        if not isinstance(item, dict):
+                            continue
+                        vol = float(item.get("volume", item.get("size", 0)) or 0)
+                        prem = float(item.get("premium", item.get("cost_basis", 0)) or 0)
+                        put_call = str(item.get("put_call", item.get("option_type", ""))).upper()
+                        trade_type = str(item.get("trade_type", item.get("type", ""))).upper()
+                        
+                        if put_call == "CALL" or put_call == "C":
+                            call_vol += vol
+                            call_prem += prem
+                        elif put_call == "PUT" or put_call == "P":
+                            put_vol += vol
+                            put_prem += prem
+                        
+                        if "SWEEP" in trade_type:
+                            sweeps += 1
+                    
+                    sweep_ratio = sweeps / len(data) if data else 0.0
+
+                    logger.debug(f"Flow snapshot for {symbol}: calls={call_vol:.0f}, puts={put_vol:.0f}")
+                    return {
+                        "call_volume": call_vol,
+                        "put_volume": put_vol,
+                        "call_premium": call_prem,
+                        "put_premium": put_prem,
+                        "sweep_ratio": sweep_ratio,
+                    }
+                elif isinstance(data, dict):
+                    # Handle dict response (legacy flow endpoint)
+                    return {
+                        "call_volume": float(data.get("call_volume", 0) or 0),
+                        "put_volume": float(data.get("put_volume", 0) or 0),
+                        "call_premium": float(data.get("call_premium", 0) or 0),
+                        "put_premium": float(data.get("put_premium", 0) or 0),
+                        "sweep_ratio": float(data.get("sweep_ratio", data.get("sweep_percentage", 0)) or 0),
+                    }
+
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code == 404:
+                    logger.debug(f"Flow endpoint not available for {symbol}: {url}")
+                    continue  # Try next endpoint
+                logger.warning(f"Flow request failed for {symbol}: {error}")
+                continue
+            except Exception as error:
+                logger.debug(f"Error fetching flow from {url}: {error}")
+                continue
+
+        # All endpoints failed - return empty snapshot
+        logger.debug(f"No flow data available for {symbol} - using defaults")
+        return self._empty_flow_snapshot()
+
+    def _empty_flow_snapshot(self) -> Dict[str, float]:
+        """Return empty flow snapshot with default values."""
+        return {
+            "call_volume": 0.0,
+            "put_volume": 0.0,
+            "call_premium": 0.0,
+            "put_premium": 0.0,
+            "sweep_ratio": 0.0,
+        }
 
     def _log_once(self, symbol: str, url: str, params: dict, status_code: int, detail: str) -> None:
         """De-duplicate noisy warnings per symbol/status pair."""
