@@ -59,33 +59,47 @@ def test_successful_chain_parsing():
 
 
 def test_404_does_not_disable_future_calls():
+    """Test that 404 raises RuntimeError but doesn't disable the adapter.
+    
+    The adapter raises RuntimeError on 404 (no data for symbol), but this
+    shouldn't permanently disable the adapter for future calls.
+    """
     client = FakeUWClient([response_404(), response_with_contracts()])
     adapter = UnusualWhalesOptionsAdapter(token="x", client=client)
 
-    first = adapter.get_chain("MSFT", datetime.now())
-    second = adapter.get_chain("MSFT", datetime.now())
+    # First call should raise RuntimeError due to 404
+    with pytest.raises(RuntimeError, match="has no data for MSFT"):
+        adapter.get_chain("MSFT", datetime.now())
 
-    assert first == []  # 404 should skip symbol without forcing stub
+    # Second call should succeed (404 didn't permanently disable the adapter)
+    second = adapter.get_chain("MSFT", datetime.now())
     assert len(second) == 1  # 404 did not permanently disable real calls
     assert adapter.use_stub is False
 
 
-def test_401_switches_to_stub_mode():
-    client = FakeUWClient([response_401(), response_with_contracts()])
+def test_401_raises_runtime_error():
+    """Test that 401 (authentication error) raises RuntimeError.
+    
+    The adapter raises RuntimeError on authentication failures since
+    real data is required for the backtest/live trading use case.
+    """
+    client = FakeUWClient([response_401()])
     adapter = UnusualWhalesOptionsAdapter(token="x", client=client)
 
-    first = adapter.get_chain("TSLA", datetime.now())
-    second = adapter.get_chain("TSLA", datetime.now())
-
-    assert first == []  # auth failure skips data without crashing
-    assert second == []  # adapter stays disabled after auth errors
-    assert adapter.use_stub is False
+    # 401 should raise RuntimeError indicating auth failure
+    with pytest.raises(RuntimeError, match="auth/subscription error"):
+        adapter.get_chain("TSLA", datetime.now())
 
 
-def test_generic_http_error_falls_back_to_stub():
+def test_generic_http_error_raises_runtime_error():
+    """Test that server errors (500) raise RuntimeError.
+    
+    The adapter raises RuntimeError on transient server errors since
+    the caller should handle retries or fallback logic at a higher level.
+    """
     client = FakeUWClient([response_500()])
     adapter = UnusualWhalesOptionsAdapter(token="x", client=client)
 
-    chain = adapter.get_chain("NVDA", datetime.now())
-
-    assert chain  # should return stub data even on 500
+    # 500 should raise RuntimeError indicating server error
+    with pytest.raises(RuntimeError, match="transient/unavailable"):
+        adapter.get_chain("NVDA", datetime.now())

@@ -26,8 +26,9 @@ class TestOrderExecutionIntegration:
         account.last_equity = 100000.0
         account.pattern_day_trader = False
         account.trading_blocked = False
-        account.options_trading_level = 2
-        account.options_approved_level = 2
+        account.options_trading_level = 3  # Level 3 required for multi-leg strategies
+        account.options_approved_level = 3
+        account.options_buying_power = None  # Important: set to None to avoid Mock conversion
 
         client.get_account.return_value = account
         client.get_all_positions.return_value = []
@@ -54,10 +55,10 @@ class TestOrderExecutionIntegration:
         # Portfolio value = $100k, max position = 2% = $2000
         # Order: 10 shares @ $150 = $1500 (< $2000) ✓
 
-        # Mock price quote
-        quote_mock = Mock()
-        quote_mock["SPY"] = Mock(ask_price=150.0)
-        broker_adapter.data_client.get_stock_latest_quote.return_value = quote_mock
+        # Mock price quote - use dict-like access
+        quote_data = Mock()
+        quote_data.ask_price = 150.0
+        broker_adapter.data_client.get_stock_latest_quote.return_value = {"SPY": quote_data}
 
         # Mock successful order submission
         order_mock = Mock()
@@ -80,10 +81,10 @@ class TestOrderExecutionIntegration:
         # Portfolio value = $100k, max position = 2% = $2000
         # Order: 100 shares @ $450 = $45,000 (> $2000) ✗
 
-        # Mock price quote
-        quote_mock = Mock()
-        quote_mock["SPY"] = Mock(ask_price=450.0)
-        broker_adapter.data_client.get_stock_latest_quote.return_value = quote_mock
+        # Mock price quote - use dict-like access
+        quote_data = Mock()
+        quote_data.ask_price = 450.0
+        broker_adapter.data_client.get_stock_latest_quote.return_value = {"SPY": quote_data}
 
         # Should raise ValueError due to position size
         with pytest.raises(ValueError, match="exceeds maximum position size"):
@@ -103,10 +104,10 @@ class TestOrderExecutionIntegration:
         account = mock_trading_client.get_account.return_value
         account.equity = 94000.0
 
-        # Mock quote
-        quote_mock = Mock()
-        quote_mock["SPY"] = Mock(ask_price=450.0)
-        broker_adapter.data_client.get_stock_latest_quote.return_value = quote_mock
+        # Mock quote - use dict-like access
+        quote_data = Mock()
+        quote_data.ask_price = 450.0
+        broker_adapter.data_client.get_stock_latest_quote.return_value = {"SPY": quote_data}
 
         # Circuit breaker should trigger
         with pytest.raises(ValueError, match="CIRCUIT BREAKER TRIGGERED"):
@@ -126,10 +127,10 @@ class TestOrderExecutionIntegration:
         account = mock_trading_client.get_account.return_value
         account.equity = 96000.0
 
-        # Mock quote and order
-        quote_mock = Mock()
-        quote_mock["SPY"] = Mock(ask_price=450.0)
-        broker_adapter.data_client.get_stock_latest_quote.return_value = quote_mock
+        # Mock quote - use dict-like access
+        quote_data = Mock()
+        quote_data.ask_price = 450.0
+        broker_adapter.data_client.get_stock_latest_quote.return_value = {"SPY": quote_data}
 
         order_mock = Mock()
         order_mock.id = "order-456"
@@ -168,6 +169,11 @@ class TestOrderExecutionIntegration:
         order_mock = Mock()
         order_mock.id = "order-limit-1"
         mock_trading_client.submit_order.return_value = order_mock
+        
+        # Need to mock the quote for validation even with limit price
+        quote_data = Mock()
+        quote_data.ask_price = 100.0
+        broker_adapter.data_client.get_stock_latest_quote.return_value = {"SPY": quote_data}
 
         order_id = broker_adapter.place_order(
             symbol="SPY",
@@ -199,6 +205,20 @@ class TestOrderExecutionIntegration:
 
     def test_account_info_retrieval(self, broker_adapter, mock_trading_client):
         """Test account information retrieval and mapping."""
+        # Mock the account with float-convertible values
+        account_mock = mock_trading_client.get_account.return_value
+        account_mock.id = "test-account-123"
+        account_mock.cash = "50000.0"
+        account_mock.buying_power = "50000.0"
+        account_mock.portfolio_value = "100000.0"
+        account_mock.equity = "100000.0"
+        account_mock.last_equity = "100000.0"
+        account_mock.pattern_day_trader = False
+        account_mock.trading_blocked = False
+        account_mock.options_trading_level = 3  # Level 3 required for multi-leg strategies
+        account_mock.options_approved_level = 3
+        account_mock.options_buying_power = None  # Important: set to None to avoid Mock conversion
+        
         account = broker_adapter.get_account()
 
         assert isinstance(account, Account)

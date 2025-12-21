@@ -3,7 +3,13 @@ import unittest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-from models.options_contracts import EnhancedMarketData, OptionsChain
+from models.options_contracts import (
+    EnhancedMarketData,
+    OptionsChain,
+    VolatilityMetrics,
+    VolatilityStructure,
+    MacroVolatilityData,
+)
 
 # Import the pipeline to test
 from pipeline.options_pipeline_v2 import EnhancedGnosisPipeline
@@ -18,14 +24,32 @@ class TestEnhancedGnosisPipeline(unittest.TestCase):
         # Mock logger
         self.logger = logging.getLogger("TestLogger")
 
-        # Create dummy market data
+        # Create dummy market data using proper Pydantic models
         self.dummy_market_data = EnhancedMarketData(
             ticker="AAPL",
             spot_price=150.0,
             timestamp=datetime.now(),
-            options_chain=OptionsChain(ticker="AAPL", expiration=datetime.now(), calls=[], puts=[]),
-            vix_value=20.0,
-            historical_volatility=0.25,
+            options_chain=OptionsChain(quotes=[]),  # Empty quotes list is valid
+            volatility_metrics=VolatilityMetrics(
+                atm_iv=0.25,
+                iv_rank=50.0,
+                iv_percentile=50.0,
+                hv_20=0.20,
+                hv_60=0.22,
+            ),
+            vol_structure=VolatilityStructure(
+                front_month_iv=0.25,
+                back_month_iv=0.27,
+                put_skew_25d=0.05,
+                call_skew_25d=-0.02,
+            ),
+            macro_vol_data=MacroVolatilityData(
+                vix=20.0,
+                vvix=100.0,
+                move_index=80.0,
+                credit_spreads=3.5,
+                dxy_volatility=0.05,
+            ),
         )
 
     @patch("pipeline.options_pipeline_v2.GNOSIS_V2_CONFIG")

@@ -349,7 +349,11 @@ class TestLSTMPredictionEngine:
 
     def test_cache_functionality(self, engine, mock_market_adapter):
         """Test that feature caching works"""
-        timestamp = datetime.now()
+        # Use a timestamp close to the mock data's last timestamp (which is about 1hr 40min after start)
+        # Mock data: pd.date_range(start="2024-01-01", periods=100, freq="1Min")
+        # Last timestamp is approximately 2024-01-01 01:39:00
+        # Use a timestamp just a few seconds after the last bar to be within cache window
+        timestamp = datetime(2024, 1, 1, 1, 39, 30)  # 30 seconds after last bar
         symbol = "AAPL"
 
         # First call should fetch data

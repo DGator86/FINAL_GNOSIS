@@ -7,7 +7,12 @@ from typing import Any, Dict, List
 
 
 class BaseGnosisModel:
-
+    """Base class for GNOSIS time series models.
+    
+    Provides standardized interface and common behavior for all time series
+    prediction models including training tracking, configuration management,
+    and model lifecycle methods.
+    """
 
     def __init__(self, config: Dict[str, Any], model_name: str):
         self.config = config

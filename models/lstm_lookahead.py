@@ -229,8 +229,9 @@ class LSTMLookaheadPredictor:
 
         # Optimizer and loss
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.learning_rate)
+        # Note: 'verbose' parameter was removed in PyTorch 2.0+
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=5, verbose=True
+            optimizer, mode='min', factor=0.5, patience=5
         )
 
         history = {"train_loss": [], "val_loss": []}
@@ -400,7 +401,9 @@ class LSTMLookaheadPredictor:
 
     def load(self, path: str):
         """Load model and scaler"""
-        checkpoint = torch.load(path, map_location=self.config.device)
+        # weights_only=False allows loading sklearn objects (StandardScaler)
+        # This is necessary because the checkpoint contains the fitted scaler
+        checkpoint = torch.load(path, map_location=self.config.device, weights_only=False)
 
         self.config = checkpoint["config"]
         self.model = BidirectionalLSTMLookahead(self.config).to(self.config.device)
