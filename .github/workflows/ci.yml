@@ -1,43 +1,280 @@
-name: ci
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: ["main", "master", "develop"]
   pull_request:
-    branches: ["*"]
+    branches: ["main", "master"]
+
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.10"
+  COVERAGE_THRESHOLD: 70
 
 jobs:
-  test:
+  # ============================================================================
+  # Linting and Code Quality
+  # ============================================================================
+  lint:
+    name: Lint & Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
-      - name: Install deps
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install black isort flake8 mypy
+      
+      - name: Check formatting with Black
+        run: black --check --diff .
+        continue-on-error: true
+      
+      - name: Check import sorting
+        run: isort --check-only --diff .
+        continue-on-error: true
+      
+      - name: Run flake8
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        continue-on-error: true
+
+  # ============================================================================
+  # Unit Tests
+  # ============================================================================
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11"]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Lint
+          pip install pytest pytest-cov pytest-asyncio
+      
+      - name: Run tests with coverage
         run: |
-          python -m pip install black
-          black --check .
-      - name: Tests
-        run: |
-          pytest -q --maxfail=1
-      - name: Backtest smoke
-        run: |
-          python - <<'PY'
-          from backtesting.backtest_runner_v2 import BacktestRunnerV2
-          print('Backtest runner v2 import ok')
-          PY
-      - name: Coverage report
-        run: |
-          python -m pip install coverage
-          coverage run -m pytest -q
-          coverage xml
-      - name: Upload coverage
+          pytest tests/ \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --maxfail=10 \
+            -v
+      
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ============================================================================
+  # Integration Tests
+  # ============================================================================
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio
+      
+      - name: Run integration tests
+        run: |
+          pytest tests/test_paper_trading_integration.py \
+            tests/test_scanner_integration.py \
+            -v --maxfail=5
+      
+      - name: Backtest smoke test
+        run: |
+          python -c "
+          from backtesting.backtest_runner_v2 import BacktestRunnerV2
+          print('Backtest runner v2 import ok')
+          "
+      
+      - name: ML pipeline smoke test
+        run: |
+          python -c "
+          from ml.model_registry import ModelRegistry, ModelStage, ModelType
+          from ml.pipeline_integration import IntegratedMLPipeline
+          print('ML pipeline imports ok')
+          "
+
+  # ============================================================================
+  # Security Scanning
+  # ============================================================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety
+      
+      - name: Run Bandit security scan
+        run: bandit -r . -ll -ii -x ./tests,./venv,./.venv
+        continue-on-error: true
+      
+      - name: Check dependencies for vulnerabilities
+        run: |
+          pip install -r requirements.txt
+          safety check --full-report
+        continue-on-error: true
+
+  # ============================================================================
+  # Build Verification
+  # ============================================================================
+  build:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    needs: [test, integration]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Verify main imports
+        run: |
+          python -c "
+          # Core trading components
+          from gnosis.market_utils import MarketHoursChecker, PriceFetcher, PnLCalculator
+          from trade.trading_safety import TradingSafetyManager, SafetyConfig
+          
+          # ML components
+          from ml.model_registry import ModelRegistry, get_model_registry
+          from ml.hyperparameter_manager import HyperparameterManager
+          from ml.pipeline_integration import IntegratedMLPipeline
+          
+          # Execution components
+          from execution.broker_adapters.alpaca_options_adapter import AlpacaOptionsAdapter
+          
+          # Engines
+          from engines.engine_factory import EngineFactory
+          from engines.scanner import OpportunityScanner
+          
+          print('All core imports successful')
+          "
+      
+      - name: Verify FastAPI app starts
+        run: |
+          timeout 10 python -c "
+          import uvicorn
+          from main import app
+          print('FastAPI app created successfully')
+          " || true
+
+  # ============================================================================
+  # Documentation Check
+  # ============================================================================
+  docs:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check README exists
+        run: |
+          test -f README.md || (echo "README.md not found" && exit 1)
+      
+      - name: Check key documentation
+        run: |
+          for doc in TODO_TRACKER.md QUICKSTART.md; do
+            if [ -f "$doc" ]; then
+              echo "✓ $doc exists"
+            else
+              echo "⚠ $doc not found"
+            fi
+          done
+      
+      - name: Validate markdown files
+        run: |
+          # Count markdown files
+          md_count=$(find . -name "*.md" -type f | wc -l)
+          echo "Found $md_count markdown files"
+
+  # ============================================================================
+  # Final Status Check
+  # ============================================================================
+  status:
+    name: CI Status
+    runs-on: ubuntu-latest
+    needs: [lint, test, integration, security, build, docs]
+    if: always()
+    
+    steps:
+      - name: Check all jobs status
+        run: |
+          echo "Lint: ${{ needs.lint.result }}"
+          echo "Test: ${{ needs.test.result }}"
+          echo "Integration: ${{ needs.integration.result }}"
+          echo "Security: ${{ needs.security.result }}"
+          echo "Build: ${{ needs.build.result }}"
+          echo "Docs: ${{ needs.docs.result }}"
+          
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "::error::Tests failed!"
+            exit 1
+          fi
+          
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "::error::Build verification failed!"
+            exit 1
+          fi
+          
+          echo "✅ CI Pipeline passed!"

@@ -152,4 +152,58 @@ When completing a TODO:
   - No longer relies on deprecated `.data` attribute
   - Proper vanna/charm pressure extraction
 
+### Model Registry for LSTM Versioning (2025-12-21)
+- `ml/model_registry.py` - Central ML model version control
+  - `ModelRegistry` class with version tracking
+  - `ModelVersion` and `ModelMetrics` dataclasses
+  - Model promotion workflows (dev → staging → production)
+  - A/B testing support with traffic splitting
+  - Rollback capabilities
+  - Performance comparison between versions
+  - Artifact storage and retrieval
+  - Global registry via `get_model_registry()`
+
+### Price Series Provider (2025-12-21)
+- `data/price_provider.py` - Unified price data provider
+  - `AlpacaPriceProvider` - Alpaca Historical API integration
+  - `YFinancePriceProvider` - yfinance fallback (free)
+  - `CachedPriceProvider` - In-memory caching layer
+  - `UnifiedPriceProvider` - Automatic fallback between sources
+  - `get_price_series_for_ml()` - ML dataset building function
+- `routers/ml_trades.py` - Wired price provider
+  - `/ml/trades/dataset` endpoint now functional
+  - `/ml/trades/dataset/export` - Parquet export endpoint
+  - `/ml/trades/providers/status` - Check provider status
+
+### Paper Trading Integration Tests (2025-12-21)
+- `tests/test_paper_trading_integration.py` - End-to-end validation
+  - Market hours integration tests
+  - Price fetching integration tests
+  - P&L calculation integration tests
+  - Trading safety integration tests
+  - Complete trade flow tests
+  - Multi-leg options flow tests
+  - Error handling tests
+  - Performance tests
+
+### CI/CD Pipeline Enhancement (2025-12-21)
+- `.github/workflows/ci.yml` - Enhanced pipeline
+  - Multi-Python version testing (3.10, 3.11)
+  - Linting with Black, isort, flake8
+  - Security scanning with Bandit and Safety
+  - Integration test suite
+  - Build verification with import checks
+  - Documentation validation
+  - Coverage reporting to Codecov
+  - Concurrency control for branch runs
+
+### Documentation Update (2025-12-21)
+- `README.md` - Updated with new features
+  - Project status table with test counts
+  - Recent updates section
+  - Documentation index
+  - CI/CD pipeline overview
+  - Key components guide
+  - Contributing guidelines
+
 Last Updated: 2025-12-21
