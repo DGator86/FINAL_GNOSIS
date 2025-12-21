@@ -48,8 +48,20 @@ services:
       - ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
       - ALPACA_PAPER=${ALPACA_PAPER:-true}
       
-      # Optional: Unusual Whales API
-      - UW_API_KEY=${UW_API_KEY:-}
+      # Unusual Whales API
+      - UNUSUAL_WHALES_API_TOKEN=${UNUSUAL_WHALES_API_TOKEN:-}
+      
+      # Massive.com API
+      - MASSIVE_API_KEY=${MASSIVE_API_KEY:-}
+      - MASSIVE_API_SECRET=${MASSIVE_API_SECRET:-}
+      
+      # Trading configuration
+      - TRADING_SYMBOLS=${TRADING_SYMBOLS:-SPY,QQQ,AAPL,NVDA,MSFT}
+      - MAX_DAILY_LOSS=${MAX_DAILY_LOSS:-5000}
+      - MAX_POSITIONS=${MAX_POSITIONS:-10}
+      
+      # JWT Authentication
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-me-in-production}
       
       # Portfolio settings
       - DEFAULT_CAPITAL=${DEFAULT_CAPITAL:-100000}
@@ -61,6 +73,10 @@ services:
       - gnosis-data:/app/data
       # Mount logs
       - gnosis-logs:/app/logs
+      # Mount models directory
+      - gnosis-models:/app/models/trained
+      # Mount checkpoints
+      - gnosis-checkpoints:/app/checkpoints
     depends_on:
       redis:
         condition: service_healthy
@@ -160,6 +176,10 @@ volumes:
     name: gnosis-data
   gnosis-logs:
     name: gnosis-logs
+  gnosis-models:
+    name: gnosis-models
+  gnosis-checkpoints:
+    name: gnosis-checkpoints
   redis-data:
     name: gnosis-redis-data
   prometheus-data:
