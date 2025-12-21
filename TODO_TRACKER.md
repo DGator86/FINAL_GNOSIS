@@ -18,8 +18,7 @@ This document tracks all TODO comments in the codebase with their status and pri
 
 | File | Line | TODO | Status | Notes |
 |------|------|------|--------|-------|
-| `gnosis/scanner/__init__.py` | 49 | Implement full scanning logic | ⏳ PENDING | Integration with OpportunityScanner |
-| `engines/orchestration/pipeline_runner.py` | 131 | Fix HedgeSnapshot.data attribute error | ⏳ PENDING | Commented out code, needs investigation |
+| *(All P2 items completed)* | - | - | ✅ DONE | All enhancements implemented |
 
 ### Completed ✅
 
@@ -33,6 +32,8 @@ This document tracks all TODO comments in the codebase with their status and pri
 | `agents/composer/composer_agent_v3.py` | 162 | Apply express weights to signals | ✅ DONE | 2025-12-21 |
 | `engines/engine_factory.py` | 70 | Initialize actual sentiment processors | ✅ DONE | 2025-12-21 |
 | `engines/sentiment/sentiment_engine_v3.py` | 175 | Integrate with social media APIs | ✅ DONE | 2025-12-21 |
+| `gnosis/scanner/__init__.py` | 49 | Implement full scanning logic | ✅ DONE | 2025-12-21 |
+| `engines/orchestration/pipeline_runner.py` | 131 | Fix HedgeSnapshot.data attribute error | ✅ DONE | 2025-12-21 |
 
 ---
 
@@ -67,7 +68,8 @@ This document tracks all TODO comments in the codebase with their status and pri
 | ML Backtest | 26 | ✅ Passing |
 | Multi-Leg Options | 36 | ✅ Passing |
 | Social Media Sentiment | 36 | ✅ Passing |
-| **Total** | **889** | ✅ Passing |
+| Scanner Integration | 20 | ✅ Passing |
+| **Total** | **909** | ✅ Passing |
 
 ---
 
@@ -83,8 +85,9 @@ This document tracks all TODO comments in the codebase with their status and pri
    - Express weights for strategy-specific signal handling implemented
    - Full sentiment processor initialization in EngineFactory
 
-3. **For P2 items**: Nice-to-haves for future releases
-   - Can be deferred to later versions
+3. **For P2 items**: ✅ All P2 items completed!
+   - Full scanning implementation in MultiTimeframeScanner
+   - HedgeSnapshot.data issue resolved with proper attribute access
 
 ---
 
@@ -128,5 +131,25 @@ When completing a TODO:
   - `_create_sentiment_engine_v3()` - Create V3 engine with social media
   - Supports SentimentEngineV1 and V3 versions
   - Automatic adapter creation (News, Unusual Whales, Social Media)
+
+### Full Scanner Implementation (2025-12-21)
+- `gnosis/scanner/__init__.py` - Multi-timeframe opportunity scanner
+  - `MultiTimeframeScanner` class - Full DHPE engine integration
+  - `scan_all()` - Async scan of all symbols in universe
+  - `scan_priority()` - Quick scan of priority symbols only
+  - `scan_universe()` - Full dynamic universe scan
+  - `run()` - Flexible scan with custom symbol list
+  - Priority symbol management (add/remove/set)
+  - Factory function `create_scanner()` for easy instantiation
+  - Integration with `OpportunityScanner` and `EngineFactory`
+
+### HedgeSnapshot.data Error Fix (2025-12-21)
+- `engines/orchestration/pipeline_runner.py` - Re-enabled watchlist gating
+  - Removed workaround for HedgeSnapshot.data issue
+  - Watchlist gating now active for trade idea filtering
+- `watchlist/adaptive_watchlist.py` - Fixed metric extraction
+  - Uses proper `HedgeSnapshot` attributes (energy_asymmetry, pressure_net, etc.)
+  - No longer relies on deprecated `.data` attribute
+  - Proper vanna/charm pressure extraction
 
 Last Updated: 2025-12-21
