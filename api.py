@@ -7,6 +7,8 @@ Main API server with:
 - Prometheus metrics endpoint
 - Health checks
 - Trading Hub integration (connects all trading components)
+- API Key and JWT authentication
+- Rate limiting
 
 Author: Super Gnosis Elite Trading System
 Version: 1.0.0
@@ -18,16 +20,18 @@ import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, HTMLResponse
+from fastapi.openapi.utils import get_openapi
 from loguru import logger
 
 # Import routers
 from routers import ml_trades_router, trade_decisions_router, options_greeks_router
 from routers.websocket_api import router as websocket_router, start_websocket_publisher, stop_websocket_publisher
+from routers.auth import router as auth_router
 
 # Import utilities
 from utils.metrics import metrics, record_api_request
@@ -35,6 +39,21 @@ from utils.redis_cache import cache, initialize_cache, close_cache
 
 # Import Trading Hub
 from integration import get_trading_hub, start_trading_hub, stop_trading_hub, HubConfig
+
+# Import middleware
+from middleware.auth import (
+    get_current_user,
+    optional_auth,
+    require_api_key,
+    require_permission,
+    APIUser,
+    Permission,
+)
+from middleware.rate_limiter import (
+    get_rate_limiter,
+    rate_limit,
+    RateLimitConfig,
+)
 
 
 # =============================================================================
@@ -109,12 +128,68 @@ app = FastAPI(
     - ML Trade Dataset Generation
     - Real-time Position Tracking
     - Risk Management and Safety Controls
+    
+    ## Authentication
+    
+    This API supports two authentication methods:
+    
+    1. **API Key**: Include `X-API-Key` header with your API key
+    2. **JWT Token**: Include `Authorization: Bearer <token>` header
+    
+    Contact admin for API key generation.
+    
+    ## Rate Limits
+    
+    - Default: 60 requests/minute, 1000 requests/hour
+    - Rate limits vary by role (admin, trader, viewer)
+    - Exceeding limits results in 429 Too Many Requests
     """,
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+
+# Custom OpenAPI schema with security
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    
+    # Add security schemes
+    openapi_schema["components"]["securitySchemes"] = {
+        "ApiKeyAuth": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-API-Key",
+            "description": "API Key authentication",
+        },
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "JWT token authentication",
+        },
+    }
+    
+    # Add global security (optional)
+    openapi_schema["security"] = [
+        {"ApiKeyAuth": []},
+        {"BearerAuth": []},
+    ]
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 # =============================================================================
 # Middleware
@@ -130,11 +205,34 @@ app.add_middleware(
 )
 
 
-# Request timing middleware
+# Request timing and rate limiting middleware
 @app.middleware("http")
-async def add_timing_header(request: Request, call_next):
-    """Add timing header and record metrics."""
+async def add_timing_and_rate_limit(request: Request, call_next):
+    """Add timing header, rate limiting, and record metrics."""
     start_time = time.time()
+    
+    # Rate limiting (skip for exempt endpoints)
+    limiter = get_rate_limiter()
+    exempt_endpoints = ["/health", "/ready", "/docs", "/redoc", "/openapi.json", "/"]
+    
+    if request.url.path not in exempt_endpoints:
+        # Get user from authentication if available
+        user_id = None
+        role = None
+        
+        allowed, limit_info = await limiter.check_rate_limit(request, user_id, role)
+        
+        if not allowed:
+            from fastapi.responses import JSONResponse
+            headers = limiter.get_headers(limit_info)
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": f"Rate limit exceeded. Retry after {limit_info.get('retry_after', 60)} seconds.",
+                    "retry_after": limit_info.get("retry_after", 60),
+                },
+                headers=headers,
+            )
     
     response = await call_next(request)
     
@@ -156,6 +254,7 @@ async def add_timing_header(request: Request, call_next):
 # Include Routers
 # =============================================================================
 
+app.include_router(auth_router)
 app.include_router(options_greeks_router)
 app.include_router(ml_trades_router)
 app.include_router(trade_decisions_router)
@@ -212,10 +311,31 @@ async def root() -> Dict[str, Any]:
 # =============================================================================
 
 @app.get("/hub/status", tags=["trading"])
-async def hub_status() -> Dict[str, Any]:
-    """Get Trading Hub status and metrics."""
+async def hub_status(
+    user: Optional[APIUser] = Depends(optional_auth),
+) -> Dict[str, Any]:
+    """Get Trading Hub status and metrics.
+    
+    Authentication optional - returns limited info if not authenticated.
+    """
     hub = get_trading_hub()
-    return hub.get_status()
+    status = hub.get_status()
+    
+    # If not authenticated, return limited info
+    if not user:
+        return {
+            "state": status.get("state"),
+            "message": "Authenticate for full status",
+        }
+    
+    return status
+
+
+@app.get("/rate-limits", tags=["system"])
+async def rate_limit_stats() -> Dict[str, Any]:
+    """Get rate limiter statistics."""
+    limiter = get_rate_limiter()
+    return limiter.get_stats()
 
 
 @app.post("/hub/alert", tags=["trading"])
@@ -225,8 +345,11 @@ async def send_hub_alert(
     message: str,
     symbol: str = None,
     priority: str = "medium",
+    user: APIUser = Depends(require_permission(Permission.ALERTS)),
 ) -> Dict[str, Any]:
     """Send an alert through the Trading Hub.
+    
+    Requires ALERTS permission.
     
     Args:
         alert_type: Type of alert (e.g., 'manual', 'test')
@@ -252,7 +375,7 @@ async def send_hub_alert(
         title=title,
         message=message,
         symbol=symbol,
-        source="api",
+        source=f"api:{user.user_id}",
     )
     
     hub._dispatch_alert(alert)
