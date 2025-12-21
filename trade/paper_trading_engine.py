@@ -362,8 +362,8 @@ class PaperTradingEngine:
     
     def _run_loop(self):
         """Main trading loop."""
-        last_scan_time = datetime.min
-        last_position_check = datetime.min
+        last_scan_time = datetime.min.replace(tzinfo=timezone.utc)
+        last_position_check = datetime.min.replace(tzinfo=timezone.utc)
         
         try:
             while self.running:
