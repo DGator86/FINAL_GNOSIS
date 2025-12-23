@@ -1,0 +1,200 @@
+#!/bin/bash
+#
+# GNOSIS Control Script
+# Manage the GNOSIS SaaS trading intelligence platform
+#
+# Usage: ./gnosis-ctl {start|stop|restart|status|logs|install}
+#
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVICE_NAME="gnosis"
+LOG_FILE="$SCRIPT_DIR/logs/gnosis_saas.log"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+NC='\033[0m' # No Color
+
+print_header() {
+    echo -e "${PURPLE}"
+    echo "╔══════════════════════════════════════════════════════════╗"
+    echo "║     GNOSIS - Autonomous Trading Intelligence             ║"
+    echo "╚══════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+}
+
+case "$1" in
+    start)
+        print_header
+        echo -e "${BLUE}Starting GNOSIS SaaS...${NC}"
+        
+        # Kill any existing processes
+        pkill -f "gnosis_service.py" 2>/dev/null || true
+        pkill -f "gnosis_saas.py" 2>/dev/null || true
+        sleep 1
+        
+        # Check if systemd service exists and is enabled
+        if systemctl is-enabled gnosis.service 2>/dev/null | grep -q "enabled"; then
+            sudo systemctl start gnosis.service
+            echo -e "${GREEN}✓ Started via systemd${NC}"
+        # Check if PM2 is available
+        elif command -v pm2 &> /dev/null; then
+            cd "$SCRIPT_DIR"
+            pm2 start ecosystem.config.js
+            pm2 save
+            echo -e "${GREEN}✓ Started via PM2${NC}"
+        # Fallback to nohup
+        else
+            cd "$SCRIPT_DIR"
+            mkdir -p logs
+            nohup python3 scripts/gnosis_service.py >> logs/gnosis_saas.log 2>&1 &
+            echo $! > .gnosis.pid
+            echo -e "${GREEN}✓ Started via nohup (PID: $(cat .gnosis.pid))${NC}"
+        fi
+        
+        sleep 3
+        if curl -s http://localhost:8888/api/status > /dev/null 2>&1; then
+            echo -e "${GREEN}✓ Dashboard: http://localhost:8888${NC}"
+        fi
+        ;;
+        
+    stop)
+        print_header
+        echo -e "${YELLOW}Stopping GNOSIS SaaS...${NC}"
+        
+        if systemctl is-enabled gnosis.service 2>/dev/null | grep -q "enabled"; then
+            sudo systemctl stop gnosis.service
+            echo -e "${GREEN}✓ Stopped via systemd${NC}"
+        elif command -v pm2 &> /dev/null && pm2 list 2>/dev/null | grep -q "gnosis-saas"; then
+            pm2 stop gnosis-saas
+            echo -e "${GREEN}✓ Stopped via PM2${NC}"
+        else
+            if [ -f "$SCRIPT_DIR/.gnosis.pid" ]; then
+                kill $(cat "$SCRIPT_DIR/.gnosis.pid") 2>/dev/null || true
+                rm -f "$SCRIPT_DIR/.gnosis.pid"
+            fi
+            pkill -f "gnosis_service.py" 2>/dev/null || true
+            pkill -f "gnosis_saas.py" 2>/dev/null || true
+            echo -e "${GREEN}✓ Stopped${NC}"
+        fi
+        ;;
+        
+    restart)
+        $0 stop
+        sleep 2
+        $0 start
+        ;;
+        
+    status)
+        print_header
+        echo -e "${BLUE}Checking GNOSIS Status...${NC}"
+        echo ""
+        
+        # Check process
+        if pgrep -f "gnosis_service.py\|gnosis_saas.py" > /dev/null; then
+            PID=$(pgrep -f "gnosis_service.py\|gnosis_saas.py" | head -1)
+            echo -e "${GREEN}✓ GNOSIS is running (PID: $PID)${NC}"
+        else
+            echo -e "${RED}✗ GNOSIS is not running${NC}"
+        fi
+        
+        # Check systemd if installed
+        if systemctl is-enabled gnosis.service 2>/dev/null | grep -q "enabled"; then
+            echo -e "${GREEN}✓ Systemd service enabled (auto-start on boot)${NC}"
+        else
+            echo -e "${YELLOW}! Systemd service not installed (run: ./gnosis-ctl install)${NC}"
+        fi
+        
+        echo ""
+        # API health check
+        if curl -s http://localhost:8888/api/status > /dev/null 2>&1; then
+            echo -e "${GREEN}✓ API responding on port 8888${NC}"
+            curl -s http://localhost:8888/api/status | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'  Mode: {d[\"mode\"]} | Version: {d[\"version\"]}')" 2>/dev/null
+            
+            # Show quick stats
+            echo ""
+            curl -s http://localhost:8888/api/signals | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'  Active Signals: {d[\"active_signals\"]}')" 2>/dev/null
+        else
+            echo -e "${RED}✗ API not responding${NC}"
+        fi
+        ;;
+        
+    logs)
+        print_header
+        echo -e "${BLUE}Showing GNOSIS logs (Ctrl+C to exit)...${NC}"
+        echo ""
+        
+        # Check systemd first
+        if systemctl is-enabled gnosis.service 2>/dev/null | grep -q "enabled"; then
+            sudo journalctl -u gnosis.service -f
+        elif [ -f "$LOG_FILE" ]; then
+            tail -f "$LOG_FILE"
+        else
+            echo "No log file found. Starting log watch..."
+            mkdir -p "$SCRIPT_DIR/logs"
+            touch "$LOG_FILE"
+            tail -f "$LOG_FILE"
+        fi
+        ;;
+        
+    install)
+        print_header
+        echo -e "${BLUE}Installing GNOSIS as a system service...${NC}"
+        echo ""
+        
+        # Create logs directory
+        mkdir -p "$SCRIPT_DIR/logs"
+        
+        # Stop any running instances
+        pkill -f "gnosis_service.py" 2>/dev/null || true
+        
+        # Install systemd service
+        sudo cp "$SCRIPT_DIR/gnosis.service" /etc/systemd/system/gnosis.service
+        sudo systemctl daemon-reload
+        sudo systemctl enable gnosis.service
+        sudo systemctl start gnosis.service
+        
+        echo -e "${GREEN}✓ Service installed and enabled${NC}"
+        echo -e "${GREEN}✓ GNOSIS will start automatically on boot${NC}"
+        echo ""
+        
+        sleep 3
+        sudo systemctl status gnosis.service --no-pager | head -10
+        ;;
+        
+    uninstall)
+        print_header
+        echo -e "${YELLOW}Uninstalling GNOSIS service...${NC}"
+        
+        sudo systemctl stop gnosis.service 2>/dev/null || true
+        sudo systemctl disable gnosis.service 2>/dev/null || true
+        sudo rm -f /etc/systemd/system/gnosis.service
+        sudo systemctl daemon-reload
+        
+        echo -e "${GREEN}✓ Service uninstalled${NC}"
+        ;;
+        
+    *)
+        print_header
+        echo "Usage: $0 {start|stop|restart|status|logs|install|uninstall}"
+        echo ""
+        echo "Commands:"
+        echo "  start     - Start GNOSIS SaaS"
+        echo "  stop      - Stop GNOSIS SaaS"
+        echo "  restart   - Restart GNOSIS SaaS"
+        echo "  status    - Show service status"
+        echo "  logs      - Tail the log file"
+        echo "  install   - Install as systemd service (survives reboot)"
+        echo "  uninstall - Remove systemd service"
+        echo ""
+        echo "Quick Start:"
+        echo "  ./gnosis-ctl install  # Install & start (recommended)"
+        echo "  ./gnosis-ctl start    # Just start without installing"
+        exit 1
+        ;;
+esac
+
+exit 0
