@@ -154,6 +154,9 @@ class MassiveOptionsAdapter:
         # Cache for options data
         self._chain_cache: Dict[str, Tuple[datetime, List[OptionContract]]] = {}
         self._cache_ttl = timedelta(minutes=1)
+        
+        # Track if options tier is available
+        self._options_tier_available: Optional[bool] = None
 
     def get_chain(self, symbol: str, timestamp: datetime) -> List[OptionContract]:
         """Get options chain for a symbol (implements OptionsChainAdapter protocol).
@@ -773,3 +776,407 @@ class MassiveOptionsAdapter:
             return datetime.strptime(str(exp_str)[:10], "%Y-%m-%d")
         except Exception:
             return datetime.now() + timedelta(days=30)
+
+    # ========================================================================
+    # HISTORICAL OPTIONS DATA METHODS
+    # ========================================================================
+
+    def get_historical_chain(
+        self,
+        underlying: str,
+        as_of_date: date,
+        spot_price: Optional[float] = None,
+        dte_min: int = 0,
+        dte_max: int = 60,
+        strike_range_pct: float = 0.20,
+    ) -> Optional['MassiveHistoricalChain']:
+        """Get historical options chain for backtesting.
+        
+        This method retrieves options chain data from Massive.com (Polygon.io)
+        for a specific historical date.
+        
+        Note: Requires Options tier subscription. Free tier only supports
+        stock data. If options tier is not available, returns None and
+        the caller should fall back to synthetic data.
+        
+        Args:
+            underlying: Stock symbol (e.g., "SPY")
+            as_of_date: Historical date for the data
+            spot_price: Spot price (fetched if not provided)
+            dte_min: Minimum days to expiration
+            dte_max: Maximum days to expiration
+            strike_range_pct: Strike range as percentage from spot
+        
+        Returns:
+            MassiveHistoricalChain with contracts and metadata, or None if
+            options data is not available (requires upgrade to Options tier)
+        """
+        if not self.client:
+            logger.warning("MASSIVE client not initialized")
+            return None
+        
+        # Check if we already know options tier is unavailable
+        if self._options_tier_available is False:
+            logger.debug("Options tier not available, skipping Massive API")
+            return None
+        
+        try:
+            # Get historical spot price if not provided
+            if spot_price is None:
+                spot_price = self._get_historical_spot(underlying, as_of_date)
+            
+            if spot_price is None or spot_price <= 0:
+                logger.warning(f"Could not get spot price for {underlying} on {as_of_date}")
+                return None
+            
+            # Calculate expiration date range
+            exp_date_min = as_of_date + timedelta(days=dte_min)
+            exp_date_max = as_of_date + timedelta(days=dte_max)
+            
+            # Calculate strike range
+            strike_min = spot_price * (1 - strike_range_pct)
+            strike_max = spot_price * (1 + strike_range_pct)
+            
+            # Fetch options contracts from Massive API
+            contracts_list = []
+            
+            try:
+                # Use reference options contracts endpoint with date filter
+                contracts = list(self.client.list_options_contracts(
+                    underlying_ticker=underlying,
+                    expiration_date_gte=exp_date_min.strftime("%Y-%m-%d"),
+                    expiration_date_lte=exp_date_max.strftime("%Y-%m-%d"),
+                    strike_price_gte=strike_min,
+                    strike_price_lte=strike_max,
+                    limit=1000,
+                ))
+                
+                # Mark options tier as available if we got here
+                self._options_tier_available = True
+                
+                for contract in contracts:
+                    ticker = getattr(contract, 'ticker', '')
+                    if not ticker:
+                        continue
+                    
+                    # Get historical data for this contract on the as_of_date
+                    try:
+                        # Get aggregate data for the specific date
+                        aggs = list(self.client.get_aggs(
+                            ticker=ticker,
+                            multiplier=1,
+                            timespan="day",
+                            from_=as_of_date.strftime("%Y-%m-%d"),
+                            to=as_of_date.strftime("%Y-%m-%d"),
+                            adjusted=True,
+                            limit=1,
+                        ))
+                        
+                        if aggs:
+                            agg = aggs[0]
+                            last_price = float(agg.close)
+                            volume = int(agg.volume)
+                        else:
+                            last_price = 0.0
+                            volume = 0
+                    except Exception:
+                        last_price = 0.0
+                        volume = 0
+                    
+                    # Try to get snapshot for Greeks (may not be available for historical)
+                    greeks = {}
+                    iv = 0.0
+                    oi = 0
+                    bid = 0.0
+                    ask = 0.0
+                    
+                    try:
+                        # For historical dates, we may need to estimate Greeks
+                        # or use end-of-day snapshot data
+                        snap = self.client.get_snapshot_option(
+                            underlying_asset=underlying,
+                            option_contract=ticker,
+                        )
+                        if snap:
+                            if hasattr(snap, 'greeks') and snap.greeks:
+                                g = snap.greeks
+                                greeks = {
+                                    'delta': getattr(g, 'delta', 0) or 0,
+                                    'gamma': getattr(g, 'gamma', 0) or 0,
+                                    'theta': getattr(g, 'theta', 0) or 0,
+                                    'vega': getattr(g, 'vega', 0) or 0,
+                                    'rho': getattr(g, 'rho', 0) or 0,
+                                }
+                            iv = getattr(snap, 'implied_volatility', 0) or 0
+                            oi = getattr(snap, 'open_interest', 0) or 0
+                            if hasattr(snap, 'last_quote') and snap.last_quote:
+                                bid = getattr(snap.last_quote, 'bid', 0) or 0
+                                ask = getattr(snap.last_quote, 'ask', 0) or 0
+                    except Exception:
+                        # Greeks unavailable - will be estimated later
+                        pass
+                    
+                    strike = float(getattr(contract, 'strike_price', 0))
+                    exp_date = getattr(contract, 'expiration_date', '')
+                    contract_type = getattr(contract, 'contract_type', 'call').lower()
+                    
+                    option = OptionContract(
+                        symbol=ticker,
+                        strike=strike,
+                        expiration=self._parse_expiration(exp_date),
+                        option_type=contract_type,
+                        bid=bid,
+                        ask=ask,
+                        last=last_price,
+                        volume=volume,
+                        open_interest=oi,
+                        implied_volatility=iv,
+                        delta=greeks.get('delta', 0),
+                        gamma=greeks.get('gamma', 0),
+                        theta=greeks.get('theta', 0),
+                        vega=greeks.get('vega', 0),
+                        rho=greeks.get('rho', 0),
+                    )
+                    contracts_list.append(option)
+                    
+            except Exception as e:
+                error_str = str(e)
+                # Check for authorization errors (options tier required)
+                if "NOT_AUTHORIZED" in error_str or "not entitled" in error_str.lower():
+                    logger.warning(
+                        f"Massive.com options tier not available. "
+                        f"Upgrade at https://polygon.io/pricing for options data. "
+                        f"Falling back to synthetic data."
+                    )
+                    self._options_tier_available = False
+                    return None
+                # Check for rate limiting
+                elif "429" in error_str or "too many" in error_str.lower():
+                    logger.warning(f"Massive.com rate limit hit. Try again later.")
+                    return None
+                else:
+                    logger.warning(f"Error fetching contracts: {e}")
+            
+            if not contracts_list:
+                logger.warning(f"No contracts found for {underlying} on {as_of_date}")
+                return None
+            
+            # Calculate Greeks if missing (using Black-Scholes approximation)
+            contracts_list = self._estimate_missing_greeks(
+                contracts_list, spot_price, as_of_date
+            )
+            
+            # Build chain result
+            calls = [c for c in contracts_list if c.option_type == "call"]
+            puts = [c for c in contracts_list if c.option_type == "put"]
+            
+            chain = MassiveHistoricalChain(
+                underlying=underlying,
+                as_of_date=as_of_date,
+                spot_price=spot_price,
+                contracts=contracts_list,
+                calls=calls,
+                puts=puts,
+                expirations=sorted(set(c.expiration for c in contracts_list)),
+                strikes=sorted(set(c.strike for c in contracts_list)),
+                total_call_oi=sum(c.open_interest for c in calls),
+                total_put_oi=sum(c.open_interest for c in puts),
+                total_call_volume=sum(c.volume for c in calls),
+                total_put_volume=sum(c.volume for c in puts),
+            )
+            
+            # Calculate derived metrics
+            if chain.total_call_volume > 0:
+                chain.put_call_ratio = chain.total_put_volume / chain.total_call_volume
+            
+            logger.info(
+                f"Retrieved {len(contracts_list)} contracts for {underlying} "
+                f"@ {as_of_date} (spot=${spot_price:.2f})"
+            )
+            
+            return chain
+            
+        except Exception as e:
+            logger.error(f"Error getting historical chain for {underlying}: {e}")
+            return None
+    
+    def _get_historical_spot(
+        self,
+        symbol: str,
+        as_of_date: date,
+    ) -> Optional[float]:
+        """Get historical spot price for a symbol."""
+        
+        if not self.client:
+            return None
+        
+        try:
+            aggs = list(self.client.get_aggs(
+                ticker=symbol,
+                multiplier=1,
+                timespan="day",
+                from_=as_of_date.strftime("%Y-%m-%d"),
+                to=as_of_date.strftime("%Y-%m-%d"),
+                adjusted=True,
+                limit=1,
+            ))
+            
+            if aggs:
+                return float(aggs[0].close)
+            
+            # Try previous trading day if no data for exact date
+            for i in range(1, 8):
+                prev_date = as_of_date - timedelta(days=i)
+                aggs = list(self.client.get_aggs(
+                    ticker=symbol,
+                    multiplier=1,
+                    timespan="day",
+                    from_=prev_date.strftime("%Y-%m-%d"),
+                    to=prev_date.strftime("%Y-%m-%d"),
+                    adjusted=True,
+                    limit=1,
+                ))
+                if aggs:
+                    return float(aggs[0].close)
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Error getting historical spot: {e}")
+            return None
+    
+    def _estimate_missing_greeks(
+        self,
+        contracts: List[OptionContract],
+        spot: float,
+        as_of_date: date,
+        risk_free_rate: float = 0.05,
+    ) -> List[OptionContract]:
+        """Estimate missing Greeks using Black-Scholes model."""
+        
+        from scipy import stats
+        import math
+        
+        def bs_price_and_greeks(
+            S: float, K: float, T: float, r: float, sigma: float, 
+            option_type: str
+        ) -> Dict[str, float]:
+            """Calculate Black-Scholes price and Greeks."""
+            
+            if T <= 0 or sigma <= 0:
+                return {
+                    'price': max(0, S - K) if option_type == 'call' else max(0, K - S),
+                    'delta': 1.0 if option_type == 'call' else -1.0,
+                    'gamma': 0.0,
+                    'theta': 0.0,
+                    'vega': 0.0,
+                    'rho': 0.0,
+                }
+            
+            sqrt_T = math.sqrt(T)
+            d1 = (math.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * sqrt_T)
+            d2 = d1 - sigma * sqrt_T
+            
+            N_d1 = stats.norm.cdf(d1)
+            N_d2 = stats.norm.cdf(d2)
+            n_d1 = stats.norm.pdf(d1)
+            
+            if option_type == 'call':
+                price = S * N_d1 - K * math.exp(-r * T) * N_d2
+                delta = N_d1
+            else:
+                price = K * math.exp(-r * T) * stats.norm.cdf(-d2) - S * stats.norm.cdf(-d1)
+                delta = N_d1 - 1
+            
+            gamma = n_d1 / (S * sigma * sqrt_T)
+            vega = S * n_d1 * sqrt_T / 100  # Per 1% IV change
+            
+            if option_type == 'call':
+                theta = (-S * n_d1 * sigma / (2 * sqrt_T) 
+                         - r * K * math.exp(-r * T) * N_d2) / 365
+                rho = K * T * math.exp(-r * T) * N_d2 / 100
+            else:
+                theta = (-S * n_d1 * sigma / (2 * sqrt_T) 
+                         + r * K * math.exp(-r * T) * stats.norm.cdf(-d2)) / 365
+                rho = -K * T * math.exp(-r * T) * stats.norm.cdf(-d2) / 100
+            
+            return {
+                'price': price,
+                'delta': delta,
+                'gamma': gamma,
+                'theta': theta,
+                'vega': vega,
+                'rho': rho,
+            }
+        
+        result = []
+        
+        for contract in contracts:
+            # Skip if Greeks already populated
+            if contract.delta != 0 or contract.gamma != 0:
+                result.append(contract)
+                continue
+            
+            # Calculate time to expiration
+            exp_date = contract.expiration.date() if isinstance(contract.expiration, datetime) else contract.expiration
+            T = (exp_date - as_of_date).days / 365.0
+            
+            # Use implied volatility or default
+            sigma = contract.implied_volatility if contract.implied_volatility > 0 else 0.25
+            
+            # Calculate Greeks
+            greeks = bs_price_and_greeks(
+                S=spot,
+                K=contract.strike,
+                T=T,
+                r=risk_free_rate,
+                sigma=sigma,
+                option_type=contract.option_type,
+            )
+            
+            # Create updated contract
+            updated = OptionContract(
+                symbol=contract.symbol,
+                strike=contract.strike,
+                expiration=contract.expiration,
+                option_type=contract.option_type,
+                bid=contract.bid,
+                ask=contract.ask,
+                last=contract.last if contract.last > 0 else greeks['price'],
+                volume=contract.volume,
+                open_interest=contract.open_interest,
+                implied_volatility=sigma,
+                delta=greeks['delta'],
+                gamma=greeks['gamma'],
+                theta=greeks['theta'],
+                vega=greeks['vega'],
+                rho=greeks['rho'],
+            )
+            result.append(updated)
+        
+        return result
+
+
+@dataclass
+class MassiveHistoricalChain:
+    """Historical options chain from Massive.com."""
+    
+    underlying: str
+    as_of_date: date
+    spot_price: float
+    
+    # Contracts
+    contracts: List[OptionContract] = field(default_factory=list)
+    calls: List[OptionContract] = field(default_factory=list)
+    puts: List[OptionContract] = field(default_factory=list)
+    
+    # Structure
+    expirations: List[datetime] = field(default_factory=list)
+    strikes: List[float] = field(default_factory=list)
+    
+    # Aggregates
+    total_call_oi: int = 0
+    total_put_oi: int = 0
+    total_call_volume: int = 0
+    total_put_volume: int = 0
+    put_call_ratio: float = 0.0

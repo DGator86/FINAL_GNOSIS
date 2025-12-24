@@ -126,12 +126,13 @@ class HistoricalOptionsChain:
 class HistoricalOptionsConfig:
     """Configuration for historical options data."""
     
-    # Provider priority
-    providers: List[str] = field(default_factory=lambda: ["polygon", "synthetic"])
+    # Provider priority (massive = Polygon.io rebranded)
+    providers: List[str] = field(default_factory=lambda: ["massive", "polygon", "synthetic"])
     
     # API keys (loaded from env if not provided)
     polygon_api_key: Optional[str] = None
     tradier_api_key: Optional[str] = None
+    massive_api_key: Optional[str] = None
     
     # Caching
     cache_enabled: bool = True
@@ -295,6 +296,150 @@ class PolygonProvider(OptionsDataProvider):
             total_put_volume=polygon_chain.total_put_volume,
             put_call_ratio=polygon_chain.put_call_ratio,
             data_source="polygon",
+        )
+
+
+# ============================================================================
+# MASSIVE.COM PROVIDER (Polygon.io rebranded)
+# ============================================================================
+
+class MassiveProvider(OptionsDataProvider):
+    """Massive.com data provider (formerly Polygon.io).
+    
+    Massive.com is the rebranded Polygon.io service providing:
+    - Historical tick-level options data back to 2004
+    - Full options chains with Greeks
+    - Multi-timeframe aggregations
+    - Real-time and delayed data tiers
+    """
+    
+    def __init__(self, api_key: Optional[str] = None):
+        from config.credentials import get_massive_api_keys
+        primary, secondary = get_massive_api_keys(primary=api_key)
+        self.api_key = primary or secondary
+        self._adapter = None
+    
+    @property
+    def name(self) -> str:
+        return "massive"
+    
+    def is_available(self) -> bool:
+        return bool(self.api_key)
+    
+    def _get_adapter(self):
+        """Lazy load adapter."""
+        if self._adapter is None:
+            from engines.inputs.massive_options_adapter import MassiveOptionsAdapter
+            self._adapter = MassiveOptionsAdapter(api_key=self.api_key)
+        return self._adapter
+    
+    def get_chain(
+        self,
+        underlying: str,
+        as_of_date: date,
+        spot_price: Optional[float] = None,
+        dte_min: int = 0,
+        dte_max: int = 60,
+        strike_range_pct: float = 0.20,
+        **kwargs,
+    ) -> Optional[HistoricalOptionsChain]:
+        """Get chain from Massive.com."""
+        
+        if not self.is_available():
+            return None
+        
+        try:
+            adapter = self._get_adapter()
+            
+            # Get historical chain data
+            as_of_dt = datetime.combine(as_of_date, datetime.min.time())
+            if as_of_dt.tzinfo is None:
+                as_of_dt = as_of_dt.replace(tzinfo=timezone.utc)
+            
+            massive_chain = adapter.get_historical_chain(
+                underlying=underlying,
+                as_of_date=as_of_date,
+                spot_price=spot_price,
+                dte_min=dte_min,
+                dte_max=dte_max,
+                strike_range_pct=strike_range_pct,
+            )
+            
+            if not massive_chain:
+                return None
+            
+            # Convert to unified format
+            return self._convert_chain(massive_chain, as_of_dt, spot_price or 0)
+            
+        except Exception as e:
+            logger.warning(f"Massive provider error: {e}")
+            return None
+    
+    def _convert_chain(
+        self,
+        massive_chain,
+        as_of_dt: datetime,
+        spot_price: float,
+    ) -> HistoricalOptionsChain:
+        """Convert Massive chain to unified format."""
+        
+        contracts = []
+        
+        for mc in massive_chain.contracts:
+            exp_dt = mc.expiration if isinstance(mc.expiration, datetime) else datetime.combine(mc.expiration, datetime.min.time())
+            dte = (exp_dt.date() - as_of_dt.date()).days if isinstance(exp_dt, datetime) else 0
+            
+            contract = HistoricalOptionContract(
+                symbol=mc.symbol,
+                underlying=massive_chain.underlying,
+                strike=mc.strike,
+                expiration=exp_dt,
+                option_type=mc.option_type,
+                bid=mc.bid,
+                ask=mc.ask,
+                last=mc.last,
+                mid=(mc.bid + mc.ask) / 2 if mc.bid and mc.ask else mc.last,
+                delta=mc.delta or 0,
+                gamma=mc.gamma or 0,
+                theta=mc.theta or 0,
+                vega=mc.vega or 0,
+                rho=mc.rho or 0,
+                implied_volatility=mc.implied_volatility or 0,
+                volume=mc.volume or 0,
+                open_interest=mc.open_interest or 0,
+                days_to_expiry=dte,
+                moneyness=mc.strike / spot_price if spot_price > 0 else 1,
+                data_source="massive",
+            )
+            contracts.append(contract)
+        
+        calls = [c for c in contracts if c.option_type == "call"]
+        puts = [c for c in contracts if c.option_type == "put"]
+        
+        expirations = sorted(set(c.expiration for c in contracts))
+        strikes = sorted(set(c.strike for c in contracts))
+        
+        total_call_oi = sum(c.open_interest for c in calls)
+        total_put_oi = sum(c.open_interest for c in puts)
+        total_call_vol = sum(c.volume for c in calls)
+        total_put_vol = sum(c.volume for c in puts)
+        
+        return HistoricalOptionsChain(
+            underlying=massive_chain.underlying,
+            as_of_date=as_of_dt,
+            spot_price=massive_chain.spot_price or spot_price,
+            contracts=contracts,
+            calls=calls,
+            puts=puts,
+            expirations=expirations,
+            strikes=strikes,
+            total_call_oi=total_call_oi,
+            total_put_oi=total_put_oi,
+            total_call_volume=total_call_vol,
+            total_put_volume=total_put_vol,
+            put_call_ratio=total_put_vol / max(total_call_vol, 1),
+            put_call_oi_ratio=total_put_oi / max(total_call_oi, 1),
+            data_source="massive",
         )
 
 
@@ -520,7 +665,11 @@ class HistoricalOptionsManager:
         for provider_name in self.config.providers:
             provider = None
             
-            if provider_name == "polygon":
+            if provider_name == "massive":
+                api_key = self.config.massive_api_key
+                provider = MassiveProvider(api_key=api_key)
+            
+            elif provider_name == "polygon":
                 api_key = self.config.polygon_api_key or os.getenv("POLYGON_API_KEY", "")
                 provider = PolygonProvider(api_key=api_key)
                 
