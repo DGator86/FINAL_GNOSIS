@@ -53,8 +53,8 @@ from universe.watchlist_loader import load_active_watchlist
 from watchlist import AdaptiveWatchlist
 from cli.result_formatter import format_pipeline_result
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from the repository root (where this file resides)
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
 
 app = typer.Typer(help="Super Gnosis / DHPE Pipeline CLI")
 
