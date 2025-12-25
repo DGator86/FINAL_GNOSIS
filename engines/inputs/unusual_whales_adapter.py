@@ -441,32 +441,11 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
             return []
 
     def get_flow_summary(self, symbol: str) -> dict:
-        """Return the most recent flow items for the ticker."""
-
-        if not self.client or not self.api_token:
-            return {}
-
-        try:
-            url = f"{self.base_url}/api/stock/{symbol}/flow-recent"
-            params = {"limit": 50}
-            response = self.client.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-            return data.get("data", {})
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 404:
-                logger.info("No recent flow for %s (404)", symbol)
-                return {}
-            logger.error(
-                "Flow summary request for %s failed | status=%s | detail=%s",
-                symbol,
-                exc.response.status_code,
-                self._extract_detail(exc.response),
-            )
-            return {}
-        except Exception as error:
-            logger.error(f"Error getting flow summary for {symbol}: {error}")
-            return {}
+        """Return the most recent flow items for the ticker.
+        
+        Aliases to get_flow_snapshot for aggregation.
+        """
+        return self.get_flow_snapshot(symbol, datetime.utcnow())
 
     def get_implied_volatility(self, symbol: str) -> Optional[float]:
         """Pull the 30-day implied volatility from the realized volatility endpoint."""

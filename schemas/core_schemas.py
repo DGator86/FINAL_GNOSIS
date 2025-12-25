@@ -87,6 +87,23 @@ class ElasticitySnapshot(BaseModel):
     trend_strength: float = 0.0
 
 
+class PhysicsSnapshot(BaseModel):
+    """Snapshot from the Physics Engine (GMM)."""
+
+    timestamp: datetime
+    symbol: str
+    price: float
+    forecast_mean: float
+    sigma: float
+    p_up: float
+    entropy: float
+    stiffness: float
+    regime: str
+    component_count: int
+    restoring_force: float = 0.0
+
+
+
 class ForecastSnapshot(BaseModel):
     """Time-series forecast payload (Kats-inspired)."""
 
@@ -223,12 +240,14 @@ class OptionsOrderRequest(BaseModel):
     symbol: str  # Underlying symbol
     strategy_name: str
     legs: List[OptionsLeg]
+    quantity: int = 1  # Number of contracts/spreads
     max_loss: float
     max_profit: float
     bpr: float  # Buying Power Reduction
     rationale: str
     confidence: float
     timestamp: datetime = Field(default_factory=datetime.now)
+    dynamic_thresholds: Optional[Dict[str, float]] = None
 
 
 class TradeIdea(BaseModel):
@@ -328,6 +347,7 @@ class PipelineResult(BaseModel):
     liquidity_snapshot: Optional[LiquiditySnapshot] = None
     sentiment_snapshot: Optional[SentimentSnapshot] = None
     elasticity_snapshot: Optional[ElasticitySnapshot] = None
+    physics_snapshot: Optional[PhysicsSnapshot] = None
     suggestions: List[AgentSuggestion] = Field(default_factory=list)
     trade_ideas: List[TradeIdea] = Field(default_factory=list)
     order_results: List[OrderResult] = Field(default_factory=list)

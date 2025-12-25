@@ -277,13 +277,17 @@ def main():
         return
     
     # Tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 Overview",
         "💼 Positions", 
         "📈 Analytics",
         "📜 Trade History",
-        "⚙️ Engine Metrics"
+        "⚙️ Engine Metrics",
+        "🧬 Pipeline Vision"
     ])
+    
+    # Core Universe list
+    CORE_UNIVERSE = ["SPY", "QQQ", "IWM", "NVDA", "TSLA", "AAPL", "AMD", "MSFT", "AMZN", "META"]
     
     # TAB 1: Overview
     with tab1:
@@ -674,6 +678,114 @@ def main():
                         )
         else:
             st.info("Run a traced pipeline to visualize engine and agent activity.")
+    
+    # TAB 6: Pipeline Vision
+    with tab6:
+        st.markdown("## 🧬 Pipeline Vision (Deep Dive)")
+        st.write("Inspect the internal state of the Gnosis Pipeline for any asset in the universe.")
+        
+        # 1. Universe Selection
+        selected_ticker = st.selectbox("Select Ticker", CORE_UNIVERSE, index=0)
+        
+        # 2. Run Pipeline Button
+        if st.button(f"🔍 Scan {selected_ticker}", type="primary"):
+            with st.spinner(f"Running Gnosis Physics Engine on {selected_ticker}..."):
+                try:
+                    config = load_config()
+                    runner = build_pipeline(selected_ticker, config)
+                    result = runner.run_once(datetime.now())
+                    
+                    st.success(f"Pipeline executed successfully for {selected_ticker}")
+                    
+                    # 3. Main Metrics Grid
+                    st.markdown("### 🧠 Core Physics (GMM)")
+                    
+                    phys = result.physics_snapshot
+                    if phys:
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Entropy (Chaos)", f"{phys.entropy:.2f}", help="Lower is better (Stable structure)")
+                        with col2:
+                            st.metric("Stiffness (Beta)", f"{phys.stiffness:.2f}", help="Resistance to flow")
+                        with col3:
+                            st.metric("P_up Probability", f"{phys.p_up:.1%}", help="Prob of Upward move")
+                        with col4:
+                            st.metric("Restoring Force", f"{phys.restoring_force:.2f}", help="Pull back to Equilibrium")
+                    else:
+                        st.warning("Physics Engine returned no data.")
+
+                    # 4. Engine Cards
+                    st.markdown("---")
+                    st.markdown("### ⚙️ Engine Signals")
+                    
+                    c1, c2, c3, c4 = st.columns(4)
+                    
+                    # Hedge Engine
+                    with c1:
+                        st.markdown("**🛡️ Hedge**")
+                        if result.hedge_snapshot:
+                            h = result.hedge_snapshot
+                            st.write(f"Regime: `{h.regime}`")
+                            st.write(f"Energy: `{h.movement_energy:.1f}`")
+                            st.progress(h.confidence, text="Confidence")
+                        else:
+                            st.caption("No Data")
+
+                    # Liquidity Engine
+                    with c2:
+                        st.markdown("**💧 Liquidity**")
+                        if result.liquidity_snapshot:
+                            l = result.liquidity_snapshot
+                            st.write(f"Score: `{l.liquidity_score:.2f}`")
+                            st.write(f"Spread: `{l.bid_ask_spread:.2%}`")
+                        else:
+                            st.caption("No Data")
+
+                    # Sentiment Engine
+                    with c3:
+                        st.markdown("**📰 Sentiment**")
+                        if result.sentiment_snapshot:
+                            s = result.sentiment_snapshot
+                            st.write(f"Score: `{s.sentiment_score:.2f}`")
+                            st.write(f"News: `{s.news_sentiment:.2f}`")
+                        else:
+                            st.caption("No Data")
+
+                    # Elasticity Engine
+                    with c4:
+                        st.markdown("**⚡ Elasticity**")
+                        if result.elasticity_snapshot:
+                            e = result.elasticity_snapshot
+                            st.write(f"Vol Regime: `{e.volatility_regime}`")
+                            st.write(f"Trend: `{e.trend_strength:.2f}`")
+                        else:
+                            st.caption("No Data")
+
+                    # 5. Consensus & Action
+                    st.markdown("---")
+                    st.markdown("### 🎯 Final Consensus")
+                    
+                    if result.consensus:
+                        c = result.consensus
+                        direction = c.get('direction', 'neutral').upper()
+                        conf = c.get('confidence', 0.0)
+                        
+                        # Big Banner
+                        if direction == "LONG":
+                            st.success(f"**BUY SIGNAL** ({conf:.1%})")
+                        elif direction == "SHORT":
+                            st.error(f"**SELL SIGNAL** ({conf:.1%})")
+                        else:
+                            st.info(f"**NEUTRAL / HOLD** ({conf:.1%})")
+                            
+                        # Agent breakdown
+                        st.markdown("#### Agent Votes")
+                        for sug in result.suggestions:
+                            st.write(f"- **{sug.agent_name}**: {sug.direction.value.upper()} ({sug.confidence:.1%})")
+                            st.caption(f"  Reason: {sug.reasoning}")
+                            
+                except Exception as e:
+                    st.error(f"Failed to scan {selected_ticker}: {e}")
     
     # Auto-refresh
     if auto_refresh:

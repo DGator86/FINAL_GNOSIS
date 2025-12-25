@@ -1804,6 +1804,7 @@ class EliteTradeAgent:
             symbol=symbol,
             strategy_name=strategy.value,
             legs=legs,
+            quantity=quantity,
             max_loss=max_loss,
             max_profit=max_profit if max_profit != float("inf") else 999999.0,
             bpr=max_loss,

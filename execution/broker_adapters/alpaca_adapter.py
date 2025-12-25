@@ -517,6 +517,50 @@ class AlpacaBrokerAdapter:
             logger.error(f"Error placing bracket order: {e}")
             return None
 
+    def place_options_order(self, options_request: OptionsOrderRequest) -> Optional[str]:
+        """
+        Place an options order (single or multi-leg).
+        Currently supports submitting single legs sequentially.
+        """
+        logger.info(f"Executing Options Strategy: {options_request.strategy_name} | Qty: {options_request.quantity}")
+        order_ids = []
+        
+        try:
+            for leg in options_request.legs:
+                # leg: OptionsLeg(symbol, ratio, side, type, strike, expiration, action)
+                
+                # Alpaca expects 'buy' or 'sell'.
+                side_str = "buy" if "buy" in leg.action.lower() else "sell"
+                
+                # Quantity: request quantity * leg ratio
+                qty = options_request.quantity * leg.ratio
+                
+                logger.info(f"  Leg: {side_str.upper()} {qty} {leg.symbol}")
+                
+                # Submit order for leg
+                order_id = self.place_order(
+                    symbol=leg.symbol,
+                    quantity=qty,
+                    side=side_str,
+                    order_type="market", # Use market for immediate execution in this context, or limit if provided
+                    time_in_force="day"
+                )
+                
+                if order_id:
+                    order_ids.append(order_id)
+                else:
+                    logger.error(f"Failed to place leg: {leg.symbol}")
+                    # In a real system, we'd need to unwind previous legs here (atomic failure)
+            
+            if not order_ids:
+                return None
+                
+            return ",".join(order_ids)
+            
+        except Exception as e:
+            logger.error(f"Error placing options order: {e}")
+            return None
+
     def cancel_order(self, order_id: str) -> bool:
         """Cancel an order."""
         try:

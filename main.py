@@ -17,6 +17,7 @@ from agents.sentiment_agent_v1 import SentimentAgentV1
 from config import AppConfig, load_config
 from engines.elasticity.elasticity_engine_v1 import ElasticityEngineV1
 from engines.hedge.hedge_engine_v3 import HedgeEngineV3
+from engines.physics.physics_engine import PhysicsEngine
 from engines.inputs.adapter_factory import (
     create_broker_adapter,
     create_market_data_adapter,
@@ -93,6 +94,7 @@ def build_pipeline(
             config.engines.sentiment.model_dump(),
         ),
         "elasticity": ElasticityEngineV1(market_adapter, config.engines.elasticity.model_dump()),
+        "physics": PhysicsEngine(market_adapter, options_adapter, config.model_dump()),
     }
 
     primary_agents = {
