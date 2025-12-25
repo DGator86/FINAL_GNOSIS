@@ -69,13 +69,13 @@ Circuit Breaker: -10% drawdown
 
 2. **Start the System**:
    ```bash
-   # Option 1: Basic paper trading (SPY only)
+   # Option 1: Basic paper trading (SPY only, legacy single-symbol loop)
    python start_paper_trading.py
-   
-   # Option 2: Full multi-timeframe scanner + trading
+
+   # Option 2: Full multi-timeframe scanner + trading (dynamic top 25 universe)
    python start_scanner_trading.py
-   
-   # Option 3: With web dashboard
+
+   # Option 3: With web dashboard (dynamic top 25 universe)
    python start_with_dashboard.py
    ```
 
@@ -114,10 +114,10 @@ Circuit Breaker: -10% drawdown
 ## 🚨 Important Notes
 
 ### Current Limitations
-1. **Single Symbol Execution**: Currently only trades SPY
-   - Scanner monitors all 30 symbols
-   - But execution is limited to SPY
-   - Multi-symbol trading requires additional development
+1. **Execution Path Depends on Entry Script**:
+   - `start_paper_trading.py` runs a **legacy SPY-only** loop.
+   - `start_scanner_trading.py` and `start_with_dashboard.py` run the **dynamic top 25 multi-symbol** loop by default.
+   - Multi-symbol trading is fully implemented in the dynamic loop; keeping the SPY-only path avoids surprises for legacy users.
 
 2. **Unusual Whales API**:
    - Using test key (5 requests/min limit)
