@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional, Set
 
 from loguru import logger
 
-from schemas.core_schemas import PipelineResult, WatchlistEntry
+from schemas.core_schemas import PipelineResult, WatchlistEntry, PhysicsSnapshot
 from watchlist import AdaptiveWatchlist
 
 
@@ -158,7 +158,7 @@ class PipelineRunner:
         )
         
         try:
-            engine_names = [name for name in ["hedge", "liquidity", "sentiment", "elasticity"] if name in self.engines]
+            engine_names = [name for name in ["hedge", "liquidity", "sentiment", "elasticity", "physics"] if name in self.engines]
             tasks = [self._run_engine(name, self.engines[name], timestamp) for name in engine_names]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             for name, snapshot in results:
@@ -173,6 +173,16 @@ class PipelineRunner:
                     result.sentiment_snapshot = snapshot
                 elif name == "elasticity":
                     result.elasticity_snapshot = snapshot
+                elif name == "physics":
+                    if isinstance(snapshot, dict):
+                        # Convert dict to model if needed, or use as is if Engine protocol varies
+                        # Here we assume it returns a dict matching PhysicsSnapshot or the object itself
+                        try:
+                            result.physics_snapshot = PhysicsSnapshot(**snapshot)
+                        except Exception as e:
+                            logger.error(f"Failed to parse PhysicsSnapshot: {e}")
+                    else:
+                        result.physics_snapshot = snapshot
 
             # Run ML enhancement engine (e.g., LSTM lookahead predictions)
             # Can be MLEnhancementEngine (composite) or LSTMPredictionEngine (specialized)

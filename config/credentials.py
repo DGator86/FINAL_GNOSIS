@@ -68,3 +68,57 @@ def massive_api_enabled(default: bool = True) -> bool:
     """Return whether MASSIVE API usage is enabled (env override with default)."""
 
     return os.getenv("MASSIVE_API_ENABLED", str(default).lower()).lower() == "true"
+
+
+# Polygon.io API credentials
+POLYGON_DEFAULT_API_KEY = ""  # No default - requires user to set
+
+
+def get_polygon_api_key(api_key: Optional[str] = None) -> str:
+    """Return Polygon.io API key preferring explicit arg, then env, then default.
+    
+    Get a free API key at: https://polygon.io
+    
+    Pricing tiers:
+    - Options Basic (FREE): End-of-day + minute aggregates
+    - Options Starter ($29/mo): 15-min delayed + minute aggregates
+    - Options Developer ($79/mo): 15-min delayed + tick data + trades
+    - Options Advanced ($199/mo): Real-time + full historical
+    """
+    return (
+        api_key
+        or os.getenv("POLYGON_API_KEY")
+        or os.getenv("POLYGON_IO_API_KEY")
+        or POLYGON_DEFAULT_API_KEY
+    )
+
+
+def polygon_api_available() -> bool:
+    """Check if Polygon.io API is configured."""
+    return bool(get_polygon_api_key())
+
+
+# Tradier API credentials
+TRADIER_DEFAULT_API_KEY = ""  # No default - requires user to set
+
+
+def get_tradier_api_key(api_key: Optional[str] = None) -> str:
+    """Return Tradier API key preferring explicit arg, then env, then default.
+    
+    Get API access at: https://tradier.com
+    
+    Pricing:
+    - Free with brokerage account
+    - $10/mo for standalone API access
+    """
+    return (
+        api_key
+        or os.getenv("TRADIER_API_KEY")
+        or os.getenv("TRADIER_TOKEN")
+        or TRADIER_DEFAULT_API_KEY
+    )
+
+
+def tradier_api_available() -> bool:
+    """Check if Tradier API is configured."""
+    return bool(get_tradier_api_key())

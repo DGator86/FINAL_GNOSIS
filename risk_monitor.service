@@ -1,0 +1,16 @@
+[Unit]
+Description=GNOSIS Active Risk Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/root/webapp
+ExecStart=/usr/bin/python3 /home/root/webapp/scripts/active_risk_monitor.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/root/webapp/logs/risk_monitor.log
+StandardError=append:/home/root/webapp/logs/risk_monitor_error.log
+
+[Install]
+WantedBy=multi-user.target
