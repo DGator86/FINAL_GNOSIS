@@ -3,6 +3,7 @@ import sys
 import torch
 import numpy as np
 import pandas as pd
+import gc
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any
 
@@ -149,15 +150,15 @@ def run_simulation():
             # Adjust start date for 1Min to avoid OOM (fetch smaller window instead of slicing after)
             local_start = START_DATE
             if tf == "1Min":
-                # Only fetch last ~20 days for 1Min to ensure we get ~5000 bars without OOM
-                local_start = END_DATE - timedelta(days=20)
+                # Only fetch last ~5 days for 1Min to ensure we get ~2000 bars without OOM on 2GB instance
+                local_start = END_DATE - timedelta(days=5)
             
             # Fetch
             bars = alpaca.get_bars(symbol, local_start, END_DATE, timeframe=tf)
             
-            # Limit 1Min bars to avoid timeout/memory issues (last 5000)
-            if tf == "1Min" and len(bars) > 5000:
-                bars = bars[-5000:]
+            # Limit 1Min bars to avoid timeout/memory issues (last 2000)
+            if tf == "1Min" and len(bars) > 2000:
+                bars = bars[-2000:]
                 
             res = evaluate_symbol_timeframe(model, bars, symbol, tf)
             if res:
@@ -166,6 +167,10 @@ def run_simulation():
                 print(f"   {symbol} {tf}: Ret={res['Return']:.2%} | Sharpe={res['Sharpe']:.2f}")
             else:
                 print(f"   {symbol} {tf}: No Data")
+                
+            # Explicit garbage collection to prevent OOM
+            del bars
+            gc.collect()
 
     # ---------------------------------------------------------
     # PHASE B: SYNTHETIC DATA (Stress Test)
