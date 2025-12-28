@@ -92,6 +92,7 @@ class TradeAgentConfig(BaseModel):
     enabled: bool = True
     max_position_size: float = 10000.0
     risk_per_trade: float = 0.02
+    min_confidence: float = 0.5  # Minimum confidence threshold for trade execution
 
 
 class AgentsConfig(BaseModel):
