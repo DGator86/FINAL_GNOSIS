@@ -2,7 +2,6 @@ import os
 import sys
 import numpy as np
 import torch
-import multiprocessing as mp
 import random
 from datetime import datetime, timedelta, timezone
 import yfinance as yf
@@ -14,8 +13,8 @@ from engines.ml.training.env import PhysicsEnv
 from engines.ml.training.model import PhysicsAgent
 from engines.ml.training.physics_wrapper import FastPhysicsWrapper
 
-def evaluate_agent(args):
-    weights, data = args
+# Function to evaluate agent sequentially to save memory
+def evaluate_agent(weights, data):
     model = PhysicsAgent()
     model.set_weights(weights)
     wrapper = FastPhysicsWrapper()
@@ -35,6 +34,7 @@ def get_yfinance_data(symbol="SPY", days=365):
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
     
+    # Using progress=False to avoid cluttering logs
     df = yf.download(symbol, start=start_date, end=end_date, interval="1h", progress=False)
     
     if df.empty:
@@ -74,21 +74,21 @@ def get_yfinance_data(symbol="SPY", days=365):
     return records
 
 def run():
-    print("🚀 Starting Monday Prep Training (Robust Mode)...")
+    print("🚀 Starting Monday Prep Training (Sequential Mode for Stability)...")
     
-    # 1. Data (Using yfinance for speed/reliability in sandbox)
+    # 1. Data
     data_records = get_yfinance_data("SPY", days=365)
     
     if not data_records:
         print("❌ Aborting: No training data.")
         return
 
-    # 2. Config
-    POP_SIZE = 32
+    # 2. Config - Optimized for 2GB RAM
+    POP_SIZE = 16    # Reduced population size to save memory
     GENERATIONS = 10
     SIGMA = 0.1
     ALPHA = 0.02
-    SLICE_LEN = 200 # Short episodes for incremental adaptation
+    SLICE_LEN = 200 # Keep episodes short
     
     master = PhysicsAgent()
     
@@ -104,25 +104,17 @@ def run():
     base_weights = master.get_weights()
     n_params = len(base_weights)
     
-    # Use fewer processes to avoid memory/timeout issues in sandbox
-    ctx = mp.get_context('spawn')
-    pool = ctx.Pool(4) 
-    
-    print(f"🏋️ Training for {GENERATIONS} generations with pop_size={POP_SIZE}...")
+    print(f"🏋️ Training for {GENERATIONS} generations with pop_size={POP_SIZE} (Sequential)...")
     
     for gen in range(GENERATIONS):
         noise = np.random.randn(POP_SIZE, n_params) * SIGMA
-        candidates = []
+        rewards = []
         
-        # Focus on recent data for "Monday Prep"
-        # We want the model to be attuned to the latest market regime
-        # So we bias start_idx towards the end of the dataset
-        
+        # Sequential Execution Loop
         for i in range(POP_SIZE):
             w = base_weights + noise[i]
             
-            # 50% chance to train on VERY recent data (last 30 days window)
-            # 50% chance to train on random slice from last year (prevent overfitting)
+            # Select data slice
             if random.random() > 0.5 and len(data_records) > SLICE_LEN:
                 # Recent history focus
                 latest_start = len(data_records) - SLICE_LEN - 1
@@ -134,12 +126,14 @@ def run():
             else:
                 # General history
                 start_idx = random.randint(0, max(0, len(data_records) - SLICE_LEN - 1))
-                
-            candidates.append((w, data_records[start_idx : start_idx + SLICE_LEN]))
             
-        rewards = np.array(pool.map(evaluate_agent, candidates))
+            # Evaluate single candidate
+            r = evaluate_agent(w, data_records[start_idx : start_idx + SLICE_LEN])
+            rewards.append(r)
+            
+        rewards = np.array(rewards)
         
-        # Update
+        # Update Strategy
         std = rewards.std()
         if std < 1e-8: std = 1e-8
             
@@ -157,8 +151,6 @@ def run():
              
         print(f"   Gen {gen+1} | Avg: {rewards.mean():.2f} | Max: {rewards.max():.2f}")
         
-    pool.close()
-    pool.join()
     print("✅ Training Complete. Model updated for Monday.")
 
 if __name__ == "__main__":
