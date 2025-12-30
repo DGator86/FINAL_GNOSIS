@@ -38,11 +38,16 @@ class HedgeAgentV3:
 
         # Incorporate LSTM predictions if available
         if self.use_lstm and pipeline_result.ml_snapshot and pipeline_result.ml_snapshot.forecast:
+            forecast_data = pipeline_result.ml_snapshot.forecast
+            # Fix: Handle both list and object access for metadata
+            metadata = forecast_data.metadata if hasattr(forecast_data, 'metadata') else {}
+            
             direction, confidence, reasoning = self._combine_lstm_and_energy(
                 energy_direction=energy_direction,
                 energy_reasoning=energy_reasoning,
                 snapshot=snapshot,
-                ml_forecast=pipeline_result.ml_snapshot.forecast,
+                ml_forecast=forecast_data,
+                lstm_metadata=metadata
             )
         else:
             direction = energy_direction
@@ -82,6 +87,7 @@ class HedgeAgentV3:
         energy_reasoning: str,
         snapshot,
         ml_forecast,
+        lstm_metadata: dict = None,
     ) -> tuple[DirectionEnum, float, str]:
         """
         Combine LSTM predictions with energy-based signals
@@ -90,7 +96,7 @@ class HedgeAgentV3:
             (direction, confidence, reasoning)
         """
         # Extract LSTM metadata
-        lstm_metadata = ml_forecast.metadata or {}
+        lstm_metadata = lstm_metadata or {}
         lstm_direction_str = lstm_metadata.get("direction", "neutral")
         lstm_confidence = ml_forecast.confidence or 0.0
 

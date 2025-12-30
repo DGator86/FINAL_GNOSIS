@@ -19,10 +19,12 @@ from engines.sentiment.sentiment_engine_v1 import SentimentEngineV1
 from engines.sentiment.processors import NewsSentimentProcessor, FlowSentimentProcessor, TechnicalSentimentProcessor
 from engines.elasticity.elasticity_engine_v1 import ElasticityEngineV1
 from engines.physics.physics_engine import PhysicsEngine
+from engines.ml.lstm_engine import LSTMPredictionEngine
+from engines.liquidity.liquidity_engine_v4 import LiquidityEngineV4
 
 from agents.hedge_agent_v3 import HedgeAgentV3
-from agents.liquidity_agent_v1 import LiquidityAgentV1
-from agents.sentiment_agent_v1 import SentimentAgentV1
+from agents.liquidity_agent_v3 import LiquidityAgentV3
+from agents.sentiment_agent_v3 import SentimentAgentV3
 from agents.composer.composer_agent_v1 import ComposerAgentV1
 from trade.elite_trade_agent import create_elite_trade_agent
 
@@ -45,6 +47,14 @@ def run_daemon():
         market = create_market_data_adapter(prefer_real=True)
         options = create_options_adapter(prefer_real=True)
         news = create_news_adapter(prefer_real=True)
+        
+        # Initialize ML Engine
+        ml_engine = LSTMPredictionEngine(
+            market_adapter=market,
+            lookback_periods=300,
+            feature_builder=None # Allow it to use default EnhancedFeatureBuilder()
+        )
+        logger.info("🧠 ML Engine (LSTM) Initialized")
         
         # Check if Unusal Whales is available for Flow
         flow_adapter = None
@@ -97,7 +107,7 @@ def run_daemon():
                 # Build Pipeline
                 engines = {
                     "hedge": HedgeEngineV3(options, config.engines.hedge.model_dump()),
-                    "liquidity": LiquidityEngineV1(market, config.engines.liquidity.model_dump()),
+                    "liquidity": LiquidityEngineV4(market, options, config.engines.liquidity.model_dump()),
                     "sentiment": SentimentEngineV1(
                         [
                             NewsSentimentProcessor(news, config.engines.sentiment.model_dump()),
@@ -110,10 +120,12 @@ def run_daemon():
                     "physics": PhysicsEngine(market, options, config.model_dump()),
                 }
                 
+                # Link ML Engine to Pipeline
+                
                 primary_agents = {
                     "hedge_agent": HedgeAgentV3(config.agents.hedge.model_dump()),
-                    "liquidity_agent": LiquidityAgentV1(config.agents.liquidity.model_dump()),
-                    "sentiment_agent": SentimentAgentV1(config.agents.sentiment.model_dump()),
+                    "liquidity_agent": LiquidityAgentV3(config.agents.liquidity.model_dump(), liquidity_engine=engines["liquidity"]),
+                    "sentiment_agent": SentimentAgentV3(config.agents.sentiment.model_dump()),
                 }
                 
                 composer = ComposerAgentV1(config.agents.composer.weights, config.agents.composer.model_dump())
@@ -136,6 +148,7 @@ def run_daemon():
                     ledger_store=ledger,
                     config=config.model_dump(),
                     auto_execute=True, # EXECUTE!
+                    ml_engine=ml_engine
                 )
                 
                 # Run Sync (Daemon manages concurrency by symbol if needed, but sequential is safer for rate limits)
