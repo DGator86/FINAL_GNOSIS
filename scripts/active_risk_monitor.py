@@ -41,13 +41,14 @@ ALPACA_KEY = os.getenv("ALPACA_API_KEY", "")
 ALPACA_SECRET = os.getenv("ALPACA_SECRET_KEY", "")
 ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets").replace("/v2", "")
 
-# Risk Parameters
-STOCK_STOP_LOSS_PCT = -12.0      # Close stocks down more than 12%
-OPTION_STOP_LOSS_PCT = -50.0     # Close options down more than 50%
-PROFIT_LOCK_THRESHOLD = 20.0     # Start trailing at 20% profit
-TRAILING_STOP_PCT = 30.0         # Trail 30% from peak (for big winners)
+# Risk Parameters - TIGHTENED (User Request)
+STOCK_STOP_LOSS_PCT = -8.0       # Close stocks down more than 8%
+OPTION_STOP_LOSS_PCT = -20.0     # Close options down more than 20% (Was 50%, then 28% was "too much")
+PROFIT_LOCK_THRESHOLD = 10.0     # Start trailing at 10% profit
+TRAILING_STOP_PCT = 15.0         # Trail 15% from peak (Tightened)
+THETA_GUARD_DAYS = 14            # Theta Guard: Warn/Tighten if expiration < 14 days
 MAX_DAILY_LOSS = 5000            # Stop trading if daily loss exceeds this
-CHECK_INTERVAL = 30              # Check every 30 seconds
+CHECK_INTERVAL = 10              # Check every 10 seconds (Faster)
 
 # Tracking
 position_peaks = {}  # Track high-water marks for trailing stops
@@ -132,12 +133,34 @@ def check_position(position: dict) -> tuple:
     
     is_option = len(symbol) > 10
     
-    # Determine stop loss threshold
+    # Determine base stop loss threshold
     stop_threshold = OPTION_STOP_LOSS_PCT if is_option else STOCK_STOP_LOSS_PCT
     
+    # --- Theta/Time Decay Mitigation ---
+    dte_warning = ""
+    if is_option:
+        try:
+            # Extract Date from OCC Symbol (e.g., AAPL230616C00150000 -> 230616)
+            # Find the first digit
+            import re
+            match = re.search(r'(\d{6})', symbol)
+            if match:
+                date_str = match.group(1)
+                expiry = datetime.strptime(date_str, "%y%m%d")
+                days_to_expiry = (expiry - datetime.now()).days
+                
+                if days_to_expiry < THETA_GUARD_DAYS:
+                    dte_warning = f" [THETA ALERT: {days_to_expiry} days left]"
+                    # TIGHTEN RISK FOR SHORT DATED OPTIONS
+                    # If < 14 days, max loss is 10%
+                    stop_threshold = max(stop_threshold, -10.0) 
+        except Exception:
+            pass
+
     # Check hard stop loss
     if unrealized_plpc <= stop_threshold:
-        return True, f"STOP LOSS ({unrealized_plpc:.1f}% <= {stop_threshold}%)"
+        return True, f"STOP LOSS ({unrealized_plpc:.1f}% <= {stop_threshold}%){dte_warning}"
+
     
     # Track peak for trailing stop
     if symbol not in position_peaks:

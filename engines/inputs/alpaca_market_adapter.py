@@ -36,6 +36,35 @@ class AlpacaMarketDataAdapter:
 
         logger.info("AlpacaMarketDataAdapter initialized")
 
+    def get_historical_bars(
+        self, symbol: str, start: datetime | None = None, end: datetime | None = None, timeframe: str = "1Day", limit: int | None = None
+    ) -> List[OHLCV]:
+        """
+        Alias for get_bars to support ML engine interface.
+        If start is not provided, calculates it based on limit or defaults to 30 days.
+        """
+        if end is None:
+            end = datetime.now(timezone.utc)
+            
+        if start is None:
+            # Default lookback
+            days = 30
+            if timeframe.endswith("Min"):
+                # Estimate 1 day = 390 minutes (6.5 hours)
+                if limit:
+                    days = max(1, limit // 390 + 1)
+                else:
+                    days = 5 # 5 days for minute data default
+            elif timeframe.endswith("Hour"):
+                if limit:
+                    days = max(1, limit // 7 + 1)
+                else:
+                    days = 30
+            
+            start = end - timedelta(days=days)
+            
+        return self.get_bars(symbol, start, end, timeframe)
+
     def get_bars(
         self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Day"
     ) -> List[OHLCV]:

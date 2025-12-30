@@ -22,6 +22,14 @@ engines:
     enabled: true
     volatility_window: 20
 
+  physics:
+    enabled: true
+    gmm_config:
+      alpha: 0.0490       # Optimized by HiveMind Epoch 9075
+      sigma: 0.2572       # Optimized by HiveMind Epoch 9075
+      n_components: 5
+      window_size: 100
+
 # Enable all agents by default
 agents:
   all: true

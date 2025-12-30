@@ -48,7 +48,9 @@ class EnhancedFeatureBuilder:
     - Temporal patterns
     """
     
-    def __init__(self, config: FeatureConfig):
+    def __init__(self, config: Optional[FeatureConfig] = None):
+        if config is None:
+            config = FeatureConfig()
         self.config = config
         self.feature_names: List[str] = []
         self.scaler = None  # Will be StandardScaler

@@ -48,7 +48,9 @@ class LSTMPredictionEngine:
             lookback_periods: Number of historical periods to fetch
         """
         self.market_adapter = market_adapter
-        self.feature_builder = feature_builder or EnhancedFeatureBuilder()
+        if feature_builder is None:
+            feature_builder = EnhancedFeatureBuilder()
+        self.feature_builder = feature_builder
         self.lookback_periods = lookback_periods
 
         # Initialize LSTM predictor
