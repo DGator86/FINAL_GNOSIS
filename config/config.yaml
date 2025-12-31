@@ -56,6 +56,7 @@ agents:
     enabled: true
     max_position_size: 10000.0
     risk_per_trade: 0.02
+    min_confidence: 0.35  # Minimum confidence threshold for trade execution
 
 backtest:
   use_all_components: true
