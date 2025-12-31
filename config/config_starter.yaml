@@ -1,0 +1,341 @@
+# ============================================================================
+# GNOSIS Configuration for $1000 Starter Account
+# ============================================================================
+# Optimized for:
+# - Small account size ($1000)
+# - PDT rule avoidance (swing trades)
+# - High win rate focus
+# - Conservative risk management
+# ============================================================================
+
+# === ENGINE CONFIGURATION ===
+engines:
+  # Hedge Engine v3 - Dealer positioning analysis
+  hedge:
+    enabled: true
+    lookback_days: 20              # Recent data only
+    min_dte: 7
+    max_dte: 45                    # Shorter-term focus
+    confidence_threshold: 0.70     # High confidence required
+    min_volume: 1000000           # Only liquid options
+
+    # Energy-based analysis
+    elasticity:
+      enabled: true
+      min_significance: 0.60       # Strong signals only
+
+    movement_energy:
+      enabled: true
+      threshold_percentile: 0.70   # Top 30% energy moves
+
+    regime_detection:
+      enabled: true
+      lookback_periods: 14         # 2-week regime window
+
+  # Liquidity Engine - Ensure tight spreads for small account
+  liquidity:
+    enabled: true
+    min_volume: 1000000.0          # Minimum daily volume
+    max_spread_pct: 0.30           # Max 0.3% spread (very tight)
+    min_liquidity_score: 0.65      # High liquidity requirement
+    depth_analysis: true
+    impact_threshold: 0.001        # Minimal market impact
+
+  # Sentiment Engine
+  sentiment:
+    enabled: true
+    min_sentiment_threshold: 0.35  # Stronger sentiment needed
+
+    weights:
+      news_weight: 0.30
+      flow_weight: 0.40            # Focus on actual flow
+      technical_weight: 0.30
+
+    # News analysis
+    news:
+      enabled: true
+      lookback_hours: 24
+      min_relevance: 0.60
+
+    # Technical sentiment
+    technical:
+      enabled: true
+      rsi_period: 14
+      macd_fast: 12
+      macd_slow: 26
+
+  # Elasticity Engine - Regime detection
+  elasticity:
+    enabled: true
+    min_regime_confidence: 0.65
+    regime_lookback: 20
+    vol_threshold: 0.20            # 20% annualized vol minimum
+
+  # Physics Engine - Probability models
+  physics:
+    enabled: true
+    gmm_config:
+      alpha: 0.0490
+      sigma: 0.2572
+      n_components: 3              # Simpler model
+      min_probability: 0.60        # High probability threshold
+
+# === AGENT CONFIGURATION ===
+agents:
+  # Hedge Agent v3
+  hedge:
+    min_confidence: 0.65
+    weight: 0.40                   # Highest weight
+
+    # Signal thresholds
+    gamma_threshold: 0.10
+    vanna_threshold: 0.08
+    charm_threshold: 0.05
+
+    # Energy analysis
+    movement_energy_threshold: 0.65
+    elasticity_threshold: 0.60
+
+  # Liquidity Agent
+  liquidity:
+    min_liquidity_score: 0.65
+    weight: 0.25
+
+    # Spread requirements
+    max_spread_bps: 30             # Max 30 bps spread
+    min_depth_ratio: 0.80
+
+    # Volume requirements
+    min_dollar_volume: 50000000    # $50M daily
+
+  # Sentiment Agent
+  sentiment:
+    min_sentiment_threshold: 0.35
+    weight: 0.20
+
+    # Consensus requirements
+    min_signals_agreeing: 2        # At least 2 signals agree
+    max_conflicting: 1             # Max 1 conflicting signal
+
+  # Composer Agent - Builds consensus
+  composer:
+    min_consensus: 0.70            # Require 70% agent agreement
+    min_agents_agreeing: 3         # At least 3 agents agree
+
+    weights:
+      hedge: 0.40
+      liquidity: 0.25
+      sentiment: 0.20
+      physics: 0.15
+
+  # Risk Management Agent
+  risk:
+    enabled: true
+    max_risk_per_trade: 0.02       # 2% max risk ($20 on $1000)
+    max_portfolio_risk: 0.10       # 10% total portfolio risk
+    max_correlation: 0.70          # Max correlation between positions
+
+    # Circuit breakers
+    daily_loss_limit: 0.02         # Stop at -2% daily
+    weekly_loss_limit: 0.05        # Stop at -5% weekly
+    drawdown_limit: 0.15           # Stop at -15% from peak
+
+# === TRADING CONFIGURATION ===
+trading:
+  # Position Sizing (CRITICAL for $1000 account)
+  position_sizing:
+    method: "fixed_fractional"     # Simple fractional sizing
+    default_size: 100              # $100 default position
+    min_size: 50                   # $50 minimum
+    max_size: 200                  # $200 maximum (20%)
+
+    # Risk-based sizing
+    risk_per_trade: 0.02           # Risk 2% per trade
+    use_kelly: false               # Kelly too aggressive for small account
+    kelly_fraction: 0.25           # If enabled, use 25% Kelly
+
+  # Risk Management
+  risk:
+    stop_loss_pct: 0.05            # 5% stop loss
+    take_profit_pct: 0.10          # 10% take profit
+    trailing_stop_pct: 0.03        # 3% trailing stop
+    use_time_stops: true
+    max_hold_days: 20              # Exit by day 20
+
+    # Hard limits
+    max_loss_per_trade: 20         # $20 max loss
+    max_daily_loss: 20             # $20 daily limit
+    max_drawdown: 150              # $150 max drawdown (15%)
+
+  # Trade Selection
+  selection:
+    min_confidence: 0.70           # Only high-confidence trades
+    min_reward_risk: 2.0           # Minimum 2:1 reward/risk
+    min_probability: 0.60          # 60%+ win probability
+    max_correlation: 0.70          # Avoid correlated trades
+
+    # Quality filters
+    require_all_engines: false     # At least 3/5 engines agree
+    min_engines_agreeing: 3
+    require_liquidity: true        # Must pass liquidity check
+    require_sentiment: false       # Sentiment helpful but not required
+
+  # Execution
+  execution:
+    order_type: "limit"            # Use limit orders
+    limit_offset_pct: 0.0010       # 0.1% from market
+    timeout_seconds: 300           # 5 minute timeout
+    max_slippage_pct: 0.0050       # Max 0.5% slippage
+
+    # Retry logic
+    max_retries: 3
+    retry_delay_seconds: 10
+
+  # Holding Periods (PDT Avoidance)
+  holding:
+    min_hold_days: 2               # Hold minimum 2 days
+    target_hold_days: 5            # Target 5 days
+    max_hold_days: 20              # Force exit at 20 days
+
+    # Intraday exits (if needed)
+    allow_intraday_exit: false     # Avoid day trades
+    intraday_profit_target: 0.05   # Exit if +5% intraday
+
+  # Strategy Selection
+  strategies:
+    # Preferred strategies for small accounts
+    preferred:
+      - stock_long                 # Simple long positions
+      - stock_short                # Short on strong signals
+
+    # Avoid capital-intensive strategies
+    avoid:
+      - iron_condor
+      - butterfly_spread
+      - calendar_spread
+      - diagonal_spread
+      - ratio_spread
+
+    # Strategy-specific settings
+    stock:
+      min_confidence: 0.70
+      max_position_pct: 0.20       # 20% max
+      prefer_etfs: true            # Prefer SPY, QQQ
+
+    options:
+      enabled: false               # Disable for now (capital intensive)
+      min_confidence: 0.80
+      max_dte: 45
+      min_dte: 7
+
+# === PORTFOLIO CONFIGURATION ===
+portfolio:
+  # Position limits
+  max_positions: 2                 # Max 2 concurrent positions
+  max_long_positions: 2
+  max_short_positions: 1
+
+  # Concentration limits
+  max_position_pct: 0.20           # 20% per position
+  max_sector_exposure: 1.0         # Can be 100% in one sector (only 2 positions)
+  max_symbol_exposure: 0.20        # 20% per symbol
+
+  # Diversification (relaxed for small account)
+  min_positions: 1
+  target_positions: 2
+  max_correlation: 0.80            # Allow some correlation
+
+  # Rebalancing
+  rebalance_enabled: false         # No rebalancing needed with 2 positions
+  rebalance_threshold: 0.10
+
+# === PERFORMANCE TARGETS ===
+targets:
+  # Daily
+  daily_target_pct: 0.005          # 0.5% per day = $5
+  daily_target_amount: 5
+
+  # Weekly
+  weekly_target_pct: 0.025         # 2.5% per week = $25
+  weekly_target_amount: 25
+
+  # Monthly
+  monthly_target_pct: 0.05         # 5% per month = $50
+  monthly_target_amount: 50
+
+  # Loss limits
+  max_daily_loss_pct: 0.02         # -2% = -$20
+  max_weekly_loss_pct: 0.05        # -5% = -$50
+  max_monthly_loss_pct: 0.10       # -10% = -$100
+
+# === SCANNING CONFIGURATION ===
+scanner:
+  # Scan frequency
+  scan_interval_seconds: 300       # Scan every 5 minutes
+
+  # Opportunity selection
+  max_candidates: 3                # Look at top 3 opportunities
+  min_opportunity_score: 0.70      # Minimum score to consider
+
+  # Symbol universe (START SMALL!)
+  focus_symbols:
+    - SPY                          # S&P 500 ETF (most liquid)
+    - QQQ                          # Nasdaq ETF
+    # Add these once comfortable:
+    # - AAPL
+    # - MSFT
+    # - NVDA
+    # - TSLA
+
+  # Scanning filters
+  filters:
+    min_price: 10.0                # Avoid penny stocks
+    max_price: 1000.0              # Avoid ultra-expensive stocks
+    min_volume: 1000000            # Minimum daily volume
+    min_dollar_volume: 50000000    # $50M minimum
+
+    # Technical filters
+    avoid_earnings: true           # Avoid earnings weeks
+    avoid_dividends: true          # Avoid ex-dividend days
+    max_volatility: 1.0            # Max 100% annualized vol
+
+# === MONITORING & ALERTS ===
+monitoring:
+  # Alert thresholds
+  alert_on_trade: true
+  alert_on_fill: true
+  alert_on_close: true
+  alert_on_stop: true
+  alert_on_target: true
+
+  # Daily summary
+  daily_summary_enabled: true
+  daily_summary_time: "16:00"      # 4 PM EST
+
+  # Performance alerts
+  alert_on_daily_loss: true
+  daily_loss_threshold: 15         # Alert at -$15
+  alert_on_drawdown: true
+  drawdown_threshold: 0.10         # Alert at -10%
+
+# === LOGGING ===
+logging:
+  level: "INFO"                    # INFO for production
+  log_trades: true
+  log_signals: true
+  log_errors: true
+
+  # File logging
+  log_to_file: true
+  log_directory: "logs"
+  max_log_size_mb: 100
+  max_log_files: 10
+
+# === BACKTESTING (Optional) ===
+backtest:
+  enabled: false
+  start_date: "2024-01-01"
+  end_date: "2024-12-31"
+  initial_capital: 1000
+  commission: 0.0
+  slippage: 0.0005                 # 0.05% slippage
