@@ -39,7 +39,7 @@ def run_daemon():
     config = load_config()
     
     # Enforce Options Preference
-    config.agents.trade.min_confidence = 0.6 # High threshold
+    config.agents.trade.min_confidence = 0.35 # Balanced threshold for better signal capture
     
     # Adapters
     try:
@@ -146,7 +146,7 @@ def run_daemon():
                     composer=composer,
                     trade_agent=trade_agent,
                     ledger_store=ledger,
-                    config=config.model_dump(),
+                    config={**config.model_dump(), "skip_watchlist_gating": True},  # Enable trading without watchlist blocking
                     auto_execute=True, # EXECUTE!
                     ml_engine=ml_engine
                 )
