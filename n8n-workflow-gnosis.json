@@ -1,0 +1,201 @@
+{
+  "name": "GNOSIS Automated Trading",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "name": "Every 5 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "id": "schedule-trigger"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "dateTime": [
+            {
+              "value1": "={{$now.hour()}}",
+              "operation": "between",
+              "value2": 9,
+              "value3": 16
+            }
+          ],
+          "number": [
+            {
+              "value1": "={{$now.weekday()}}",
+              "operation": "between",
+              "value2": 1,
+              "value3": 5
+            }
+          ]
+        }
+      },
+      "name": "Market Hours Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "id": "market-hours-check"
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/api/trades/scan-and-execute",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={\n  \"symbols\": [\"SPY\", \"QQQ\", \"AAPL\", \"NVDA\", \"MSFT\"],\n  \"mode\": \"paper\",\n  \"max_positions\": 5,\n  \"min_confidence\": 0.6\n}"
+      },
+      "name": "Execute GNOSIS Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 200],
+      "id": "execute-gnosis"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.status}}",
+              "value2": "success"
+            }
+          ]
+        }
+      },
+      "name": "Success Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 200],
+      "id": "success-check"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "timestamp",
+              "value": "={{$now.toISO()}}"
+            },
+            {
+              "name": "message",
+              "value": "GNOSIS executed successfully"
+            },
+            {
+              "name": "trades",
+              "value": "={{$json.trades_executed}}"
+            }
+          ]
+        }
+      },
+      "name": "Log Success",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1050, 100],
+      "id": "log-success"
+    },
+    {
+      "parameters": {
+        "fromEmail": "alerts@gnosisai.trading",
+        "toEmail": "your-email@example.com",
+        "subject": "GNOSIS Trading Alert: Error",
+        "text": "=GNOSIS encountered an error:\n\nTime: {{$now.toISO()}}\nError: {{$json.error}}\nDetails: {{$json.message}}"
+      },
+      "name": "Send Error Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "id": "send-error-email"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot{{$env.TELEGRAM_BOT_TOKEN}}/sendMessage",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={\n  \"chat_id\": \"{{$env.TELEGRAM_CHAT_ID}}\",\n  \"text\": \"✅ GNOSIS Trade Executed\\n\\nSymbols: {{$json.symbols}}\\nTrades: {{$json.trades_executed}}\\nTime: {{$now.format('HH:mm:ss')}}\",\n  \"parse_mode\": \"Markdown\"\n}"
+      },
+      "name": "Telegram Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1250, 100],
+      "id": "telegram-notification"
+    }
+  ],
+  "connections": {
+    "Every 5 minutes": {
+      "main": [
+        [
+          {
+            "node": "Market Hours Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Market Hours Check": {
+      "main": [
+        [
+          {
+            "node": "Execute GNOSIS Scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute GNOSIS Scan": {
+      "main": [
+        [
+          {
+            "node": "Success Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Check": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Error Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Success": {
+      "main": [
+        [
+          {
+            "node": "Telegram Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "America/New_York"
+  }
+}
