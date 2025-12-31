@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
@@ -44,6 +45,23 @@ async def home(request: Request) -> HTMLResponse:
             "health": health,
             "ledger": ledger,
             "watchlist": watchlist,
+        },
+    )
+
+
+@app.get("/tickers", response_class=HTMLResponse)
+async def tickers_view(request: Request) -> HTMLResponse:
+    """Render the dedicated tickers viewer page."""
+
+    watchlist = watchlist_overview()
+    current_time = datetime.now().strftime("%I:%M:%S %p")
+
+    return templates.TemplateResponse(
+        "saas/tickers.html",
+        {
+            "request": request,
+            "watchlist": watchlist,
+            "current_time": current_time,
         },
     )
 
