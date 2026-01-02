@@ -1,0 +1,22 @@
+# Railway ignore file
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.env
+.venv
+venv/
+cache/
+logs/
+.gnosis.pid
+*.log
+.git/
+.pytest_cache/
+.mypy_cache/
+node_modules/
