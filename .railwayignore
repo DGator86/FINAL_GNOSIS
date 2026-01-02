@@ -22,6 +22,6 @@ logs/
 node_modules/
 
 # Ignore Vercel deployment files - use saas/ instead
-api/
+vercel_deployment/
 vercel.json
 requirements-vercel.txt
