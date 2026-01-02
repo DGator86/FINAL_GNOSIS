@@ -56,7 +56,8 @@ signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
 if __name__ == "__main__":
-    port = int(os.getenv("GNOSIS_PORT", "8888"))
+    # Railway uses PORT env variable, fallback to GNOSIS_PORT then 8888
+    port = int(os.getenv("PORT", os.getenv("GNOSIS_PORT", "8888")))
     host = os.getenv("GNOSIS_HOST", "0.0.0.0")
     
     logger.info("="*60)
