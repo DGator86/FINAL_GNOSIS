@@ -20,3 +20,8 @@ logs/
 .pytest_cache/
 .mypy_cache/
 node_modules/
+
+# Ignore Vercel deployment files - use saas/ instead
+api/
+vercel.json
+requirements-vercel.txt
