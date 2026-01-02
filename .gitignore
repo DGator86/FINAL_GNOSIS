@@ -75,3 +75,4 @@ htmlcov/
 
 # Documentation
 docs/_build/
+.gnosis.pid
