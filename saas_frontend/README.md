@@ -1,6 +1,6 @@
 # Super Gnosis SaaS Frontend
 
-This is the control plane for the SaaS. It connects to the Python `api.py` backend.
+This is the control plane for the SaaS. It connects to the Python `web_api.py` backend.
 
 ## Recommended Stack
 - **Framework**: Next.js 14 (App Router)

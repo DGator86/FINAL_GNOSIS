@@ -1,0 +1,32 @@
+2025-12-30 23:36:22.482 | INFO     | utils.circuit_breaker:__init__:117 - CircuitBreaker 'alpaca_api' initialized: threshold=5, timeout=30.0s
+2025-12-30 23:36:22.497 | INFO     | utils.circuit_breaker:__init__:117 - CircuitBreaker 'unusual_whales_api' initialized: threshold=3, timeout=60.0s
+2025-12-30 23:36:25.766 | INFO     | gnosis.utils.greeks_calculator:__init__:28 - GreeksCalculator initialized
+/usr/local/lib/python3.10/dist-packages/pydantic/_internal/_config.py:383: UserWarning: Valid config keys have changed in V2:
+* 'orm_mode' has been renamed to 'from_attributes'
+  warnings.warn(message, UserWarning)
+2025-12-30 23:36:27.017 | INFO     | routers.websocket_api:__init__:123 - WebSocket ConnectionManager initialized
+2025-12-30 23:36:28.063 | INFO     | utils.metrics:__init__:99 - MetricsRegistry initialized with prefix: gnosis
+2025-12-30 23:36:28.111 | INFO     | utils.redis_cache:__init__:289 - RedisCacheBackend initialized (url=redis://localhost:6379/0)
+2025-12-30 23:36:28.118 | INFO     | utils.redis_cache:__init__:168 - MemoryCacheBackend initialized (max_size=10000)
+2025-12-30 23:36:28.118 | INFO     | utils.redis_cache:__init__:488 - CacheManager initialized
+INFO:     Started server process [107273]
+INFO:     Waiting for application startup.
+2025-12-30 23:36:29.611 | INFO     | web_api:lifespan:67 - Starting Super Gnosis Trading System...
+2025-12-30 23:36:29.644 | WARNING  | utils.redis_cache:connect:314 - redis package not installed, using memory cache
+2025-12-30 23:36:29.646 | WARNING  | utils.redis_cache:initialize:499 - Using in-memory cache (Redis unavailable)
+2025-12-30 23:36:29.646 | INFO     | web_api:lifespan:71 - Cache initialized
+2025-12-30 23:36:29.656 | INFO     | routers.websocket_api:start:420 - DataPublisher started
+2025-12-30 23:36:29.656 | INFO     | web_api:lifespan:75 - WebSocket publisher started
+2025-12-30 23:36:29.656 | INFO     | integration.trading_hub:__init__:160 - TradingHub initialized
+2025-12-30 23:36:29.657 | INFO     | integration.trading_hub:start:856 - Starting Trading Hub...
+2025-12-30 23:36:29.664 | WARNING  | integration.trading_hub:websocket_manager:188 - Could not load WebSocket Manager: cannot import name 'connection_manager' from 'routers.websocket_api' (/home/root/webapp/routers/websocket_web_api.py)
+2025-12-30 23:36:29.862 | INFO     | utils.anomaly_detector:__init__:221 - AnomalyDetector initialized
+2025-12-30 23:36:29.902 | INFO     | utils.anomaly_detector:__init__:221 - AnomalyDetector initialized
+2025-12-30 23:36:29.903 | INFO     | integration.trading_hub:anomaly_detector:198 - Anomaly Detector loaded
+2025-12-30 23:36:30.013 | INFO     | scanner.options_flow_scanner:__init__:228 - OptionsFlowScanner initialized
+2025-12-30 23:36:30.043 | INFO     | scanner.options_flow_scanner:__init__:228 - OptionsFlowScanner initialized
+2025-12-30 23:36:30.043 | INFO     | integration.trading_hub:flow_scanner:210 - Options Flow Scanner loaded
+2025-12-30 23:42:39.548 | WARNING  | agents.liquidity_agent_v4:<module>:71 - ICT components not available
+2025-12-30 23:47:33.115 | INFO     | trade.greeks_hedger:__init__:315 - GreeksHedger initialized
+2025-12-30 23:47:35.229 | INFO     | trade.greeks_hedger:__init__:315 - GreeksHedger initialized
+2025-12-30 23:47:37.703 | INFO     | integration.trading_hub:greeks_hedger:234 - Greeks Hedger loaded
