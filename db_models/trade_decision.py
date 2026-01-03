@@ -48,6 +48,14 @@ class TradeDecision(Base):
         nullable=False,
     )
 
+    # ========== Multi-Tenancy ==========
+    user_id = Column(
+        String,
+        nullable=False,
+        index=True,
+        default="system"  # Backward compatibility for existing system trades
+    )
+
     # ========== Meta ==========
     timestamp = Column(
         DateTime(timezone=True),
@@ -191,6 +199,7 @@ class TradeDecision(Base):
         return (
             f"<TradeDecision("
             f"id={self.id}, "
+            f"user_id={self.user_id}, "
             f"symbol={self.symbol}, "
             f"direction={self.direction}, "
             f"mode={self.mode}, "

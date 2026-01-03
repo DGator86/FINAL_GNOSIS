@@ -110,36 +110,6 @@ try:
 except ImportError:
     ORDER_FLOW_AVAILABLE = False
     logger.warning("Order Flow components not available")
-    # Define placeholder enums to prevent NameError
-    from enum import Enum
-    class FootprintPattern(Enum):
-        ABSORPTION_AT_LOW = "absorption_at_low"
-        ABSORPTION_AT_HIGH = "absorption_at_high"
-        INITIATIVE_BUYING = "initiative_buying"
-        INITIATIVE_SELLING = "initiative_selling"
-        BREAKOUT_CONFIRMATION = "breakout_confirmation"
-        FAILED_AUCTION = "failed_auction"
-        STOP_HUNT_COMPLETE = "stop_hunt_complete"
-    class OrderFlowSignal(Enum):
-        ABSORPTION = "absorption"
-        INITIATION = "initiation"
-        EXHAUSTION = "exhaustion"
-        DIVERGENCE = "divergence"
-        IMBALANCE = "imbalance"
-        DELTA_FLIP = "delta_flip"
-        POC_TEST = "poc_test"
-        VALUE_AREA_BREAK = "value_area_break"
-        HVN_REJECTION = "hvn_rejection"
-        LVN_ACCELERATION = "lvn_acceleration"
-        STACKED_IMBALANCE = "stacked_imbalance"
-    class AuctionState:
-        pass
-    class VolumeProfile:
-        pass
-    class OrderFlowState:
-        pass
-    class OrderFlowEntry:
-        pass
 
 # Import Supply & Demand components
 try:
