@@ -351,7 +351,7 @@ psql -U gnosis -d gnosis -f migrations/001_create_trade_decisions.sql
 ### 3. Start API
 
 ```bash
-uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn web_api:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### 4. Test with Sample Data

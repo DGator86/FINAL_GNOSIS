@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
@@ -17,10 +16,14 @@ from saas.services import (
     run_pipeline_once,
     watchlist_overview,
 )
+from fastapi.staticfiles import StaticFiles
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-app = FastAPI(title="Super Gnosis SaaS Control Plane", version="1.0.0")
+app = FastAPI(title="Super Gnosis SaaS", version="1.1.0")
+# Serve static assets for the marketing site
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "saas" / "static")), name="static")
+
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
@@ -31,8 +34,23 @@ class RunRequest(BaseModel):
 
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request) -> HTMLResponse:
-    """Render the SaaS dashboard."""
+async def marketing_home(request: Request) -> HTMLResponse:
+    """Public marketing landing page with CTA to app."""
+
+    health = get_health_snapshot()
+
+    return templates.TemplateResponse(
+        "marketing/index.html",
+        {
+            "request": request,
+            "health": health,
+        },
+    )
+
+
+@app.get("/app", response_class=HTMLResponse)
+async def app_dashboard(request: Request) -> HTMLResponse:
+    """Render the SaaS dashboard (app)."""
 
     health = get_health_snapshot()
     ledger = load_recent_ledger_entries(limit=10)
@@ -45,23 +63,6 @@ async def home(request: Request) -> HTMLResponse:
             "health": health,
             "ledger": ledger,
             "watchlist": watchlist,
-        },
-    )
-
-
-@app.get("/tickers", response_class=HTMLResponse)
-async def tickers_view(request: Request) -> HTMLResponse:
-    """Render the dedicated tickers viewer page."""
-
-    watchlist = watchlist_overview()
-    current_time = datetime.now().strftime("%I:%M:%S %p")
-
-    return templates.TemplateResponse(
-        "saas/tickers.html",
-        {
-            "request": request,
-            "watchlist": watchlist,
-            "current_time": current_time,
         },
     )
 
@@ -97,6 +98,31 @@ async def api_run(request: RunRequest) -> Dict[str, object]:
         raise HTTPException(status_code=400, detail=result.get("error", "Pipeline failed."))
 
     return result
+
+
+class WaitlistRequest(BaseModel):
+    email: str
+    name: str | None = None
+
+
+@app.post("/api/waitlist")
+async def api_waitlist(req: WaitlistRequest) -> Dict[str, object]:
+    """Collect early-access signups into data/waitlist.jsonl."""
+    from pathlib import Path
+    import json
+    from datetime import datetime, timezone
+
+    out = Path("data/waitlist.jsonl")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "email": req.email.strip(),
+        "name": (req.name or "").strip() or None,
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "source": "marketing",
+    }
+    with out.open("a") as f:
+        f.write(json.dumps(payload) + "\n")
+    return {"ok": True}
 
 
 if __name__ == "__main__":  # pragma: no cover - manual launch helper

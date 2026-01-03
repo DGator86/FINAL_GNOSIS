@@ -29,7 +29,7 @@ from fastapi.openapi.utils import get_openapi
 from loguru import logger
 
 # Import routers
-from routers import ml_trades_router, trade_decisions_router, options_greeks_router
+from routers import ml_trades_router, trade_decisions_router, options_greeks_router, saas_api_router
 from routers.websocket_api import router as websocket_router, start_websocket_publisher, stop_websocket_publisher
 from routers.auth import router as auth_router
 
@@ -258,6 +258,7 @@ app.include_router(auth_router)
 app.include_router(options_greeks_router)
 app.include_router(ml_trades_router)
 app.include_router(trade_decisions_router)
+app.include_router(saas_api_router)
 app.include_router(websocket_router)
 
 
@@ -462,7 +463,7 @@ if __name__ == "__main__":
     import uvicorn
     
     uvicorn.run(
-        "api:app",
+        "web_api:app",
         host="0.0.0.0",
         port=8000,
         reload=True,

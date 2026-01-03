@@ -114,7 +114,7 @@ class LiveTradingBot:
         symbol: str,
         bar_interval: str = "1Min",
         enable_memory: bool = False,
-        enable_trading: bool = True,
+        enable_trading: bool = False,
         paper_mode: bool = True,
         on_regime: Optional[Callable[[str], None]] = None,
     ) -> None:

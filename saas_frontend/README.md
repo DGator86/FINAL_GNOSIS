@@ -1,16 +1,79 @@
-# React + Vite
+# Super Gnosis SaaS Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is the control plane for the SaaS. It connects to the Python `api.py` backend.
 
-Currently, two official plugins are available:
+## Recommended Stack
+- **Framework**: Next.js 14 (App Router)
+- **Auth**: Clerk (easiest for SaaS) or NextAuth.js
+- **UI**: Tailwind CSS + Shadcn/ui
+- **State**: TanStack Query (React Query)
+- **Charts**: Recharts (for equity curves)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Setup Instructions
 
-## React Compiler
+1. **Initialize Project**
+   ```bash
+   npx create-next-app@latest . --typescript --tailwind --eslint
+   npm install @tanstack/react-query axios lucide-react recharts
+   ```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+2. **Connect to Backend**
+   Update `next.config.js` to proxy API requests to Python:
+   ```js
+   module.exports = {
+     async rewrites() {
+       return [
+         {
+           source: '/api/:path*',
+           destination: 'http://localhost:8000/:path*',
+         },
+       ]
+     },
+   }
+   ```
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+3. **Sample Dashboard Component (`app/dashboard/page.tsx`)**
+   
+   ```tsx
+   "use client";
+   
+   import { useQuery } from "@tanstack/react-query";
+   import axios from "axios";
+   
+   export default function Dashboard() {
+     const { data: profile } = useQuery({
+       queryKey: ["profile"],
+       queryFn: async () => (await axios.get("/api/saas/profile")).data
+     });
+   
+     const { data: summary } = useQuery({
+       queryKey: ["summary"],
+       queryFn: async () => (await axios.get("/api/saas/dashboard/summary")).data
+     });
+   
+     if (!profile) return <div>Loading...</div>;
+   
+     return (
+       <div className="p-8">
+         <h1 className="text-2xl font-bold mb-4">Welcome, {profile.full_name}</h1>
+         
+         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+           <div className="card p-4 border rounded shadow">
+             <h3 className="text-gray-500">Tier</h3>
+             <p className="text-xl font-bold uppercase">{profile.tier}</p>
+           </div>
+           
+           <div className="card p-4 border rounded shadow">
+             <h3 className="text-gray-500">Active Trades</h3>
+             <p className="text-xl font-bold">{summary?.total_trades || 0}</p>
+           </div>
+           
+           <div className="card p-4 border rounded shadow">
+             <h3 className="text-gray-500">System Status</h3>
+             <p className="text-xl font-bold text-green-500">{summary?.system_status}</p>
+           </div>
+         </div>
+       </div>
+     );
+   }
+   ```

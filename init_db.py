@@ -62,7 +62,7 @@ def init_db():
         logger.info("=" * 60)
         logger.info("")
         logger.info("Next steps:")
-        logger.info("1. Start the API: uvicorn api.main:app --reload")
+        logger.info("1. Start the API: uvicorn web_api:app --reload")
         logger.info("2. Test trade decision logging:")
         logger.info("   curl -X POST http://localhost:8000/trades/decisions \\")
         logger.info("        -H 'Content-Type: application/json' \\")
