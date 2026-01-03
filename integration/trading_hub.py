@@ -181,8 +181,8 @@ class TradingHub:
         """Get or create WebSocket connection manager."""
         if self._websocket_manager is None and self.config.enable_websocket:
             try:
-                from routers.websocket_api import connection_manager
-                self._websocket_manager = connection_manager
+                from routers.websocket_api import manager
+                self._websocket_manager = manager
                 logger.info("WebSocket Manager loaded")
             except Exception as e:
                 logger.warning(f"Could not load WebSocket Manager: {e}")
