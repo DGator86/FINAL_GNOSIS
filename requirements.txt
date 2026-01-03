@@ -1,7 +1,9 @@
 # Database
-sqlalchemy>=2.0.0
+sqlalchemy>=2.0.0  # ORM
 psycopg2-binary>=2.9.0
 redis>=4.6.0
+alembic>=1.12.0
+python-multipart>=0.0.6  # For form data parsing
 
 # Core Framework
 pydantic>=2.0.0,<3.0.0
