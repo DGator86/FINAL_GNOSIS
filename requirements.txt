@@ -1,75 +1,59 @@
 # Database
-sqlalchemy>=2.0.0  # ORM
+sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
 redis>=4.6.0
 alembic>=1.12.0
-python-multipart>=0.0.6  # For form data parsing
 
-# Core Framework
-pydantic>=2.0.0,<3.0.0
+# Core
+fastapi>=0.100.0
+uvicorn>=0.20.0
+pydantic>=2.0.0
 pydantic-settings>=2.0.0
 python-dotenv>=1.0.0
+python-multipart>=0.0.6
 PyYAML>=6.0
 typer>=0.9
 click>=8.0
 loguru>=0.7
 
-# Data Processing
+# Data
 polars>=0.20
 pandas>=1.5.0
 numpy>=1.24.0
 
-# Trading & Market Data
+# Trading
 alpaca-trade-api>=3.0.0
 alpaca-py>=0.9.0
 
-# Web Framework (for API)
-fastapi>=0.100.0
-uvicorn>=0.20.0
-starlette>=0.27.0
-websockets>=10.0
-httptools>=0.5.0
-
-# HTTP Clients
+# HTTP
 requests>=2.31.0
 httpx>=0.24.0
+websockets>=10.0
+httptools>=0.5.0
+starlette>=0.27.0
 
-# AWS & Cloud Storage
+# Cloud
 boto3>=1.35.0
 
-# ML & Scientific Computing (core)
+# ML
 scikit-learn>=1.3.0
 scipy>=1.11.0
 statsmodels>=0.14.0
 
-# ML Deep Learning (optional - install separately if needed)
-# torch>=2.0.0
-# tensorflow>=2.13.0
-
-# Time Series & Forecasting (optional - heavy dependencies)
-# kats>=0.2.0
-# prophet>=1.1.0
-
-# Visualization
+# Viz
 streamlit>=1.28.0
 plotly>=5.17.0
 matplotlib>=3.7.0
 
-# Utilities
+# Utils
 anyio>=4.0.0
 colorama>=0.4.6
 sniffio>=1.3.0
 typing_extensions>=4.0.0
 
-# Development & Testing
+# Dev/Test
 pytest>=7.4
 pytest-cov>=4.0
 pytest-asyncio>=0.21
 mypy>=1.5
 ruff>=0.1.0
-
-# Optional Dependencies
-pyarrow>=14.0.0  # For parquet support
-networkx>=3.0  # For graph operations in semantic memory
-faiss-cpu>=1.7.4  # For regime similarity search
-openai>=1.0.0  # For GPT integration (optional)
