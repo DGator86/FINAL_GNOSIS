@@ -1,4 +1,3 @@
-# Single-stage build for debugging/reliability
 FROM python:3.10-slim
 
 WORKDIR /app
@@ -10,19 +9,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first
-COPY requirements.txt .
+# Setup Virtual Environment
+# This is the critical fix: isolating dependencies in a VENV ensures they are found
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Install dependencies (no venv to ensure global availability)
+# Install Python dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
 
-# Create non-root user
+# Permissions
 RUN groupadd -r gnosis && useradd -r -g gnosis gnosis
-RUN mkdir -p /app/data /app/logs && chown -R gnosis:gnosis /app
+RUN mkdir -p /app/data /app/logs && chown -R gnosis:gnosis /app /opt/venv
 
 USER gnosis
 
@@ -35,5 +38,5 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 EXPOSE 8000
 
-# Default command (overridden by railway.toml)
+# Run command
 CMD ["uvicorn", "web_api:app", "--host", "0.0.0.0", "--port", "8000"]
