@@ -2,8 +2,7 @@
 builder = "DOCKERFILE"
 
 [deploy]
-# Use the debug runner to print env info before starting
-startCommand = "python debug_runner.py"
+startCommand = "uvicorn web_api:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
