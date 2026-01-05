@@ -34,9 +34,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     APP_ENV=production \
-    LOG_LEVEL=INFO
+    LOG_LEVEL=INFO \
+    PORT=8000
 
 EXPOSE 8000
 
-# Run command
-CMD ["uvicorn", "web_api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run command - Railway sets PORT dynamically, fallback to 8000
+CMD uvicorn web_api:app --host 0.0.0.0 --port ${PORT:-8000}

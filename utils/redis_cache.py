@@ -23,18 +23,19 @@ Version: 1.0.0
 from __future__ import annotations
 
 import asyncio
-import json
-import pickle
-import time
 import hashlib
+import json
+import os
+import pickle
+import threading
+import time
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union, Generic
-from collections import OrderedDict
-import threading
 
 from loguru import logger
 
@@ -57,13 +58,30 @@ class CacheNamespace(str, Enum):
     ANALYTICS = "analytics"
 
 
+def _get_redis_url() -> str:
+    """Get Redis URL from environment with fallback."""
+    return os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+
+def _get_redis_password() -> Optional[str]:
+    """Get Redis password from environment."""
+    return os.getenv("REDIS_PASSWORD", None)
+
+
 @dataclass
 class CacheConfig:
     """Cache configuration."""
-    # Redis connection
-    redis_url: str = "redis://localhost:6379/0"
-    redis_password: Optional[str] = None
+    # Redis connection - reads from environment by default
+    redis_url: str = None  # Will be set in __post_init__
+    redis_password: Optional[str] = None  # Will be set in __post_init__
     redis_db: int = 0
+
+    def __post_init__(self):
+        """Set defaults from environment after initialization."""
+        if self.redis_url is None:
+            self.redis_url = _get_redis_url()
+        if self.redis_password is None:
+            self.redis_password = _get_redis_password()
     
     # Connection settings
     max_connections: int = 10
