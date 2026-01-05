@@ -1,0 +1,19 @@
+[Unit]
+Description=Gnosis Trading System Frontend
+After=network.target gnosis-backend.service
+Wants=gnosis-backend.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/user/FINAL_GNOSIS/saas_frontend
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="NODE_ENV=development"
+ExecStart=/usr/bin/npm run dev
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/user/FINAL_GNOSIS/logs/frontend.log
+StandardError=append:/home/user/FINAL_GNOSIS/logs/frontend.log
+
+[Install]
+WantedBy=multi-user.target
