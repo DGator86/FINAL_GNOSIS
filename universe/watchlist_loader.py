@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import List
 
+WATCHLIST_PATH = Path("data/universe/current_watchlist.json")
 from loguru import logger
 
 WATCHLIST_PATH = Path("data/universe/current_watchlist.json")
@@ -39,6 +40,13 @@ def load_active_watchlist(max_names: int | None = None) -> List[str]:
     Load the current active universe of symbols.
 
     Returns a sorted, deduped, upper-case list. If the file does not
+    exist, fall back to ["SPY"] so the system still runs.
+    """
+    if not WATCHLIST_PATH.exists():
+        return ["SPY"]
+
+    with WATCHLIST_PATH.open() as f:
+        symbols = json.load(f)
     exist or is empty, automatically seeds it using the dynamic
     universe ranker so multi-symbol trading can start immediately.
     """
@@ -56,6 +64,7 @@ def load_active_watchlist(max_names: int | None = None) -> List[str]:
     symbols = sorted(set(symbols))
 
     if not symbols:
+        return ["SPY"]
         return _generate_dynamic_watchlist(max_names=max_names)
 
     if max_names is not None:

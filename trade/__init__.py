@@ -18,6 +18,8 @@ Trade Agent Types:
 from trade.trade_agent_v1 import TradeAgentV1
 from trade.trade_agent_v2 import ProposedTrade, TradeAgent
 
+__all__ = ["TradeAgentV1", "TradeAgent", "ProposedTrade"]
+
 # GNOSIS Trade Agents V1
 from trade.gnosis_trade_agent import (
     FullGnosisTradeAgent,

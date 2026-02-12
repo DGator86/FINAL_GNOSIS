@@ -1,3 +1,4 @@
+"""Universe-aware TradeAgent with explicit symbol handling."""
 """Universe-aware TradeAgent with explicit symbol handling.
 
 .. deprecated:: v3.0
@@ -13,6 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional
+
+from loguru import logger
 
 import numpy as np
 from loguru import logger
@@ -91,6 +94,15 @@ class TradeAgent:
                 logger.debug(f"Skipping {symbol}: calculated quantity {qty} is not positive")
                 continue
 
+            trades.append(
+                ProposedTrade(
+                    symbol=symbol,
+                    qty=qty,
+                    side=side,
+                    order_type="market",
+                    time_in_force="day",
+                )
+            )
             strategy = self._strategy_selector(idea)
             portfolio_scale = self._optimize_portfolio(expected_return=idea.confidence)
             risk_ok = self._check_var(idea)

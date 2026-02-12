@@ -51,6 +51,7 @@ from models.lookahead_model import LookaheadModel
 from trade.elite_trade_agent import create_elite_trade_agent, EliteTradeAgent
 from universe.watchlist_loader import load_active_watchlist
 from watchlist import AdaptiveWatchlist
+from universe.watchlist_loader import load_active_watchlist
 from cli.result_formatter import format_pipeline_result
 
 # Load environment variables from the repository root (where this file resides)
