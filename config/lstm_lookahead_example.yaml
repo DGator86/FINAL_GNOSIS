@@ -1,0 +1,133 @@
+# LSTM Lookahead Configuration Example
+#
+# This configuration demonstrates how to set up the LSTM Lookahead prediction system
+# for short-term price forecasting in the GNOSIS trading pipeline
+
+lstm_lookahead:
+  # Model Architecture
+  input_dim: 150              # Number of input features (matches EnhancedFeatureBuilder output)
+  hidden_dim: 128             # LSTM hidden dimension
+  num_layers: 2               # Number of LSTM layers
+  dropout: 0.3                # Dropout rate for regularization
+  bidirectional: true         # Use bidirectional LSTM for better context
+
+  # Forecast Settings
+  forecast_horizons:          # Time horizons for predictions (in minutes)
+    - 1                       # 1-minute lookahead
+    - 5                       # 5-minute lookahead
+    - 15                      # 15-minute lookahead
+    - 60                      # 1-hour lookahead
+
+  sequence_length: 60         # Number of historical periods to use as input
+
+  # Training Parameters
+  learning_rate: 0.001        # Adam optimizer learning rate
+  batch_size: 32              # Training batch size
+  max_epochs: 50              # Maximum training epochs
+  patience: 10                # Early stopping patience
+
+  # Device
+  device: "cuda"              # "cuda" for GPU, "cpu" for CPU (auto-detected by default)
+
+
+# Hedge Agent V3 Configuration with LSTM Integration
+hedge_agent_v3:
+  min_confidence: 0.5         # Minimum confidence threshold for suggestions
+  use_lstm: true              # Enable LSTM predictions
+  lstm_weight: 0.4            # Weight for LSTM vs energy signals (0.0-1.0)
+                              # 0.4 means 40% LSTM, 60% energy-based signals
+
+
+# LSTM Engine Configuration
+lstm_engine:
+  lookback_periods: 200       # Number of historical bars to fetch for feature calculation
+  cache_max_age_seconds: 60   # Feature cache expiration time
+
+
+# Pipeline Runner Integration Example
+pipeline:
+  symbol: "SPY"
+
+  # Engines
+  engines:
+    hedge: "hedge_engine_v3"
+    liquidity: "liquidity_engine"
+    sentiment: "sentiment_engine"
+
+  # ML Engine - use LSTM Prediction Engine
+  ml_engine: "lstm_prediction_engine"
+
+  # Primary Agents
+  primary_agents:
+    hedge_agent_v3:
+      min_confidence: 0.5
+      use_lstm: true
+      lstm_weight: 0.4
+
+
+# Training Configuration
+training:
+  # Historical data range for training
+  start_date: "2024-01-01"
+  end_date: "2024-12-01"
+
+  # Model persistence
+  model_save_path: "./models/saved/lstm_lookahead_{symbol}_{date}.pth"
+
+  # Retraining schedule
+  retrain_frequency_days: 30
+  retrain_on_performance_drop: true
+  performance_threshold: 0.6  # Retrain if accuracy drops below this
+
+
+# Usage Notes:
+#
+# 1. Training a new LSTM model:
+#    ```python
+#    from engines.ml.lstm_engine import LSTMPredictionEngine
+#    from models.lstm_lookahead import LookaheadConfig
+#
+#    config = LookaheadConfig(**lstm_lookahead_config)
+#    engine = LSTMPredictionEngine(market_adapter, config=config)
+#    history = engine.train_from_historical_data(
+#        symbol="SPY",
+#        start_date=datetime(2024, 1, 1),
+#        end_date=datetime(2024, 12, 1),
+#        save_path="./models/saved/lstm_spy.pth"
+#    )
+#    ```
+#
+# 2. Loading a pre-trained model:
+#    ```python
+#    engine = LSTMPredictionEngine(
+#        market_adapter,
+#        model_path="./models/saved/lstm_spy.pth"
+#    )
+#    ```
+#
+# 3. Using in Pipeline Runner:
+#    ```python
+#    from engines.orchestration.pipeline_runner import PipelineRunner
+#
+#    pipeline = PipelineRunner(
+#        symbol="SPY",
+#        engines=engines_dict,
+#        primary_agents=agents_dict,
+#        composer=composer,
+#        trade_agent=trade_agent,
+#        ledger_store=ledger,
+#        config=config,
+#        ml_engine=lstm_engine  # Pass LSTM engine here
+#    )
+#    ```
+#
+# 4. Accessing predictions in agents:
+#    ```python
+#    def suggest(self, pipeline_result: PipelineResult, timestamp: datetime):
+#        if pipeline_result.ml_snapshot and pipeline_result.ml_snapshot.forecast:
+#            lstm_forecast = pipeline_result.ml_snapshot.forecast
+#            direction = lstm_forecast.metadata.get("direction")
+#            confidence = lstm_forecast.confidence
+#            predictions = lstm_forecast.metadata.get("predictions_pct", {})
+#            # Use predictions for decision-making
+#    ```

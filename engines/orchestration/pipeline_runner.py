@@ -1,18 +1,72 @@
-"""Pipeline orchestration runner."""
+"""Pipeline orchestration runner.
+
+Provides efficient async/sync execution of the DHPE pipeline with:
+- Concurrent engine execution
+- Persistent event loop management
+- Thread pool for sync adapters
+"""
 
 from __future__ import annotations
 
+import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Dict, Optional, Set
 
 from loguru import logger
 
-from schemas.core_schemas import PipelineResult, WatchlistEntry
+from schemas.core_schemas import PipelineResult, WatchlistEntry, PhysicsSnapshot
 from watchlist import AdaptiveWatchlist
 
 
+# Global event loop management for efficient reuse
+_loop_lock = threading.Lock()
+_event_loop: Optional[asyncio.AbstractEventLoop] = None
+_thread_pool: Optional[ThreadPoolExecutor] = None
+
+
+def get_event_loop() -> asyncio.AbstractEventLoop:
+    """Get or create a persistent event loop for sync contexts.
+    
+    This avoids the overhead of creating a new event loop for each
+    pipeline run when called from synchronous code.
+    """
+    global _event_loop
+    
+    with _loop_lock:
+        if _event_loop is None or _event_loop.is_closed():
+            _event_loop = asyncio.new_event_loop()
+            # Start loop in background thread
+            thread = threading.Thread(
+                target=_event_loop.run_forever,
+                daemon=True,
+                name="pipeline-event-loop"
+            )
+            thread.start()
+            logger.debug("Created persistent event loop for pipeline")
+        return _event_loop
+
+
+def get_thread_pool() -> ThreadPoolExecutor:
+    """Get or create a shared thread pool for sync adapter execution."""
+    global _thread_pool
+    
+    with _loop_lock:
+        if _thread_pool is None:
+            _thread_pool = ThreadPoolExecutor(
+                max_workers=8,
+                thread_name_prefix="pipeline-worker"
+            )
+            logger.debug("Created shared thread pool for pipeline")
+        return _thread_pool
+
+
 class PipelineRunner:
-    """Orchestrates the full DHPE pipeline."""
+    """Orchestrates the full DHPE pipeline.
+    
+    Supports both sync and async execution with efficient resource reuse.
+    """
     
     def __init__(
         self,
@@ -43,6 +97,10 @@ class PipelineRunner:
             config: Pipeline configuration
             watchlist: Adaptive watchlist for ranking/trade gating
             active_positions: Symbols currently held (to avoid scaling beyond plan)
+            tracking_agent: Position tracking agent
+            adaptation_agent: Adaptive feedback agent
+            auto_execute: Whether to execute trades automatically
+            ml_engine: ML enhancement engine
         """
         self.symbol = symbol
         self.engines = engines
@@ -57,9 +115,32 @@ class PipelineRunner:
         self.adaptation_agent = adaptation_agent
         self.auto_execute = auto_execute
         self.ml_engine = ml_engine
+        self._thread_pool = get_thread_pool()
         logger.info(f"PipelineRunner initialized for {symbol}")
     
-    def run_once(self, timestamp: datetime) -> PipelineResult:
+    async def _run_engine(self, name: str, engine, timestamp: datetime):
+        """Run a single engine, handling both async and sync implementations.
+        
+        Uses shared thread pool for sync engines to avoid blocking.
+        """
+        try:
+            if hasattr(engine, "run_async") and asyncio.iscoroutinefunction(engine.run_async):
+                return name, await engine.run_async(self.symbol, timestamp)
+            
+            # Run sync engine in thread pool
+            loop = asyncio.get_running_loop()
+            snapshot = await loop.run_in_executor(
+                self._thread_pool, 
+                engine.run, 
+                self.symbol, 
+                timestamp
+            )
+            return name, snapshot
+        except Exception as e:
+            logger.error(f"Engine {name} failed: {e}")
+            return name, e
+
+    async def run_once_async(self, timestamp: datetime) -> PipelineResult:
         """
         Run a single pipeline iteration.
         
@@ -77,22 +158,38 @@ class PipelineRunner:
         )
         
         try:
-            # Run engines
-            if "hedge" in self.engines:
-                result.hedge_snapshot = self.engines["hedge"].run(self.symbol, timestamp)
-            
-            if "liquidity" in self.engines:
-                result.liquidity_snapshot = self.engines["liquidity"].run(self.symbol, timestamp)
-            
-            if "sentiment" in self.engines:
-                result.sentiment_snapshot = self.engines["sentiment"].run(self.symbol, timestamp)
+            engine_names = [name for name in ["hedge", "liquidity", "sentiment", "elasticity", "physics"] if name in self.engines]
+            tasks = [self._run_engine(name, self.engines[name], timestamp) for name in engine_names]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for name, snapshot in results:
+                if isinstance(snapshot, Exception):
+                    logger.error(f"Error running {name} engine: {snapshot}")
+                    continue
+                if name == "hedge":
+                    result.hedge_snapshot = snapshot
+                elif name == "liquidity":
+                    result.liquidity_snapshot = snapshot
+                elif name == "sentiment":
+                    result.sentiment_snapshot = snapshot
+                elif name == "elasticity":
+                    result.elasticity_snapshot = snapshot
+                elif name == "physics":
+                    if isinstance(snapshot, dict):
+                        # Convert dict to model if needed, or use as is if Engine protocol varies
+                        # Here we assume it returns a dict matching PhysicsSnapshot or the object itself
+                        try:
+                            result.physics_snapshot = PhysicsSnapshot(**snapshot)
+                        except Exception as e:
+                            logger.error(f"Failed to parse PhysicsSnapshot: {e}")
+                    else:
+                        result.physics_snapshot = snapshot
 
-            if "elasticity" in self.engines:
-                result.elasticity_snapshot = self.engines["elasticity"].run(self.symbol, timestamp)
-
+            # Run ML enhancement engine (e.g., LSTM lookahead predictions)
+            # Can be MLEnhancementEngine (composite) or LSTMPredictionEngine (specialized)
             if self.ml_engine:
                 try:
                     result.ml_snapshot = self.ml_engine.enhance(result, timestamp)
+                    logger.debug(f"ML enhancement completed for {self.symbol}")
                 except Exception as e:
                     logger.error(f"Error in ML enhancement engine: {e}")
             
@@ -124,19 +221,21 @@ class PipelineRunner:
                 except Exception as e:
                     logger.error(f"Error updating adaptive watchlist: {e}")
 
-            # Generate trade ideas (watchlist gating temporarily disabled for testing)
+            # Generate trade ideas with optional watchlist gating
             if self.trade_agent:
                 try:
-                    # TEMPORARY: Skip watchlist gating to test execution
-                    # TODO: Fix HedgeSnapshot.data attribute error and re-enable
-                    # if self.watchlist and not self.watchlist.is_symbol_active(self.symbol):
-                    #     logger.info(
-                    #         f"Skipping trade idea generation for {self.symbol} — not on adaptive watchlist"
-                    #     )
-                    #     result.trade_ideas = []
-                    # else:
-                    trade_ideas = self.trade_agent.generate_ideas(result, timestamp)
-                    result.trade_ideas = trade_ideas if trade_ideas else []
+                    # Watchlist gating: Only generate trades for active symbols
+                    # HedgeSnapshot.data issue resolved - watchlist now uses proper attributes
+                    skip_gating = self.config.get("skip_watchlist_gating", False)
+                    
+                    if not skip_gating and self.watchlist and not self.watchlist.is_symbol_active(self.symbol):
+                        logger.info(
+                            f"Skipping trade idea generation for {self.symbol} — not on adaptive watchlist"
+                        )
+                        result.trade_ideas = []
+                    else:
+                        trade_ideas = self.trade_agent.generate_ideas(result, timestamp)
+                        result.trade_ideas = trade_ideas if trade_ideas else []
                 except Exception as e:
                     logger.error(f"Error in trade agent: {e}")
 
@@ -181,5 +280,40 @@ class PipelineRunner:
             
         except Exception as e:
             logger.error(f"Pipeline error for {self.symbol}: {e}")
-        
+
         return result
+
+    def run_once(self, timestamp: datetime) -> PipelineResult:
+        """Synchronous wrapper for environments not using asyncio.
+        
+        Uses a persistent event loop to avoid the overhead of creating
+        a new loop for each call. This is much more efficient for
+        repeated pipeline runs.
+        """
+        # Check if we're already in an async context
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context, can't use run_until_complete
+            # This shouldn't happen in normal usage, but handle it gracefully
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, self.run_once_async(timestamp))
+                return future.result()
+        except RuntimeError:
+            # No running loop - this is the normal sync case
+            pass
+        
+        # Use persistent event loop for efficiency
+        loop = get_event_loop()
+        future = asyncio.run_coroutine_threadsafe(
+            self.run_once_async(timestamp),
+            loop
+        )
+        
+        # Wait for result with timeout
+        try:
+            return future.result(timeout=120.0)
+        except TimeoutError:
+            logger.error(f"Pipeline timeout for {self.symbol}")
+            future.cancel()
+            return PipelineResult(timestamp=timestamp, symbol=self.symbol)

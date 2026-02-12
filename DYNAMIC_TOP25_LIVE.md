@@ -195,6 +195,7 @@ Together, this creates a **gamma sniper** that:
 - **Ranking Speed**: ~0.5 seconds (cached), ~30 seconds (fresh)
 - **Full Scan**: ~3 seconds for all 25 symbols
 - **Multi-Symbol Loop**: Runs continuously with configurable intervals
+- **Resilience**: Universe manager now keeps the previous universe when a transient scan returns zero results and logs how many symbols cleared the score threshold.
 
 ### Configuration Tunability
 You can adjust weights in `config/config.yaml`:

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Dict
+
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -91,6 +92,7 @@ class TradeAgentConfig(BaseModel):
     enabled: bool = True
     max_position_size: float = 10000.0
     risk_per_trade: float = 0.02
+    min_confidence: float = 0.5  # Minimum confidence threshold for trade execution
 
 
 class AgentsConfig(BaseModel):
@@ -154,6 +156,89 @@ class AdaptationConfig(BaseModel):
     max_risk_per_trade: float = 0.05
 
 
+class StorageConfig(BaseModel):
+    """Configuration for cloud storage (S3-compatible)."""
+
+    enabled: bool = False
+    provider: str = "massive"  # massive, aws, minio, etc.
+    endpoint: str = "https://files.massive.com"
+    bucket: str = "flatfiles"
+    region: str = "us-east-1"
+    auto_sync: bool = False  # Automatically sync local data to S3
+    sync_features: bool = True  # Sync feature store to S3
+    sync_ledger: bool = True  # Sync ledger to S3
+    sync_logs: bool = False  # Sync logs to S3
+    sync_models: bool = False  # Sync ML models to S3
+
+
+class BacktestConfig(BaseModel):
+    """Configuration for backtesting runs."""
+
+    use_all_components: bool = True
+    use_real_data: bool = True
+    cache_enabled: bool = True
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+
+class DataSourcesConfig(BaseModel):
+    """Primary data source selection and feature flags."""
+
+    primary: str = "massive"
+    options_provider: str = "massive"
+    unusual_whales_enabled: bool = True
+    cache_path: str = "data/historical"
+
+
+# Physics / GMM Configuration
+class GMMConfig(BaseModel):
+    K_target: int = 12
+    K_min: int = 8
+    K_max: int = 20
+    w_min: float = 0.0025
+    merge_kl_thresh: float = 0.02
+    sigma_mag_ticks: float = 2.0
+    magnet_spawn_weight: float = 0.02
+    max_magnets: int = 4
+
+class DynamicsConfig(BaseModel):
+    a_I_over_beta: float = 1.0
+    b_charm: float = 0.5
+    c_wyckoff: float = 0.75
+    q0: float = 0.02
+    gex_short_gamma_mult: float = 1.6
+    gex_long_gamma_mult: float = 0.7
+
+class FieldConfig(BaseModel):
+    lambda_liq: float = 1.0
+    lambda_strike: float = 1.0
+    lambda_wyck: float = 0.8
+    tau0: float = 1.0
+    tau_short_gamma_mult: float = 1.5
+    tau_long_gamma_mult: float = 0.8
+
+class UniverseConfig(BaseModel):
+    prefilter_M: int = 60
+    active_N: int = 15
+    min_hold_minutes: int = 5
+    add_margin: float = 0.15
+    drop_threshold_frac: float = 0.60
+    max_turnover_per_minute: int = 3
+
+class CostConfig(BaseModel):
+    spread_mult: float = 0.8
+    fee_per_share: float = 0.0
+    slippage_mult_rv: float = 0.1
+
+class PhysicsConfig(BaseModel):
+    cadence: str = "1m"
+    gmm: GMMConfig = Field(default_factory=GMMConfig)
+    dyn: DynamicsConfig = Field(default_factory=DynamicsConfig)
+    field: FieldConfig = Field(default_factory=FieldConfig)
+    uni: UniverseConfig = Field(default_factory=UniverseConfig)
+    cost: CostConfig = Field(default_factory=CostConfig)
+
+
 class AppConfig(BaseModel):
     """Main application configuration."""
 
@@ -163,3 +248,7 @@ class AppConfig(BaseModel):
     trading: TradingConfig = Field(default_factory=TradingConfig)
     tracking: TrackingConfig = Field(default_factory=TrackingConfig)
     adaptation: AdaptationConfig = Field(default_factory=AdaptationConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
+    backtest: BacktestConfig = Field(default_factory=BacktestConfig)
+    data_sources: DataSourcesConfig = Field(default_factory=DataSourcesConfig)
+    gmm_config: PhysicsConfig = Field(default_factory=PhysicsConfig)

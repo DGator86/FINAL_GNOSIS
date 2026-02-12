@@ -1,0 +1,188 @@
+version: '3.8'
+
+# =============================================================================
+# Super Gnosis Trading System - Docker Compose Configuration
+# =============================================================================
+# 
+# Services:
+#   - app: Main trading application (FastAPI)
+#   - redis: Cache layer for market data and Greeks
+#   - prometheus: Metrics collection and storage
+#   - grafana: Metrics visualization dashboard
+#
+# Usage:
+#   docker-compose up -d              # Start all services
+#   docker-compose up -d app redis    # Start app and redis only
+#   docker-compose logs -f app        # View app logs
+#   docker-compose down               # Stop all services
+#
+# Environment:
+#   Copy .env.example to .env and configure your API keys
+#
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # Main Trading Application
+  # ===========================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gnosis-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Application settings
+      - APP_ENV=${APP_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEBUG=${DEBUG:-false}
+      
+      # Redis connection
+      - REDIS_URL=redis://redis:6379/0
+      
+      # Alpaca API (required for trading)
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+      - ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
+      - ALPACA_PAPER=${ALPACA_PAPER:-true}
+      
+      # Unusual Whales API
+      - UNUSUAL_WHALES_API_TOKEN=${UNUSUAL_WHALES_API_TOKEN:-}
+      
+      # Massive.com API
+      - MASSIVE_API_KEY=${MASSIVE_API_KEY:-}
+      - MASSIVE_API_SECRET=${MASSIVE_API_SECRET:-}
+      
+      # Trading configuration
+      - TRADING_SYMBOLS=${TRADING_SYMBOLS:-SPY,QQQ,AAPL,NVDA,MSFT}
+      - MAX_DAILY_LOSS=${MAX_DAILY_LOSS:-5000}
+      - MAX_POSITIONS=${MAX_POSITIONS:-10}
+      
+      # JWT Authentication
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-me-in-production}
+      
+      # Portfolio settings
+      - DEFAULT_CAPITAL=${DEFAULT_CAPITAL:-100000}
+      - MAX_POSITION_SIZE=${MAX_POSITION_SIZE:-0.10}
+      - MAX_PORTFOLIO_RISK=${MAX_PORTFOLIO_RISK:-0.02}
+      
+    volumes:
+      # Persist data directory
+      - gnosis-data:/app/data
+      # Mount logs
+      - gnosis-logs:/app/logs
+      # Mount models directory
+      - gnosis-models:/app/models/trained
+      # Mount checkpoints
+      - gnosis-checkpoints:/app/checkpoints
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - gnosis-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ===========================================================================
+  # Redis Cache
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: gnosis-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1000
+      --save 300 100
+    volumes:
+      - redis-data:/data
+    networks:
+      - gnosis-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # Prometheus Metrics Server
+  # ===========================================================================
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: gnosis-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - gnosis-network
+    depends_on:
+      - app
+
+  # ===========================================================================
+  # Grafana Dashboard
+  # ===========================================================================
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: gnosis-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-gnosis123}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_DOMAIN=${GRAFANA_DOMAIN:-localhost}
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - gnosis-network
+    depends_on:
+      - prometheus
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  gnosis-network:
+    driver: bridge
+    name: gnosis-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  gnosis-data:
+    name: gnosis-data
+  gnosis-logs:
+    name: gnosis-logs
+  gnosis-models:
+    name: gnosis-models
+  gnosis-checkpoints:
+    name: gnosis-checkpoints
+  redis-data:
+    name: gnosis-redis-data
+  prometheus-data:
+    name: gnosis-prometheus-data
+  grafana-data:
+    name: gnosis-grafana-data

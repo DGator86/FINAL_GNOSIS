@@ -7,6 +7,7 @@ Based on Marktechpost Agentic AI Memory tutorial.
 """
 
 import time
+
 from gnosis.memory.trading_memory import TradingMemoryStore
 
 print("="*70)

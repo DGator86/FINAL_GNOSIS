@@ -1,0 +1,6 @@
+{
+  "initial_capital": 100000.0,
+  "transaction_cost": 0.001,
+  "slippage": 0.0005,
+  "seed": 42
+}

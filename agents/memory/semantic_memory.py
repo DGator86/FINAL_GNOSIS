@@ -3,14 +3,15 @@ Semantic Memory System using Knowledge Graphs
 Stores and reasons about market concepts, relationships, and learned rules
 """
 
-from typing import Dict, List, Tuple, Optional, Set, Any
-import networkx as nx
-import numpy as np
-from dataclasses import dataclass, asdict
-from pathlib import Path
 import logging
 import pickle
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import networkx as nx
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -547,7 +548,8 @@ class SemanticMemory:
                             f"{condition_data['name']} {relation_type} {self.concepts[action_id].name} "
                             f"(strength: {strength:.2f})"
                         )
-            except:
+            except (KeyError, AttributeError):
+                # Skip incomplete graph edges
                 continue
         
         return reasoning[:3]  # Limit to top 3 reasoning steps

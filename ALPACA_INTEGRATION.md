@@ -471,6 +471,11 @@ pytest tests/execution/broker_adapters/test_alpaca_adapter.py -m integration -v
 python examples/alpaca_quick_test.py
 ```
 
+### Data feed + diagnostics
+
+- The market data adapter now honors `ALPACA_DATA_FEED` (default `IEX` for paper). Set to `SIP` if your subscription allows for richer historical bars.
+- When Alpaca returns an empty bar set, logs now include the symbol, timeframe, feed, and response keys instead of a generic message. This makes it easier to distinguish credential issues from per-symbol gaps.
+
 ---
 
 ## 🔍 Troubleshooting

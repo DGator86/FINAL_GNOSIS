@@ -9,6 +9,9 @@ from typing import List
 from pipeline.full_pipeline import run_full_pipeline_for_symbol
 from trade.trade_agent_v2 import TradeAgent
 from brokers.alpaca_client import AlpacaClient
+from brokers.alpaca_client import AlpacaClient
+from pipeline.full_pipeline import run_full_pipeline_for_symbol
+from trade.trade_agent_v2 import TradeAgent
 from universe.watchlist_loader import load_active_watchlist
 
 
@@ -66,6 +69,7 @@ def main(args: argparse.Namespace) -> None:
     )
     if args.dry_run:
         print("[INFO] DRY RUN enabled - Alpaca orders will NOT be sent.")
+    alpaca = AlpacaClient.from_env()
 
     for symbol in symbols:
         print(f"\n=== Running pipeline for {symbol} ===")

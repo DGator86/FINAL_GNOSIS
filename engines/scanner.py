@@ -9,7 +9,6 @@ from typing import Any, Dict, List
 from loguru import logger
 from pydantic import BaseModel
 
-
 # Legacy default universe - kept for backwards compatibility
 # BUT: New behavior uses dynamic_universe.py to get current top N
 DEFAULT_UNIVERSE = [
@@ -137,11 +136,19 @@ class OpportunityScanner:
     
     def _evaluate_symbol(self, symbol: str, timestamp: datetime) -> Opportunity:
         """Evaluate a single symbol for opportunity quality."""
-        # Run engines
-        hedge_snap = self.hedge_engine.run(symbol, timestamp)
-        liquidity_snap = self.liquidity_engine.run(symbol, timestamp)
-        sentiment_snap = self.sentiment_engine.run(symbol, timestamp)
-        elasticity_snap = self.elasticity_engine.run(symbol, timestamp)
+        # Run engines with graceful fallbacks
+        hedge_snap = self._safe_run_engine(
+            self.hedge_engine.run, symbol, timestamp, "HedgeEngine"
+        )
+        liquidity_snap = self._safe_run_engine(
+            self.liquidity_engine.run, symbol, timestamp, "LiquidityEngine"
+        )
+        sentiment_snap = self._safe_run_engine(
+            self.sentiment_engine.run, symbol, timestamp, "SentimentEngine"
+        )
+        elasticity_snap = self._safe_run_engine(
+            self.elasticity_engine.run, symbol, timestamp, "ElasticityEngine"
+        )
         
         # Calculate opportunity score (0-1)
         # Factors: energy asymmetry, liquidity, sentiment alignment, volatility
@@ -200,3 +207,25 @@ class OpportunityScanner:
             options_score=0.5,  # Placeholder
             reasoning=reasoning,
         )
+
+    def _safe_run_engine(self, fn, symbol: str, timestamp: datetime, name: str):
+        try:
+            return fn(symbol, timestamp)
+        except Exception as exc:
+            logger.warning(f"{name} failed for {symbol}: {exc} — using neutral snapshot")
+            # Import locally to avoid cycles
+            from schemas.core_schemas import (
+                ElasticitySnapshot,
+                HedgeSnapshot,
+                LiquiditySnapshot,
+                SentimentSnapshot,
+            )
+
+            fallback_map = {
+                "HedgeEngine": HedgeSnapshot,
+                "LiquidityEngine": LiquiditySnapshot,
+                "SentimentEngine": SentimentSnapshot,
+                "ElasticityEngine": ElasticitySnapshot,
+            }
+            snapshot_cls = fallback_map.get(name)
+            return snapshot_cls(timestamp=timestamp, symbol=symbol)

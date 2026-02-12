@@ -1,6 +1,4 @@
 """
-Hyperparameter optimization utilities for GNOSIS ML models.
-
 This module provides a lightweight Bayesian optimization helper that uses a
 Gaussian Process surrogate model with an Expected Improvement acquisition
 function. It is designed to work alongside Optuna-defined search spaces while
@@ -14,11 +12,25 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
-import optuna
-from scipy import stats
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import Matern
-from sklearn.preprocessing import StandardScaler
+
+try:
+    import optuna
+except Exception:  # pragma: no cover - optional dependency
+    optuna = None  # type: ignore
+
+try:
+    from scipy import stats
+except Exception:  # pragma: no cover - optional dependency
+    stats = None  # type: ignore
+
+try:
+    from sklearn.gaussian_process import GaussianProcessRegressor
+    from sklearn.gaussian_process.kernels import Matern
+    from sklearn.preprocessing import StandardScaler
+except Exception:  # pragma: no cover - optional dependency
+    GaussianProcessRegressor = None  # type: ignore
+    Matern = None  # type: ignore
+    StandardScaler = None  # type: ignore
 
 
 logger = logging.getLogger(__name__)
@@ -35,8 +47,11 @@ class HyperparameterSpace:
     choices: Optional[List[Any]] = None
     log: bool = False
 
-    def suggest(self, trial: optuna.Trial) -> Any:
+    def suggest(self, trial: Any) -> Any:
         """Suggest a value for this space using an Optuna trial."""
+
+        if optuna is None:
+            raise ImportError("optuna is required for suggest but is not installed")
 
         if self.param_type == "int":
             if self.log:
@@ -57,6 +72,9 @@ class HyperparameterSpace:
         raise ValueError(f"Unknown parameter type: {self.param_type}")
 
 
+_DEPENDENCIES_AVAILABLE = all([GaussianProcessRegressor, Matern, StandardScaler, stats])
+
+
 class BayesianOptimizer:
     """Bayesian optimization helper for hyperparameter tuning."""
 
@@ -69,15 +87,19 @@ class BayesianOptimizer:
         self.space = space
         self.n_initial_points = n_initial_points
         self.n_candidates = n_candidates
-        self.X_observed: List[np.ndarray] = []
+        self.X_observed: List[np.SimpleArray] = []
         self.y_observed: List[float] = []
-        self.gp_model: GaussianProcessRegressor | None = None
-        self.scaler = StandardScaler()
+        self.gp_model: Any | None = None
+        self.scaler = StandardScaler() if StandardScaler else None
 
     def suggest_next(self) -> Dict[str, Any]:
         """Suggest the next hyperparameter configuration to evaluate."""
 
         if len(self.X_observed) < self.n_initial_points:
+            return self._random_sample()
+
+        if not _DEPENDENCIES_AVAILABLE:
+            logger.warning("GP dependencies missing; falling back to random sampling.")
             return self._random_sample()
 
         return self._bayesian_suggest()
@@ -89,7 +111,7 @@ class BayesianOptimizer:
         self.X_observed.append(encoded_params)
         self.y_observed.append(score)
 
-    def _encode_params(self, params: Dict[str, Any]) -> np.ndarray:
+    def _encode_params(self, params: Dict[str, Any]) -> np.SimpleArray:
         """Encode hyperparameters into a numeric vector for GP consumption."""
 
         encoded: List[float] = []
@@ -104,9 +126,9 @@ class BayesianOptimizer:
                     for choice in (space_param.choices or [])
                 )
 
-        return np.array(encoded, dtype=float)
+        return np.asarray(encoded, dtype=float)
 
-    def _decode_params(self, encoded: np.ndarray) -> Dict[str, Any]:
+    def _decode_params(self, encoded: np.SimpleArray) -> Dict[str, Any]:
         """Decode a numeric vector back into hyperparameters."""
 
         params: Dict[str, Any] = {}
@@ -126,8 +148,8 @@ class BayesianOptimizer:
             elif space_param.param_type == "categorical":
                 choices = space_param.choices or []
                 choice_values = encoded[idx : idx + len(choices)]
-                best_choice_idx = int(np.argmax(choice_values))
-                params[space_param.name] = choices[best_choice_idx]
+                best_choice_idx = int(np.argmax(choice_values)) if choices else 0
+                params[space_param.name] = choices[best_choice_idx] if choices else None
                 idx += len(choices)
 
         return params
@@ -160,6 +182,9 @@ class BayesianOptimizer:
     def _bayesian_suggest(self) -> Dict[str, Any]:
         """Suggest the next point using the GP-based acquisition function."""
 
+        if not _DEPENDENCIES_AVAILABLE:
+            return self._random_sample()
+
         if self.gp_model is None or len(self.X_observed) % 5 == 0:
             self._fit_gp_model()
 
@@ -168,15 +193,18 @@ class BayesianOptimizer:
     def _fit_gp_model(self) -> None:
         """Fit or refit the Gaussian Process model to observed data."""
 
-        if not self.X_observed:
+        if not _DEPENDENCIES_AVAILABLE or not self.X_observed:
             return
 
         X = np.vstack(self.X_observed)
-        y = np.array(self.y_observed)
+        y = np.asarray(self.y_observed, dtype=float)
 
-        X_normalized = self.scaler.fit_transform(X)
+        if self.scaler:
+            X_normalized = self.scaler.fit_transform(X)
+        else:
+            X_normalized = X
 
-        kernel = Matern(length_scale=1.0, nu=2.5)
+        kernel = Matern(length_scale=1.0, nu=2.5) if Matern else None
         self.gp_model = GaussianProcessRegressor(
             kernel=kernel,
             alpha=1e-6,
@@ -207,13 +235,17 @@ class BayesianOptimizer:
 
         return best_params
 
-    def _expected_improvement(self, x: np.ndarray) -> float:
+    def _expected_improvement(self, x: np.SimpleArray) -> float:
         """Compute Expected Improvement at the encoded point ``x``."""
 
-        if self.gp_model is None or not self.y_observed:
+        if not _DEPENDENCIES_AVAILABLE or self.gp_model is None or not self.y_observed:
             return 0.0
 
-        x_normalized = self.scaler.transform(x.reshape(1, -1))
+        if self.scaler:
+            x_normalized = self.scaler.transform([x])
+        else:
+            x_normalized = [x]
+
         mu, sigma = self.gp_model.predict(x_normalized, return_std=True)
         mu, sigma = float(mu[0]), float(sigma[0])
 
@@ -222,6 +254,8 @@ class BayesianOptimizer:
 
         best_y = np.max(self.y_observed)
         z = (mu - best_y) / sigma
+        if stats is None:
+            return 0.0
         ei = (mu - best_y) * stats.norm.cdf(z) + sigma * stats.norm.pdf(z)
         return float(ei)
 

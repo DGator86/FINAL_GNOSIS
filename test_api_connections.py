@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Test API connections for Alpaca and Unusual Whales."""
 
+import pytest
+
+# Skip in environments without external API dependencies or credentials
+pytest.skip(
+    "External API connectivity tests require Alpaca/Unusual Whales dependencies and credentials.",
+    allow_module_level=True,
+)
+
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -13,9 +21,10 @@ from dotenv import load_dotenv
 # Load environment
 load_dotenv()
 
-from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
 from engines.inputs.alpaca_market_adapter import AlpacaMarketDataAdapter
 from engines.inputs.unusual_whales_adapter import UnusualWhalesAdapter
+from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
+
 
 def test_alpaca_trading():
     """Test Alpaca trading API."""

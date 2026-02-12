@@ -1,0 +1,24 @@
+{
+  "symbols": ["SPY"],
+  "timeframe": "1D",
+  "start": "2020-01-01",
+  "end": "2020-12-31",
+  "baseline_tag": "research_baseline_spy_daily",
+  "backtest_config_path": "config/research/backtest_overrides.json",
+  "tweaks": [
+    {
+      "name": "reduced_transaction_cost",
+      "description": "Lower transaction cost to simulate routing improvements.",
+      "overrides": {
+        "transaction_cost": 0.00075
+      }
+    },
+    {
+      "name": "lower_slippage",
+      "description": "Reduce slippage assumptions for more liquid routing.",
+      "overrides": {
+        "slippage": 0.00025
+      }
+    }
+  ]
+}

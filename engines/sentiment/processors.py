@@ -48,15 +48,37 @@ class NewsSentimentProcessor:
 
 
 class FlowSentimentProcessor:
-    """Processes order flow sentiment."""
-    
-    def __init__(self, config: Dict[str, Any]):
+    """Processes order flow sentiment using Unusual Whales when available."""
+
+    def __init__(self, config: Dict[str, Any], flow_adapter: Any | None = None):
         self.config = config
-    
+        self.flow_adapter = flow_adapter
+
     def process(self, symbol: str, timestamp: datetime) -> float:
-        """Calculate flow sentiment score."""
-        # Stub implementation - would need tick data
-        return 0.0
+        """Calculate flow sentiment score from options flow intensity and skew."""
+
+        if not self.flow_adapter:
+            return 0.0
+
+        try:
+            snapshot = self.flow_adapter.get_flow_snapshot(symbol, timestamp)
+            if not snapshot:
+                return 0.0
+
+            call_pressure = snapshot.get("call_volume", 0) + snapshot.get("call_premium", 0)
+            put_pressure = snapshot.get("put_volume", 0) + snapshot.get("put_premium", 0)
+            total = call_pressure + put_pressure
+            if total == 0:
+                return 0.0
+
+            skew = (call_pressure - put_pressure) / total
+            intensity = snapshot.get("sweep_ratio", 0)
+            score = (skew * 0.7) + (intensity * 0.3)
+            return max(-1.0, min(1.0, score))
+
+        except Exception as exc:
+            logger.error(f"Error in FlowSentimentProcessor: {exc}")
+            return 0.0
 
 
 class TechnicalSentimentProcessor:

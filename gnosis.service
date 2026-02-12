@@ -1,0 +1,25 @@
+[Unit]
+Description=GNOSIS SaaS - Autonomous Trading Intelligence
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/home/root/webapp
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/root/webapp/scripts/gnosis_service.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/root/webapp/logs/gnosis_saas.log
+StandardError=append:/home/root/webapp/logs/gnosis_saas_error.log
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/root/webapp
+
+[Install]
+WantedBy=multi-user.target

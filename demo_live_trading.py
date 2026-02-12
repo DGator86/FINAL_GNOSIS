@@ -11,10 +11,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from datetime import datetime
+
 from main import build_pipeline, load_config
+
 
 def demo_pipeline():
     """Run a single pipeline iteration and show results beautifully."""

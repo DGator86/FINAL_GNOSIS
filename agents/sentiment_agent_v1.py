@@ -1,4 +1,13 @@
-"""Sentiment Agent v1."""
+"""Sentiment Agent v1.
+
+NOTE: This is the CANONICAL version used in production pipelines.
+For advanced multi-source sentiment analysis, see SentimentAgentV2/V3.
+
+Version History:
+- v1: Basic sentiment scoring from news/flow/technical (CURRENT DEFAULT)
+- v2: Multi-source weighted sentiment with confidence intervals
+- v3: Advanced NLP-based sentiment with entity extraction
+"""
 
 from __future__ import annotations
 

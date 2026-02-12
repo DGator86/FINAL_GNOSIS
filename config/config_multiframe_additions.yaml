@@ -1,0 +1,192 @@
+# ============================================================================
+# MULTI-TIMEFRAME ARCHITECTURE CONFIGURATION
+# ============================================================================
+
+# ... (existing config sections remain unchanged) ...
+
+# ============================================================================
+# MULTI-TIMEFRAME SYSTEM
+# ============================================================================
+
+multi_timeframe:
+  enabled: true
+  timeframes:
+    - '1Min'
+    - '5Min'
+    - '15Min'
+    - '30Min'
+    - '1Hour'
+    - '4Hour'
+    - '1Day'
+  
+  # Bar storage
+  max_bars_per_timeframe: 200
+  
+  # Minimum bars required before trading
+  min_bars_for_trading:
+    1Min: 50
+    5Min: 50
+    15Min: 40
+    30Min: 30
+    1Hour: 24
+    4Hour: 12
+    1Day: 5
+
+# ============================================================================
+# CONFIDENCE BUILDER
+# ============================================================================
+
+confidence_builder:
+  # Timeframe weights (higher = more importance)
+  timeframe_weights:
+    1Min: 0.05
+    5Min: 0.10
+    15Min: 0.15
+    30Min: 0.15
+    1Hour: 0.20
+    4Hour: 0.20
+    1Day: 0.15
+  
+  # Thresholds for trade execution
+  min_confidence_threshold: 0.70  # 70% minimum confidence
+  min_alignment_threshold: 0.60   # 60% minimum alignment across timeframes
+
+# ============================================================================
+# MULTI-TIMEFRAME AGENTS
+# ============================================================================
+
+agents:
+  hedge_v4:
+    enabled: true
+    min_confidence: 0.5
+    min_energy_threshold: 0.3
+  
+  liquidity_v2:
+    enabled: true
+    min_confidence: 0.5
+    imbalance_threshold: 0.15
+  
+  sentiment_v2:
+    enabled: true
+    min_confidence: 0.5
+    sentiment_threshold: 0.2
+  
+  composer_v2:
+    enabled: true
+    agent_weights:
+      hedge: 0.4
+      liquidity: 0.2
+      sentiment: 0.4
+  
+  trade_v3:
+    enabled: true
+    max_position_size_pct: 0.10      # 10% maximum position size
+    base_position_size_pct: 0.05     # 5% base position size
+    max_portfolio_risk_pct: 0.02     # 2% maximum portfolio risk per trade
+
+# ============================================================================
+# TIMEFRAME-SPECIFIC RISK PARAMETERS
+# ============================================================================
+
+timeframe_risk:
+  1Min:
+    stop_loss_pct: 0.005           # 0.5%
+    take_profit_pct: 0.015          # 1.5%
+    trailing_stop_pct: 0.003
+    trailing_activation: 0.007
+    max_hold_hours: 0.5
+    min_hold_minutes: 5
+  
+  5Min:
+    stop_loss_pct: 0.010           # 1.0%
+    take_profit_pct: 0.030          # 3.0%
+    trailing_stop_pct: 0.005
+    trailing_activation: 0.015
+    max_hold_hours: 2
+    min_hold_minutes: 15
+  
+  15Min:
+    stop_loss_pct: 0.015           # 1.5%
+    take_profit_pct: 0.045          # 4.5%
+    trailing_stop_pct: 0.008
+    trailing_activation: 0.020
+    max_hold_hours: 4
+    min_hold_minutes: 30
+  
+  30Min:
+    stop_loss_pct: 0.020           # 2.0%
+    take_profit_pct: 0.060          # 6.0%
+    trailing_stop_pct: 0.010
+    trailing_activation: 0.025
+    max_hold_hours: 8
+    min_hold_minutes: 60
+  
+  1Hour:
+    stop_loss_pct: 0.025           # 2.5%
+    take_profit_pct: 0.075          # 7.5%
+    trailing_stop_pct: 0.012
+    trailing_activation: 0.030
+    max_hold_hours: 16
+    min_hold_minutes: 120
+  
+  4Hour:
+    stop_loss_pct: 0.030           # 3.0%
+    take_profit_pct: 0.090          # 9.0%
+    trailing_stop_pct: 0.015
+    trailing_activation: 0.040
+    max_hold_hours: 48
+    min_hold_minutes: 240
+  
+  1Day:
+    stop_loss_pct: 0.040           # 4.0%
+    take_profit_pct: 0.120          # 12.0%
+    trailing_stop_pct: 0.020
+    trailing_activation: 0.050
+    max_hold_hours: 120            # 5 days
+    min_hold_minutes: 480          # 8 hours
+
+# ============================================================================
+# ML/ADAPTATION
+# ============================================================================
+
+ml_adaptation:
+  enabled: true
+  history_path: "data/adaptation/trade_history.json"
+  max_history_trades: 1000
+  
+  # Optimization schedule
+  optimization_interval_days: 7
+  min_trades_for_optimization: 50
+  
+  # Anti-overfitting
+  train_validation_split: 0.70
+  min_improvement_threshold: 0.05  # 5% minimum improvement
+  
+  # Performance thresholds
+  min_win_rate: 0.40
+  min_profit_factor: 1.20
+  max_drawdown_alert: 0.15
+
+# ============================================================================
+# EXISTING RISK MANAGEMENT (Enhanced)
+# ============================================================================
+
+risk_management:
+  # Position-level risk (already exists)
+  stop_loss_pct: 0.02              # Default 2% (overridden by timeframe-specific)
+  take_profit_pct: 0.05            # Default 5% (overridden by timeframe-specific)
+  
+  # Trailing stops
+  trailing_stop_pct: 0.015
+  trailing_stop_activation: 0.02
+  
+  # Time exits
+  max_position_hours: 24           # Default (overridden by timeframe-specific)
+  
+  # Circuit breakers
+  daily_loss_limit_pct: 0.05       # 5% daily loss limit
+  max_position_loss_pct: 0.10      # 10% emergency exit
+  
+  # Order types
+  use_stop_orders: true
+  use_limit_orders: false

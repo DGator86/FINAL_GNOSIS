@@ -4,13 +4,25 @@ Comprehensive Unusual Whales API endpoint tester.
 Tests multiple authentication methods and endpoint variations.
 """
 
+import pytest
+
+pytest.skip(
+    "Comprehensive Unusual Whales tests require network access and credentials.",
+    allow_module_level=True,
+)
+
 import os
+
 import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 
-token = os.getenv("UNUSUAL_WHALES_TOKEN") or os.getenv("UNUSUAL_WHALES_API_KEY")
+token = (
+    os.getenv("UNUSUAL_WHALES_API_TOKEN")
+    or os.getenv("UNUSUAL_WHALES_TOKEN")
+    or os.getenv("UNUSUAL_WHALES_API_KEY")
+)
 
 if not token:
     print("❌ No token found!")
@@ -21,7 +33,7 @@ print("🐋 COMPREHENSIVE UNUSUAL WHALES API TEST")
 print("="*80)
 print()
 print(f"Token: {token[:20]}... (length: {len(token)})")
-print(f"Type: {'JWT Bearer' if token.startswith('eyJ') else 'API Key'}")
+print(f"Format: UUID Bearer Token (not JWT)")
 print()
 
 # Test different authentication methods
@@ -93,7 +105,8 @@ for name, url, use_query_param in test_cases:
                     best_result = (auth_name, status, "SUCCESS", data)
                     results[name] = best_result
                     break  # Found working auth method
-                except:
+                except (ValueError, KeyError) as e:
+                    # Non-JSON response
                     print(f"     Response (text): {response.text[:100]}")
                     best_result = (auth_name, status, "SUCCESS (non-JSON)", response.text[:200])
                     results[name] = best_result

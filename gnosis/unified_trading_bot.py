@@ -1,0 +1,797 @@
+"""Unified Trading Bot - single bot managing multiple symbols from dynamic universe."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+import os
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, Optional, Set
+
+from alpaca.data.live import StockDataStream
+from loguru import logger
+
+from agents.composer.composer_agent_v2 import ComposerAgentV2
+from agents.hedge_agent_v4 import HedgeAgentV4
+from agents.liquidity_agent_v2 import LiquidityAgentV2
+from agents.sentiment_agent_v2 import SentimentAgentV2
+from execution.broker_adapters.alpaca_adapter import AlpacaBrokerAdapter
+from execution.broker_adapters.alpaca_options_adapter import AlpacaOptionsAdapter
+from execution.broker_adapters.settings import get_required_options_level
+from gnosis.dynamic_universe_manager import UniverseUpdate
+from gnosis.timeframe_manager import TimeframeManager
+from gnosis.market_utils import (
+    MarketHoursChecker,
+    MarketStatus,
+    PriceFetcher,
+    PnLCalculator,
+    PortfolioPnL,
+    create_market_hours_checker,
+    create_price_fetcher,
+    create_pnl_calculator,
+)
+from schemas.core_schemas import OptionsOrderRequest, Position
+from trade.trade_agent_router import TradeAgentRouter
+
+
+@dataclass
+class SymbolData:
+    symbol: str
+    timeframe_mgr: TimeframeManager
+
+
+class UnifiedTradingBot:
+    """
+    Unified trading bot that manages multiple symbols, handles both equity and options,
+    and uses a router for strategy generation.
+    """
+
+    def __init__(self, config: dict, enable_trading: bool = False, paper_mode: bool = True):
+        self.config = config
+        self.enable_trading = enable_trading
+        self.paper_mode = paper_mode
+
+        # State
+        self.positions: Dict[str, Position] = {}
+        self.active_strategies: Dict[str, Any] = {}
+        self.active_symbols: Set[str] = set()
+        self.symbol_data: Dict[str, SymbolData] = {}
+        self.running = False
+        self.stopping = False
+        self.stream_task: asyncio.Task | None = None
+
+        # Risk Management
+        self.risk_per_trade_pct = config.get("risk", {}).get("risk_per_trade_pct", 0.02)
+        self.max_positions = config.get("risk", {}).get("max_positions", 5)
+
+        # Circuit breaker state
+        self.daily_start_value = 0.0
+        self.daily_loss_limit_pct = config.get("risk", {}).get("daily_loss_limit", 0.05)
+        self.circuit_breaker_triggered = False
+        self.trailing_stop_pct = config.get("risk", {}).get("trailing_stop_pct", 0.01)
+        self.trailing_stop_activation = config.get("risk", {}).get("trailing_stop_activation", 0.02)
+
+        # Initialize adapters
+        self.adapter = AlpacaBrokerAdapter(paper=paper_mode)
+
+        options_config_enabled = config.get("enable_options", True)
+        self.options_adapter = None
+        options_enabled = False
+        account_level = None
+
+        try:
+            account = self.adapter.get_account()
+            account_level = getattr(account, "options_trading_level", None)
+            approved_level = getattr(account, "options_approved_level", None)
+            required_level = get_required_options_level()
+
+            if not options_config_enabled:
+                options_reason = "Config enable_options=False"
+            elif account_level is None:
+                options_reason = "Alpaca account missing options_trading_level"
+            elif account_level < required_level:
+                options_reason = (
+                    f"Alpaca options_trading_level={account_level} below required {required_level}"
+                )
+            else:
+                options_enabled = True
+                self.options_adapter = AlpacaOptionsAdapter(paper=paper_mode)
+                options_reason = ""
+
+            if options_enabled:
+                logger.info(
+                    "Options enabled: Alpaca level %s (approved=%s, required=%s)",
+                    account_level,
+                    approved_level,
+                    required_level,
+                )
+            else:
+                logger.warning(f"Options disabled: {options_reason}")
+        except Exception as exc:
+            logger.warning(f"Options disabled due to account check failure: {exc}")
+            options_enabled = False
+            self.options_adapter = None
+
+        # Initialize Agents
+        logger.info("Initializing TradeAgentRouter...")
+        router_config = dict(config)
+        router_config["enable_options"] = options_enabled and options_config_enabled
+        self.trade_agent = TradeAgentRouter(config=router_config, options_adapter=self.options_adapter)
+
+        logger.info("Initializing HedgeAgentV4...")
+        self.hedge_agent = HedgeAgentV4(config=config)
+
+        logger.info("Initializing LiquidityAgentV2...")
+        self.liquidity_agent = LiquidityAgentV2(config=config)
+
+        logger.info("Initializing SentimentAgentV2...")
+        self.sentiment_agent = SentimentAgentV2(config=config)
+
+        logger.info("Initializing ComposerAgentV2...")
+        self.composer_agent = ComposerAgentV2(config=config)
+
+        # Initialize Data Stream
+        logger.info("Initializing StockDataStream...")
+        self.stream = StockDataStream(os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_SECRET_KEY"))
+        logger.info("StockDataStream initialized.")
+        
+        # Initialize market utilities for P0 features
+        logger.info("Initializing market utilities...")
+        self.market_hours_checker = create_market_hours_checker(broker_adapter=self.adapter)
+        self.price_fetcher = create_price_fetcher(broker_adapter=self.adapter)
+        self.pnl_calculator = create_pnl_calculator(broker_adapter=self.adapter)
+        
+        # Cache for last known prices
+        self._last_prices: Dict[str, float] = {}
+        
+        # Portfolio P&L tracking
+        self._portfolio_pnl: Optional[PortfolioPnL] = None
+        logger.info("Market utilities initialized.")
+
+    async def add_symbol(self, symbol: str):
+        """Add a symbol to monitor and trade."""
+        if self.stopping:
+            logger.warning(f"Ignoring add_symbol({symbol}) during shutdown")
+            return
+        if symbol in self.active_symbols:
+            return
+
+        logger.info(f"Adding {symbol} to UnifiedTradingBot")
+        self.active_symbols.add(symbol)
+
+        # Initialize timeframe manager for this symbol
+        tf_mgr = TimeframeManager()
+        self.symbol_data[symbol] = SymbolData(symbol=symbol, timeframe_mgr=tf_mgr)
+
+        # Fetch historical bars to populate initial data
+        try:
+            from datetime import datetime, timedelta
+
+            from alpaca.data.historical import StockHistoricalDataClient
+            from alpaca.data.requests import StockBarsRequest
+            from alpaca.data.timeframe import TimeFrame
+
+            # Initialize historical data client
+            hist_client = StockHistoricalDataClient(
+                os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_SECRET_KEY")
+            )
+
+            # Request last 50 1-minute bars
+            end_time = datetime.now()
+            start_time = end_time - timedelta(hours=2)  # Look back 2 hours to ensure we get 50 bars
+
+            request_params = StockBarsRequest(
+                symbol_or_symbols=symbol, timeframe=TimeFrame.Minute, start=start_time, end=end_time
+            )
+
+            bars_response = hist_client.get_stock_bars(request_params)
+
+            if symbol in bars_response.data:
+                historical_bars = bars_response.data[symbol]
+                # Take last 50 bars
+                recent_bars = (
+                    historical_bars[-50:] if len(historical_bars) > 50 else historical_bars
+                )
+
+                # Feed bars into timeframe manager
+                for bar in recent_bars:
+                    tf_mgr.update(bar)
+
+                logger.info(f"Loaded {len(recent_bars)} historical bars for {symbol}")
+                bar_counts = tf_mgr.get_bar_counts()
+                logger.info(f"Bar counts: {bar_counts}")
+            else:
+                logger.warning(f"No historical bars found for {symbol}")
+
+        except Exception as e:
+            logger.error(f"Failed to fetch historical bars for {symbol}: {e}")
+
+        # Subscribe to live bars
+        try:
+            self.stream.subscribe_bars(self._handle_bar, symbol)
+        except Exception as e:
+            logger.error(f"Failed to subscribe to {symbol}: {e}")
+
+    async def update_universe(self, update: UniverseUpdate):
+        """Update the active universe."""
+        # Remove symbols
+        for symbol in update.removed:
+            if symbol in self.active_symbols:
+                logger.info(f"Removing {symbol} from active universe")
+                self.active_symbols.remove(symbol)
+                if symbol in self.symbol_data:
+                    del self.symbol_data[symbol]
+
+        # Add symbols
+        for symbol in update.added:
+            await self.add_symbol(symbol)
+
+    async def _handle_bar(self, bar):
+        """Handle incoming bar data."""
+        symbol = bar.symbol
+        logger.debug(f"Received bar for {symbol}: Close={bar.close}")
+
+        if symbol not in self.symbol_data:
+            return
+
+        # Update timeframe manager
+        self.symbol_data[symbol].timeframe_mgr.update(bar)
+
+        # Run analysis
+        await self.analyze_and_trade(symbol, bar.close)
+
+        # Manage existing positions
+        if symbol in self.positions:
+            await self.manage_position(symbol, bar.close)
+
+        # Check circuit breaker
+        await self.check_circuit_breaker()
+
+        # Export state for dashboard
+        await self.export_state()
+
+    def get_price(self, symbol: str) -> Optional[float]:
+        """Get current price for a symbol."""
+        price = self.price_fetcher.get_price(symbol)
+        if price:
+            self._last_prices[symbol] = price
+            return price
+        return self._last_prices.get(symbol)
+    
+    def get_portfolio_pnl(self) -> Optional[PortfolioPnL]:
+        """Calculate real portfolio P&L."""
+        try:
+            # Build position list for calculator
+            positions_list = []
+            for symbol, pos in self.positions.items():
+                current_price = self.get_price(symbol)
+                positions_list.append({
+                    "symbol": symbol,
+                    "quantity": pos.quantity if hasattr(pos, 'quantity') else (pos.size / pos.entry_price if pos.entry_price > 0 else 0),
+                    "entry_price": pos.entry_price,
+                    "side": pos.side,
+                    "current_price": current_price,
+                })
+            
+            # Get current equity from broker
+            current_equity = self.daily_start_value
+            try:
+                account = self.adapter.get_account()
+                current_equity = float(account.equity)
+            except Exception:
+                pass
+            
+            self._portfolio_pnl = self.pnl_calculator.calculate_portfolio_pnl(
+                positions=positions_list,
+                starting_equity=self.daily_start_value,
+                current_equity=current_equity,
+            )
+            
+            return self._portfolio_pnl
+        except Exception as e:
+            logger.debug(f"Error calculating portfolio P&L: {e}")
+            return None
+    
+    def is_market_open(self) -> bool:
+        """Check if market is currently open."""
+        return self.market_hours_checker.is_market_open()
+    
+    def get_market_status(self) -> MarketStatus:
+        """Get current market status."""
+        return self.market_hours_checker.get_market_status()
+    
+    async def export_state(self):
+        """Export current state to JSON for dashboard."""
+        try:
+            # Prepare positions data with real P&L
+            positions_data = []
+            for symbol, pos in self.positions.items():
+                pos_dict = pos.dict()
+                # Add current price and unrealized P&L
+                current_price = self.get_price(symbol)
+                if current_price:
+                    pos_dict["current_price"] = current_price
+                    entry_price = pos.entry_price
+                    quantity = pos.quantity if hasattr(pos, 'quantity') else (pos.size / entry_price if entry_price > 0 else 0)
+                    if pos.side == "long":
+                        pos_dict["unrealized_pnl"] = (current_price - entry_price) * quantity
+                    else:
+                        pos_dict["unrealized_pnl"] = (entry_price - current_price) * quantity
+                positions_data.append(pos_dict)
+
+            # Prepare account data with real P&L calculation
+            portfolio_pnl = self.get_portfolio_pnl()
+            account_data = {
+                "portfolio_value": self.daily_start_value,
+                "pnl": 0.0,
+                "realized_pnl": 0.0,
+                "unrealized_pnl": 0.0,
+                "pnl_pct": 0.0,
+            }
+            try:
+                acct = self.adapter.get_account()
+                account_data["portfolio_value"] = float(acct.portfolio_value)
+                account_data["buying_power"] = float(acct.buying_power)
+                account_data["cash"] = float(acct.cash)
+                
+                if portfolio_pnl:
+                    account_data["pnl"] = portfolio_pnl.total_pnl
+                    account_data["realized_pnl"] = portfolio_pnl.realized_pnl
+                    account_data["unrealized_pnl"] = portfolio_pnl.unrealized_pnl
+                    account_data["pnl_pct"] = portfolio_pnl.total_pnl_pct * 100  # As percentage
+                else:
+                    # Fallback to simple calculation
+                    account_data["pnl"] = float(acct.equity) - float(acct.last_equity)
+            except Exception:
+                pass
+
+            # Prepare symbols data with real prices
+            symbols_data = {}
+            for sym in self.active_symbols:
+                price = self.get_price(sym)
+                symbols_data[sym] = {
+                    "symbol": sym,
+                    "price": price or 0.0,
+                    "composer_confidence": 0.5,  # Placeholder until we track this
+                    "composer_signal": "HOLD",
+                }
+
+            # Get market status
+            market_status = self.get_market_status()
+            market_open = market_status == MarketStatus.OPEN
+            
+            state = {
+                "market_open": market_open,
+                "market_status": market_status.value,
+                "account": account_data,
+                "positions": positions_data,
+                "symbols": symbols_data,
+                "last_update": datetime.now().isoformat(),
+                "circuit_breaker_triggered": self.circuit_breaker_triggered,
+            }
+
+            # Write to file
+            os.makedirs("data/scanner_state", exist_ok=True)
+            with open("data/scanner_state/current_state.json", "w") as f:
+                json.dump(state, f, default=str)
+
+        except Exception as e:
+            logger.error(f"Failed to export state: {e}")
+
+    async def analyze_and_trade(self, symbol: str, current_price: float):
+        """Analyze market and generate trade signals."""
+        # Skip if already at max positions
+        if len(self.positions) >= self.max_positions:
+            logger.debug(f"Skipping {symbol}: Max positions reached ({len(self.positions)})")
+            return
+
+        # Skip if already in position for this symbol
+        if symbol in self.positions:
+            logger.debug(f"Skipping {symbol}: Already in position")
+            return
+
+        # Skip if circuit breaker triggered
+        if self.circuit_breaker_triggered:
+            logger.debug(f"Skipping {symbol}: Circuit breaker triggered")
+            return
+
+        # Get timeframe data
+        if symbol not in self.symbol_data:
+            return
+
+        tf_mgr = self.symbol_data[symbol].timeframe_mgr
+
+        # Check if we have enough data
+        bar_counts = tf_mgr.get_bar_counts()
+        if bar_counts.get("1Min", 0) < 5:  # Reduced from 20 to 5 for testing
+            logger.debug(f"Skipping {symbol}: Not enough bars ({bar_counts.get('1Min', 0)} < 5)")
+            return
+
+        # Create simple agent suggestions based on price action
+        suggestions = []
+
+        # Simple trend detection from 5min bars
+        bars_5min = tf_mgr.get_bars("5Min", count=5)
+        if len(bars_5min) >= 2:  # Reduced requirement
+            # Simple momentum: Close > Open (Bullish) or Close < Open (Bearish)
+            last_bar = bars_5min[-1]
+            prev_bar = bars_5min[-2]
+
+            trend_up = last_bar.close > last_bar.open and last_bar.close > prev_bar.close
+            trend_down = last_bar.close < last_bar.open and last_bar.close < prev_bar.close
+
+            if trend_up or trend_down:
+                from schemas.core_schemas import AgentSuggestion, DirectionEnum
+
+                direction = DirectionEnum.LONG if trend_up else DirectionEnum.SHORT
+                confidence = 0.7  # High confidence for testing
+
+                suggestions.append(
+                    AgentSuggestion(
+                        agent_name="simple_trend",
+                        timestamp=datetime.now(),
+                        symbol=symbol,
+                        direction=direction,
+                        confidence=confidence,
+                        reasoning=f"{'Uptrend' if trend_up else 'Downtrend'} detected (Close vs Open/Prev)",
+                        target_allocation=0.0,
+                    )
+                )
+
+        # If no clear signal, don't trade
+        if not suggestions:
+            logger.debug(f"Skipping {symbol}: No trend detected")
+            return
+
+        # Use composer to make final decision
+        composer_result = self.composer_agent.compose(suggestions, datetime.now())
+
+        # Check if composer gives GO signal
+        if composer_result.get("confidence", 0) < 0.5:  # Reduced threshold
+            logger.debug(
+                f"Skipping {symbol}: Low confidence ({composer_result.get('confidence', 0):.2f})"
+            )
+            return
+
+        direction_str = composer_result.get("direction", "NEUTRAL")
+        if direction_str == "NEUTRAL":
+            return
+
+        logger.info(
+            f"🎯 Trading signal for {symbol}: {direction_str} (confidence: {composer_result['confidence']:.2f})"
+        )
+
+        # Create ComposerDecision for TradeAgentRouter
+        from agents.composer.composer_agent_v2 import ComposerDecision
+
+        composer_decision = ComposerDecision(
+            timestamp=datetime.now(),
+            symbol=symbol,
+            go_signal=True,
+            predicted_direction=direction_str,
+            confidence=composer_result["confidence"],
+            predicted_timeframe="intraday",
+            risk_reward_ratio=2.0,
+            reasoning=composer_result.get("reasoning", "Trend-based signal"),
+        )
+
+        # Get account info for capital
+        try:
+            account = self.adapter.get_account()
+            available_capital = float(account.equity)
+        except Exception:
+            available_capital = 10000.0  # Fallback
+
+        # Generate strategy using TradeAgentRouter
+        try:
+            strategy = self.trade_agent.generate_strategy(
+                composer_decision=composer_decision,
+                current_price=current_price,
+                available_capital=available_capital,
+                timestamp=datetime.now(),
+            )
+
+            if strategy:
+                logger.info(f"✅ Strategy generated for {symbol}")
+                # Execute the trade
+                await self.open_position(symbol, strategy, current_price)
+            else:
+                logger.info(f"⚠️ No valid strategy generated for {symbol}")
+
+        except Exception as e:
+            logger.error(f"Error generating/executing strategy for {symbol}: {e}")
+
+    async def open_position(self, symbol: str, strategy, current_price: float) -> None:
+        """Open a new position.
+
+        For equity positions, uses bracket orders to set stop loss and take profit at broker level.
+        This ensures positions are protected even if the bot crashes or loses connection.
+        Trailing stops are still managed manually via manage_position().
+        """
+
+        # Get account info for sizing
+        try:
+            account = self.adapter.get_account()
+            equity = float(account.equity)
+        except Exception:
+            equity = 100000.0
+
+        if isinstance(strategy, OptionsOrderRequest):
+            logger.info(f"Opening OPTIONS strategy: {strategy.strategy_name} for {symbol}")
+
+            # Calculate Quantity based on Risk
+            risk_amount = equity * self.risk_per_trade_pct
+
+            # Cost basis per contract (BPR or Max Loss)
+            cost_per_unit = strategy.bpr if strategy.bpr > 0 else strategy.max_loss
+
+            # If cost is still 0 or undefined, fallback to a safe default or 1
+            if cost_per_unit <= 0:
+                cost_per_unit = 500.0  # Fallback assumption $500 per trade
+
+            # Calculate quantity
+            raw_quantity = risk_amount / cost_per_unit
+            quantity = max(1, int(raw_quantity))
+
+            # Cap quantity at 10 for safety during testing
+            quantity = min(quantity, 10)
+
+            logger.info(
+                f"Sizing: Risk ${risk_amount:.2f} / Cost ${cost_per_unit:.2f} = {raw_quantity:.2f} -> {quantity} contracts"
+            )
+
+            if self.enable_trading and self.options_adapter:
+                legs_payload = [
+                    {"symbol": leg.symbol, "side": leg.side, "qty": int(leg.ratio * quantity)}
+                    for leg in strategy.legs
+                ]
+
+                await self.options_adapter.place_multileg_order(
+                    legs=legs_payload, note=strategy.strategy_name
+                )
+            else:
+                logger.info(f"DRY RUN: Would execute {strategy.strategy_name} x {quantity}")
+
+            # Track position
+            primary_leg = strategy.legs[0]
+            pos = Position(
+                symbol=symbol,
+                side="long",
+                size=strategy.bpr * quantity,
+                entry_price=current_price,
+                entry_time=datetime.now(),
+                asset_class="option_strategy",
+                option_symbol=primary_leg.symbol,
+                quantity=quantity,
+            )
+            self.positions[symbol] = pos
+            self.active_strategies[symbol] = strategy
+            return
+
+        # Equity Logic
+        logger.info(f"Opening {strategy.direction} position in {symbol} ({strategy.asset_class})")
+
+        trade_symbol = symbol
+        if strategy.asset_class == "option" and strategy.option_symbol:
+            trade_symbol = strategy.option_symbol
+
+        if self.enable_trading:
+            side = "buy" if strategy.direction == "LONG" else "sell"
+            # Use bracket orders to automatically set stop loss and take profit at broker level
+            self.adapter.place_bracket_order(
+                symbol=trade_symbol,
+                quantity=strategy.quantity,
+                side=side,
+                take_profit_price=strategy.take_profit_price,
+                stop_loss_price=strategy.stop_loss_price,
+                time_in_force="gtc",
+            )
+        else:
+            logger.info(
+                f"DRY RUN: Would open {strategy.direction} {trade_symbol} "
+                f"| SL: ${strategy.stop_loss_price:.2f} | TP: ${strategy.take_profit_price:.2f}"
+            )
+
+        pos = Position(
+            symbol=symbol,
+            side=strategy.direction.lower(),
+            size=strategy.quantity * current_price,
+            entry_price=strategy.entry_price,
+            entry_time=datetime.now(),
+            highest_price=current_price,
+            stop_loss_price=strategy.stop_loss_price,
+            take_profit_price=strategy.take_profit_price,
+            trailing_stop_price=strategy.stop_loss_price,
+            trailing_stop_active=False,
+            asset_class=strategy.asset_class,
+            option_symbol=strategy.option_symbol if strategy.asset_class == "option" else None,
+            quantity=strategy.quantity,
+        )
+
+        self.positions[symbol] = pos
+        self.active_strategies[symbol] = strategy
+
+    async def manage_position(self, symbol: str, current_price: float) -> None:
+        """Manage existing position with risk checks.
+
+        Note: Stop loss and take profit are now handled by broker-level bracket orders.
+        This method only manages trailing stops which must be handled manually.
+        """
+        pos = self.positions[symbol]
+
+        # Skip management for complex option strategies for now (handled by expiration/manual)
+        if pos.asset_class == "option_strategy":
+            return
+
+        pos.update_highest_price(current_price)
+
+        # Only manage trailing stops - stop loss and take profit are handled by bracket orders
+        if await self.check_trailing_stop(pos, current_price):
+            return
+
+        self.update_trailing_stop(pos, current_price)
+
+    async def close_position(self, symbol: str, price: float, reason: str) -> None:
+        """Close a position."""
+        if symbol not in self.positions:
+            return
+        pos = self.positions[symbol]
+        logger.info(f"Closing {pos.side} {symbol} @ {price:.2f} | Reason: {reason}")
+
+        if self.enable_trading:
+            # Handle Option Strategy Closing
+            if pos.asset_class == "option_strategy" and symbol in self.active_strategies:
+                strategy = self.active_strategies[symbol]
+                if isinstance(strategy, OptionsOrderRequest):
+                    # Invert legs to close
+                    close_legs = []
+                    for leg in strategy.legs:
+                        close_side = "sell" if leg.side == "buy" else "buy"
+                        close_legs.append(
+                            {
+                                "symbol": leg.symbol,
+                                "side": close_side,
+                                "qty": int(leg.ratio * pos.quantity),
+                            }
+                        )
+
+                    if self.options_adapter:
+                        await self.options_adapter.place_multileg_order(
+                            legs=close_legs, note=f"Closing {strategy.strategy_name}"
+                        )
+            else:
+                # Equity closing
+                qty = round(pos.size / max(price, 1e-6), 2)
+                side = "sell" if pos.side == "long" else "buy"
+                self.adapter.place_order(symbol, qty, side=side)
+
+        del self.positions[symbol]
+        if symbol in self.active_strategies:
+            del self.active_strategies[symbol]
+
+    async def check_stop_loss(self, pos: Position, current_price: float) -> bool:
+        triggered = (pos.side == "long" and current_price <= pos.stop_loss_price) or (
+            pos.side == "short" and current_price >= pos.stop_loss_price
+        )
+        if triggered:
+            await self.close_position(pos.symbol, current_price, reason="Stop-loss")
+            return True
+        return False
+
+    async def check_take_profit(self, pos: Position, current_price: float) -> bool:
+        triggered = (pos.side == "long" and current_price >= pos.take_profit_price) or (
+            pos.side == "short" and current_price <= pos.take_profit_price
+        )
+        if triggered:
+            await self.close_position(pos.symbol, current_price, reason="Take-profit")
+            return True
+        return False
+
+    def update_trailing_stop(self, pos: Position, current_price: float) -> None:
+        if pos.side == "long":
+            gain_pct = (current_price - pos.entry_price) / pos.entry_price
+            if not pos.trailing_stop_active and gain_pct >= self.trailing_stop_activation:
+                pos.trailing_stop_active = True
+            if pos.trailing_stop_active:
+                new_stop = current_price * (1 - self.trailing_stop_pct)
+                if new_stop > pos.trailing_stop_price:
+                    pos.trailing_stop_price = new_stop
+        elif pos.side == "short":
+            gain_pct = (pos.entry_price - current_price) / pos.entry_price
+            if not pos.trailing_stop_active and gain_pct >= self.trailing_stop_activation:
+                pos.trailing_stop_active = True
+            if pos.trailing_stop_active:
+                new_stop = current_price * (1 + self.trailing_stop_pct)
+                if new_stop < pos.trailing_stop_price:
+                    pos.trailing_stop_price = new_stop
+
+    async def check_trailing_stop(self, pos: Position, current_price: float) -> bool:
+        if not pos.trailing_stop_active:
+            return False
+        triggered = (pos.side == "long" and current_price <= pos.trailing_stop_price) or (
+            pos.side == "short" and current_price >= pos.trailing_stop_price
+        )
+        if triggered:
+            await self.close_position(pos.symbol, current_price, reason="Trailing stop")
+            return True
+        return False
+
+    async def check_circuit_breaker(self) -> None:
+        if self.daily_start_value == 0.0:
+            try:
+                account = self.adapter.get_account()
+                self.daily_start_value = float(account.portfolio_value)
+            except Exception:
+                pass
+            return
+
+        try:
+            account = self.adapter.get_account()
+            current_value = float(account.portfolio_value)
+            daily_pnl_pct = (current_value - self.daily_start_value) / self.daily_start_value
+
+            if daily_pnl_pct <= -self.daily_loss_limit_pct and not self.circuit_breaker_triggered:
+                self.circuit_breaker_triggered = True
+                logger.error(f"⛔ CIRCUIT BREAKER | Daily loss {daily_pnl_pct * 100:.2f}%")
+                for symbol in list(self.positions.keys()):
+                    # Get current price for proper closing
+                    current_price = self.get_price(symbol) or 0.0
+                    await self.close_position(symbol, current_price, reason="Circuit breaker")
+        except Exception:
+            pass
+
+    async def run(self):
+        """Run the trading bot."""
+        self.running = True
+        logger.info("Starting UnifiedTradingBot stream...")
+        try:
+            if not self.stream:
+                logger.warning("No valid stream to run.")
+                return
+
+            # Use _run_forever if available (async), otherwise fallback to run (sync wrapper)
+            if hasattr(self.stream, "_run_forever"):
+                logger.info("Using async stream._run_forever()")
+                self.stream_task = asyncio.create_task(self.stream._run_forever())
+            else:
+                logger.info("Using sync stream.run()")
+                self.stream_task = asyncio.create_task(self.stream.run())
+
+            await self.stream_task
+        except asyncio.CancelledError:
+            logger.info("Stream task cancelled; stopping stream")
+            await self._stop_stream()
+            raise
+        except KeyboardInterrupt:
+            logger.info("KeyboardInterrupt received; stopping stream")
+            await self._stop_stream()
+        except Exception as e:
+            logger.error(f"Stream run failed: {e}")
+            await self._stop_stream()
+
+    async def stop(self):
+        """Stop the trading bot."""
+        self.running = False
+        self.stopping = True
+        await self._stop_stream()
+
+    async def _stop_stream(self) -> None:
+        """Safely cancel and stop the Alpaca stream without surfacing noisy tracebacks."""
+        try:
+            if self.stream_task and not self.stream_task.done():
+                self.stream_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self.stream_task
+        except Exception as exc:
+            logger.debug(f"Stream task cancellation emitted: {exc}")
+
+        if self.stream:
+            try:
+                await self.stream.stop()
+            except AttributeError:
+                # Stream loop might not be initialized if run() wasn't called
+                pass
+            except Exception as e:
+                logger.error(f"Error stopping stream: {e}")

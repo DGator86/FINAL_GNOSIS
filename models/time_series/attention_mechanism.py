@@ -23,7 +23,11 @@ class AttentionLayer(nn.Module):
 
 
 class TemporalAttention(nn.Module):
-
+    """Temporal attention mechanism for sequence summarization.
+    
+    Computes attention weights over temporal positions and produces
+    a weighted context vector for downstream prediction tasks.
+    """
 
     def __init__(self, hidden_dim: int):
         super().__init__()

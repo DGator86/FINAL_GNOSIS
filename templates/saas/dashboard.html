@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Gnosis SaaS Control</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: #111827;
+            --accent: #22d3ee;
+            --text: #e5e7eb;
+            --muted: #94a3b8;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: linear-gradient(135deg, #0b1222 0%, #0f172a 50%, #0b1222 100%);
+            color: var(--text);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+        }
+
+        header {
+            padding: 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .title-group h1 {
+            margin: 0;
+            font-size: 28px;
+            letter-spacing: 0.02em;
+        }
+
+        .title-group p {
+            margin: 4px 0 0 0;
+            color: var(--muted);
+        }
+
+        .pill {
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(34, 211, 238, 0.12);
+            color: var(--accent);
+            font-weight: 600;
+            border: 1px solid rgba(34, 211, 238, 0.35);
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+        }
+
+        main { padding: 0 28px 48px 28px; }
+
+        .grid {
+            display: grid;
+            gap: 18px;
+        }
+
+        .grid.cols-3 {
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        }
+
+        .grid.cols-2 {
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid #1f2937;
+            border-radius: 16px;
+            padding: 18px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+        }
+
+        .card h3 { margin: 0 0 12px 0; font-size: 16px; }
+        .card p { margin: 0; color: var(--muted); }
+
+        .stat-value {
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .stat-label { color: var(--muted); }
+
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 8px 0;
+        }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            display: inline-block;
+        }
+
+        .badge.success { background: rgba(16, 185, 129, 0.12); color: var(--success); border: 1px solid rgba(16,185,129,0.35); }
+        .badge.error { background: rgba(239, 68, 68, 0.12); color: var(--error); border: 1px solid rgba(239,68,68,0.35); }
+        .badge.warning { background: rgba(245, 158, 11, 0.12); color: var(--warning); border: 1px solid rgba(245,158,11,0.35); }
+
+        form {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid #1f2937;
+            background: #0b1222;
+            color: var(--text);
+            font-size: 14px;
+        }
+
+        button {
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(90deg, #22d3ee, #0ea5e9);
+            color: #0b1222;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+            box-shadow: 0 10px 30px rgba(34, 211, 238, 0.25);
+        }
+
+        button:hover { transform: translateY(-1px); }
+
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 10px 8px; font-size: 14px; }
+        th { color: var(--muted); font-weight: 600; border-bottom: 1px solid #1f2937; }
+        tr + tr td { border-top: 1px solid #1f2937; }
+
+        .muted { color: var(--muted); }
+
+        .result-box {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 12px;
+            background: #0b1222;
+            border: 1px solid #1f2937;
+            min-height: 48px;
+            font-size: 14px;
+        }
+
+        .stack { display: flex; flex-direction: column; gap: 10px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="title-group">
+            <h1>Super Gnosis Control Plane</h1>
+            <p>Lightweight SaaS layer to supervise the DHPE v3 pipeline.</p>
+        </div>
+        <span class="pill">SaaS Mode</span>
+    </header>
+
+    <main class="grid cols-2">
+        <section class="card">
+            <h3>System Health</h3>
+            <div class="grid cols-3">
+                <div>
+                    <div class="stat-value">{{ health.watchlist_size or 0 }}</div>
+                    <div class="stat-label">Active Watchlist Symbols</div>
+                </div>
+                <div>
+                    <div class="stat-value">{{ health.ledger_entries }}</div>
+                    <div class="stat-label">Ledger Entries</div>
+                </div>
+                <div>
+                    <div class="stat-value">{{ health.latest_run or '—' }}</div>
+                    <div class="stat-label">Last Pipeline Run</div>
+                </div>
+            </div>
+            <div class="stack">
+                <div class="status-row">
+                    {% if health.config_loaded %}
+                        <span class="badge success">Config OK</span>
+                    {% else %}
+                        <span class="badge error">Config Error</span>
+                    {% endif %}
+                    <span class="muted">{{ health.config_error or 'Configuration file loaded successfully.' }}</span>
+                </div>
+                <div class="status-row">
+                    {% if health.watchlist_error %}
+                        <span class="badge warning">Watchlist</span>
+                        <span class="muted">{{ health.watchlist_error }}</span>
+                    {% else %}
+                        <span class="badge success">Watchlist</span>
+                        <span class="muted">Ready ({{ watchlist.count }} symbols)</span>
+                    {% endif %}
+                </div>
+                {% if health.paper_trading is not none %}
+                <div class="status-row">
+                    <span class="badge {{ 'warning' if not health.paper_trading else 'success' }}">Trading Mode</span>
+                    <span class="muted">{{ 'Paper Trading' if health.paper_trading else 'Live Trading' }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="card">
+            <h3>Run Pipeline</h3>
+            <p class="muted">Trigger a one-off DHPE run and view the suggestion payload.</p>
+            <form id="run-form">
+                <input id="symbol-input" type="text" name="symbol" placeholder="Enter symbol (e.g., SPY)" required>
+                <button type="submit">Run Analysis</button>
+            </form>
+            <div id="run-result" class="result-box muted">Awaiting request…</div>
+        </section>
+
+        <section class="card">
+            <h3>Watchlist</h3>
+            {% if watchlist.symbols %}
+                <table>
+                    <thead>
+                        <tr><th>Symbol</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for symbol in watchlist.symbols %}
+                        <tr><td>{{ symbol }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p class="muted">No watchlist entries available.</p>
+            {% endif %}
+        </section>
+
+        <section class="card">
+            <h3>Recent Ledger</h3>
+            {% if ledger %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Symbol</th>
+                            <th>Consensus</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in ledger %}
+                        <tr>
+                            <td>{{ entry.timestamp or entry.get('timestamp', 'n/a') }}</td>
+                            <td>{{ entry.symbol or entry.get('symbol', 'n/a') }}</td>
+                            <td>{{ entry.consensus.direction if entry.get('consensus') else entry.get('consensus', {}).get('direction', '—') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p class="muted">No ledger entries found. Run an analysis to populate history.</p>
+            {% endif %}
+        </section>
+    </main>
+
+    <script>
+        const form = document.getElementById('run-form');
+        const resultBox = document.getElementById('run-result');
+        const symbolInput = document.getElementById('symbol-input');
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const symbol = symbolInput.value.trim();
+            if (!symbol) return;
+
+            resultBox.textContent = 'Submitting pipeline request…';
+            resultBox.classList.remove('muted');
+
+            try {
+                const response = await fetch('/api/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol })
+                });
+
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(payload.detail || payload.error || 'Unknown error');
+                }
+
+                const ideas = payload.trade_ideas || [];
+                const consensus = payload.consensus;
+
+                let summary = `✅ ${symbol.toUpperCase()} pipeline completed at ${payload.timestamp}.`;
+                if (consensus && consensus.direction) {
+                    summary += ` Consensus: ${consensus.direction.toUpperCase()} (${(consensus.confidence * 100).toFixed(1)}%).`;
+                }
+
+                if (ideas.length) {
+                    summary += ` Top idea: ${ideas[0].title || ideas[0].direction} (${(ideas[0].confidence * 100).toFixed(1)}%).`;
+                }
+
+                resultBox.textContent = summary;
+            } catch (err) {
+                resultBox.textContent = `❌ ${err.message}`;
+            }
+        });
+    </script>
+</body>
+</html>

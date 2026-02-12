@@ -22,30 +22,53 @@ engines:
     enabled: true
     volatility_window: 20
 
+  physics:
+    enabled: true
+    gmm_config:
+      alpha: 0.0490       # Optimized by HiveMind Epoch 9075
+      sigma: 0.2572       # Optimized by HiveMind Epoch 9075
+      n_components: 5
+      window_size: 100
+
+# Enable all agents by default
 agents:
+  all: true
   hedge:
     enabled: true
     min_confidence: 0.5
-    
+
   liquidity:
     enabled: true
     min_liquidity_score: 0.3
-    
+
   sentiment:
     enabled: true
     min_sentiment_threshold: 0.2
-    
+
   composer:
     enabled: true
     weights:
       hedge: 0.4
       liquidity: 0.2
       sentiment: 0.4
-      
+
   trade:
     enabled: true
     max_position_size: 10000.0
     risk_per_trade: 0.02
+
+backtest:
+  use_all_components: true
+  use_real_data: true
+  cache_enabled: true
+  start_date: "2020-01-01"
+  end_date: null
+
+data_sources:
+  primary: massive
+  options_provider: massive
+  unusual_whales_enabled: true
+  cache_path: data/historical
 
 # Dynamic Top 25 Scanner Configuration
 scanner:

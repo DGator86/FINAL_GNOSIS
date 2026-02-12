@@ -4,6 +4,7 @@ Display the top 25 ranked options underlyings with all metrics.
 """
 
 import sys
+
 from config.loader import load_config
 from engines.dynamic_universe import DynamicUniverseRanker
 

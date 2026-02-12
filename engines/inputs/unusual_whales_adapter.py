@@ -1,105 +1,197 @@
-"""Unusual Whales API adapter with corrected v2 endpoints and Bearer auth."""
+"""Unusual Whales API adapter with corrected endpoints and Bearer auth."""
 
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import httpx
 from loguru import logger
 
+from config.credentials import get_unusual_whales_token
 from engines.inputs.options_chain_adapter import OptionContract, OptionsChainAdapter
+from gnosis.utils.option_utils import OptionUtils
+
+
+@dataclass
+class UnusualWhalesConfig:
+    """Runtime configuration for the Unusual Whales adapter."""
+
+    base_url: str
+    timeout: float
+    token: str
+    use_stub: bool
+
+    @classmethod
+    def from_env(cls, token: Optional[str] = None) -> "UnusualWhalesConfig":
+        """Build configuration using environment variables and optional override."""
+
+        api_token = get_unusual_whales_token(token)
+
+        if not api_token:
+            raise ValueError("Unusual Whales API token is required for historical data")
+
+        base_url = os.getenv("UNUSUAL_WHALES_BASE_URL", "https://api.unusualwhales.com").rstrip("/")
+        timeout = float(os.getenv("UNUSUAL_WHALES_TIMEOUT", "30.0"))
+
+        # Backtesting must use real data, so stubs are never allowed
+        return cls(base_url=base_url, timeout=timeout, token=api_token, use_stub=False)
 
 
 class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
-    """Options chain adapter for the Unusual Whales v2 API.
+    """Options chain adapter for the Unusual Whales API.
 
     Key details (verified Nov 2025):
     - Base URL: https://api.unusualwhales.com
     - Authentication: Bearer token via Authorization header
-    - Endpoint: /v2/options/contracts/{symbol}?expiration_date=YYYY-MM-DD (optional)
+    - Endpoint: /api/stock/{symbol}/option-contracts (full OCC symbols)
     """
 
-    BASE_URL = "https://api.unusualwhales.com"
+    def __init__(self, *, token: Optional[str] = None, client: Optional[httpx.Client] = None):
+        """Initialize the adapter with Bearer authentication."""
 
-    def __init__(self, *, token: Optional[str] = None):
-        """Initialize the adapter with Bearer authentication.
+        self.config = UnusualWhalesConfig.from_env(token)
+        self.api_token = self.config.token
+        self.use_stub = self.config.use_stub
+        self.base_url = self.config.base_url
+        self.timeout = self.config.timeout
+        self._warning_cache: Dict[str, datetime] = {}
+        self._disabled_reason: Optional[str] = None
 
-        Args:
-            token: Optional explicit token; otherwise read from env vars.
-        """
-
-        self.api_token = token or os.getenv("UNUSUAL_WHALES_TOKEN") or os.getenv("UNUSUAL_WHALES_API_KEY")
-        self.use_stub = False
+        if self.use_stub:
+            raise RuntimeError("Unusual Whales stubs are disabled – real data required")
 
         if not self.api_token:
-            logger.warning("⚠️  UNUSUAL_WHALES_TOKEN not set → using stub data fallback")
-            self.client = None
-            self.use_stub = True
-        else:
-            self.headers = {
-                "Accept": "application/json",
-                "Authorization": f"Bearer {self.api_token}",
-            }
-            self.client = httpx.Client(headers=self.headers, timeout=30.0)
-            logger.info("UnusualWhalesOptionsAdapter initialized with API token")
+            raise RuntimeError("Unusual Whales API token is required for real data")
+
+        self.headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {self.api_token}",
+        }
+        self.client = client or httpx.Client(headers=self.headers, timeout=self.timeout)
+        logger.info(
+            "UnusualWhalesOptionsAdapter initialized (token from env, base_url=%s, timeout=%.1fs)",
+            self.base_url,
+            self.timeout,
+        )
+
+    def _fetch_greeks(self, symbol: str) -> Dict[str, Dict[str, float]]:
+        """Fetch Greeks from the separate /greeks endpoint and index by option_symbol."""
+        greeks_map: Dict[str, Dict[str, float]] = {}
+
+        try:
+            url = f"{self.base_url}/api/stock/{symbol}/greeks"
+            response = self.client.get(url)
+            response.raise_for_status()
+            payload = response.json()
+            greeks_data = payload.get("data", [])
+
+            for row in greeks_data:
+                # Each row has call and put Greeks for a strike/expiry combo
+                call_symbol = row.get("call_option_symbol", "")
+                put_symbol = row.get("put_option_symbol", "")
+
+                if call_symbol:
+                    greeks_map[call_symbol] = {
+                        "delta": float(row.get("call_delta", 0) or 0),
+                        "gamma": float(row.get("call_gamma", 0) or 0),
+                        "theta": float(row.get("call_theta", 0) or 0),
+                        "vega": float(row.get("call_vega", 0) or 0),
+                        "rho": float(row.get("call_rho", 0) or 0),
+                        "charm": float(row.get("call_charm", 0) or 0),
+                        "vanna": float(row.get("call_vanna", 0) or 0),
+                    }
+
+                if put_symbol:
+                    greeks_map[put_symbol] = {
+                        "delta": float(row.get("put_delta", 0) or 0),
+                        "gamma": float(row.get("put_gamma", 0) or 0),
+                        "theta": float(row.get("put_theta", 0) or 0),
+                        "vega": float(row.get("put_vega", 0) or 0),
+                        "rho": float(row.get("put_rho", 0) or 0),
+                        "charm": float(row.get("put_charm", 0) or 0),
+                        "vanna": float(row.get("put_vanna", 0) or 0),
+                    }
+
+            logger.debug(f"Fetched Greeks for {len(greeks_map)} option symbols")
+            return greeks_map
+
+        except Exception as error:
+            logger.warning(f"Could not fetch Greeks for {symbol}: {error}")
+            return {}
 
     def get_chain(self, symbol: str, timestamp: datetime, expiration: Optional[str] = None) -> List[OptionContract]:
-        """Get options chain for a symbol using the v2 contracts endpoint.
+        """Get options chain for a symbol, merging contracts with Greeks from separate endpoints."""
 
-        Args:
-            symbol: Underlying symbol.
-            timestamp: Data timestamp (used for stub fallback default expirations).
-            expiration: Optional expiration date (YYYY-MM-DD).
+        if not self.client:
+            raise RuntimeError("Unusual Whales client not initialized; real data is required")
 
-        Returns:
-            List of :class:`OptionContract` entries with greeks populated when available.
-        """
-
-        if not self.client or not self.api_token or self.use_stub:
-            return self._get_stub_chain(symbol, timestamp)
-
-        url = f"{self.BASE_URL}/v2/options/contracts/{symbol}"
-        params = {"expiration_date": expiration} if expiration else {}
+        # Step 1: Fetch contracts from /option-contracts
+        url = f"{self.base_url}/api/stock/{symbol}/option-contracts"
+        params = {"limit": 500}
+        if expiration:
+            params["expiration_date"] = expiration
 
         try:
             response = self.client.get(url, params=params)
             response.raise_for_status()
-            contracts_data = response.json().get("contracts", [])
+            payload = response.json()
+            contracts_data = payload.get("data", []) or payload.get("contracts", [])
 
             if not contracts_data:
-                logger.warning(f"No options chain data for {symbol} - using stub")
-                return self._get_stub_chain(symbol, timestamp)
+                logger.info(
+                    "⏭️  Unusual Whales returned no contracts for %s - skipping symbol",
+                    symbol,
+                )
+                return []
 
+            # Step 2: Fetch Greeks from /greeks endpoint (separate API call)
+            greeks_map = self._fetch_greeks(symbol)
+
+            # Step 3: Parse contracts and merge with Greeks
             contracts: List[OptionContract] = []
             for option in contracts_data:
                 try:
-                    exp_str = option.get("expiration_date")
-                    exp_date = datetime.strptime(exp_str, "%Y-%m-%d") if exp_str else timestamp
-
-                    option_type = (option.get("type") or "").lower()
-                    if option_type not in {"call", "put"}:
+                    # The API returns "option_symbol" not "symbol" or "occ_symbol"
+                    symbol_str = option.get("option_symbol") or option.get("symbol") or option.get("occ_symbol")
+                    if not symbol_str:
                         continue
 
-                    greeks = option.get("greeks", {}) or {}
+                    symbol_str = symbol_str.strip()
+                    parsed = OptionUtils.parse_occ_symbol(symbol_str.replace(" ", ""))
+                    exp_date = parsed["expiration"]
+                    option_type = parsed["option_type"]
+                    strike = float(parsed["strike"])
+
+                    bid = float(option.get("nbbo_bid", option.get("bid", 0)) or 0)
+                    ask = float(option.get("nbbo_ask", option.get("ask", 0)) or 0)
+                    last = float(option.get("last_price", option.get("last", 0)) or 0)
+                    volume = float(option.get("volume", 0) or 0)
+                    oi = float(option.get("open_interest", 0) or 0)
+                    iv = float(option.get("implied_volatility", option.get("iv", 0)) or 0)
+
+                    # Look up Greeks by option_symbol
+                    greeks = greeks_map.get(symbol_str, {})
+
                     contracts.append(
                         OptionContract(
-                            symbol=option.get("symbol") or f"{symbol}_{exp_date.strftime('%Y%m%d')}{option_type[0].upper()}{option.get('strike', 0)}",
-                            strike=float(option.get("strike", 0) or 0),
+                            symbol=symbol_str,
+                            strike=strike,
                             expiration=exp_date,
                             option_type=option_type,
-                            bid=float(option.get("bid", 0) or 0),
-                            ask=float(option.get("ask", 0) or 0),
-                            last=float(option.get("last", 0) or 0),
-                            volume=float(option.get("volume", 0) or 0),
-                            open_interest=float(option.get("open_interest", 0) or 0),
-                            implied_volatility=float(option.get("implied_volatility", 0) or 0),
-                            delta=float(greeks.get("delta", 0) or 0),
-                            gamma=float(greeks.get("gamma", 0) or 0),
-                            theta=float(greeks.get("theta", 0) or 0),
-                            vega=float(greeks.get("vega", 0) or 0),
-                            rho=float(greeks.get("rho", 0) or 0),
+                            bid=bid,
+                            ask=ask,
+                            last=last,
+                            volume=volume,
+                            open_interest=oi,
+                            implied_volatility=iv,
+                            delta=greeks.get("delta", 0.0),
+                            gamma=greeks.get("gamma", 0.0),
+                            theta=greeks.get("theta", 0.0),
+                            vega=greeks.get("vega", 0.0),
+                            rho=greeks.get("rho", 0.0),
                         )
                     )
                 except (ValueError, KeyError) as error:
@@ -107,28 +199,198 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
                     continue
 
             if contracts:
-                logger.info(f"✅ Retrieved {len(contracts)} option contracts for {symbol}")
+                n_with_greeks = sum(1 for c in contracts if c.delta != 0 or c.gamma != 0)
+                logger.info(f"✅ Retrieved {len(contracts)} option contracts for {symbol} ({n_with_greeks} with Greeks)")
                 return contracts
 
-            logger.warning(f"No valid contracts parsed for {symbol} - using stub")
-            return self._get_stub_chain(symbol, timestamp)
+            logger.warning(
+                f"No valid contracts parsed for {symbol} from Unusual Whales response"
+            )
+            return []
 
         except httpx.HTTPStatusError as error:
             status_code = error.response.status_code
+            detail = self._extract_detail(error.response)
+            self._log_once(symbol, url, params, status_code, detail)
+
             if status_code in {401, 403}:
-                logger.error("❌ Invalid token or subscription missing API access - switching to stub mode")
-            elif status_code == 404:
-                logger.warning("⚠️  Unusual Whales endpoint returned 404 - verify symbol or subscription")
-            else:
-                logger.error(f"❌ Unusual Whales HTTP error {status_code}: {error}")
-            self.use_stub = True
-            return self._get_stub_chain(symbol, timestamp)
+                logger.error(
+                    "❌ Unusual Whales authentication/subscription error %s - real data required",
+                    status_code,
+                )
+                raise RuntimeError("Unusual Whales auth/subscription error") from error
+
+            if status_code == 404:
+                raise RuntimeError(f"Unusual Whales has no data for {symbol} (404)")
+
+            if status_code in {400, 422}:
+                raise RuntimeError(
+                    f"Unusual Whales rejected request for {symbol} | status={status_code} | detail={detail}"
+                )
+
+            if status_code == 429 or status_code >= 500:
+                raise RuntimeError(
+                    f"Unusual Whales transient/unavailable for {symbol} | status={status_code} | detail={detail}"
+                )
+
+            raise RuntimeError(
+                f"Unexpected Unusual Whales response for {symbol} | status={status_code} | detail={detail}"
+            )
         except httpx.HTTPError as error:
             logger.error(f"HTTP error getting options chain for {symbol}: {error}")
-            return self._get_stub_chain(symbol, timestamp)
+            raise
         except Exception as error:
             logger.error(f"Error getting options chain for {symbol}: {error}")
-            return self._get_stub_chain(symbol, timestamp)
+            raise
+
+    def get_flow_snapshot(self, symbol: str, timestamp: datetime) -> Dict[str, float]:
+        """Retrieve aggregated options flow for sentiment scoring.
+        
+        Tries multiple endpoints in order of preference:
+        1. /api/stock/{symbol}/flow-recent (most reliable)
+        2. /api/stock/{symbol}/flow (legacy, often 404)
+        3. Returns empty dict with defaults on failure
+        """
+        if not self.client:
+            return self._empty_flow_snapshot()
+
+        # Try flow-recent endpoint first (more reliable)
+        endpoints = [
+            (f"{self.base_url}/api/stock/{symbol}/flow-recent", {"limit": 50}),
+            (f"{self.base_url}/api/stock/{symbol}/flow", {
+                "start": timestamp.strftime("%Y-%m-%d"),
+                "end": timestamp.strftime("%Y-%m-%d")
+            }),
+        ]
+
+        for url, params in endpoints:
+            try:
+                response = self.client.get(url, params=params)
+                response.raise_for_status()
+                payload = response.json()
+                
+                # Handle different response formats
+                # API may return: {"data": [...]}, {"data": {...}}, [...], or {...}
+                if payload is None:
+                    continue
+                    
+                # Extract data from nested structure if present
+                if isinstance(payload, dict):
+                    data = payload.get("data", payload)
+                else:
+                    data = payload
+
+                # Handle list response (flow-recent returns list of trades)
+                if isinstance(data, list) and data:
+                    # Aggregate from list of flow items
+                    call_vol = 0.0
+                    put_vol = 0.0
+                    call_prem = 0.0
+                    put_prem = 0.0
+                    sweeps = 0
+                    
+                    for item in data:
+                        if not isinstance(item, dict):
+                            continue
+                        vol = float(item.get("volume", item.get("size", 0)) or 0)
+                        prem = float(item.get("premium", item.get("cost_basis", 0)) or 0)
+                        put_call = str(item.get("put_call", item.get("option_type", ""))).upper()
+                        trade_type = str(item.get("trade_type", item.get("type", ""))).upper()
+                        
+                        if put_call == "CALL" or put_call == "C":
+                            call_vol += vol
+                            call_prem += prem
+                        elif put_call == "PUT" or put_call == "P":
+                            put_vol += vol
+                            put_prem += prem
+                        
+                        if "SWEEP" in trade_type:
+                            sweeps += 1
+                    
+                    sweep_ratio = sweeps / len(data) if data else 0.0
+
+                    logger.debug(f"Flow snapshot for {symbol}: calls={call_vol:.0f}, puts={put_vol:.0f}")
+                    return {
+                        "call_volume": call_vol,
+                        "put_volume": put_vol,
+                        "call_premium": call_prem,
+                        "put_premium": put_prem,
+                        "sweep_ratio": sweep_ratio,
+                    }
+                elif isinstance(data, dict):
+                    # Handle dict response (legacy flow endpoint)
+                    return {
+                        "call_volume": float(data.get("call_volume", 0) or 0),
+                        "put_volume": float(data.get("put_volume", 0) or 0),
+                        "call_premium": float(data.get("call_premium", 0) or 0),
+                        "put_premium": float(data.get("put_premium", 0) or 0),
+                        "sweep_ratio": float(data.get("sweep_ratio", data.get("sweep_percentage", 0)) or 0),
+                    }
+
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code == 404:
+                    logger.debug(f"Flow endpoint not available for {symbol}: {url}")
+                    continue  # Try next endpoint
+                logger.warning(f"Flow request failed for {symbol}: {error}")
+                continue
+            except Exception as error:
+                logger.debug(f"Error fetching flow from {url}: {error}")
+                continue
+
+        # All endpoints failed - return empty snapshot
+        logger.debug(f"No flow data available for {symbol} - using defaults")
+        return self._empty_flow_snapshot()
+
+    def _empty_flow_snapshot(self) -> Dict[str, float]:
+        """Return empty flow snapshot with default values."""
+        return {
+            "call_volume": 0.0,
+            "put_volume": 0.0,
+            "call_premium": 0.0,
+            "put_premium": 0.0,
+            "sweep_ratio": 0.0,
+        }
+
+    def _log_once(self, symbol: str, url: str, params: dict, status_code: int, detail: str) -> None:
+        """De-duplicate noisy warnings per symbol/status pair."""
+
+        cache_key = f"{symbol}:{status_code}:{url}"
+        last = self._warning_cache.get(cache_key)
+        now = datetime.utcnow()
+        if not last or (now - last).total_seconds() > 900:  # 15 minutes
+            if status_code == 404:
+                logger.warning(
+                    "⚠️  Unusual Whales returned 404 for {symbol} | url={url} | params={params} | detail={detail}",
+                    symbol=symbol,
+                    url=url,
+                    params=params,
+                    detail=(detail[:200] if detail else ""),
+                )
+            else:
+                logger.warning(
+                    "Unusual Whales non-2xx response for {symbol}: {status} | url={url} | params={params} | detail={detail}",
+                    symbol=symbol,
+                    status=status_code,
+                    url=url,
+                    params=params,
+                    detail=(detail[:200] if detail else ""),
+                )
+            self._warning_cache[cache_key] = now
+
+    @staticmethod
+    def _extract_detail(response: Optional[httpx.Response]) -> str:
+        if not response:
+            return ""
+
+        try:
+            payload = response.json()
+            if isinstance(payload, dict):
+                for key in ("detail", "message", "error"):
+                    if payload.get(key):
+                        return str(payload[key])
+            return str(payload)[:500]
+        except Exception:
+            return response.text[:500] if response.text else ""
 
     def _get_stub_chain(self, symbol: str, timestamp: datetime) -> List[OptionContract]:
         """Return deterministic stub data when the API is unavailable."""
@@ -144,81 +406,76 @@ class UnusualWhalesOptionsAdapter(OptionsChainAdapter):
 
     # The flow/IV helpers remain for compatibility with existing callers.
     def get_unusual_activity(self, symbol: Optional[str] = None) -> List[dict]:
+        """Fetch real flow alerts instead of the deprecated placeholder endpoints."""
+
         if not self.client or not self.api_token:
             logger.debug("No API token - skipping unusual activity")
             return []
 
         try:
-            endpoints = [
-                f"{self.BASE_URL}/api/activity",
-                f"{self.BASE_URL}/api/options/activity",
-            ]
+            urls = [f"{self.base_url}/api/option-trades/flow-alerts"]
+            if symbol:
+                urls.insert(0, f"{self.base_url}/api/stock/{symbol}/flow-alerts")
 
-            params = {"ticker": symbol} if symbol else {}
+            params = {"limit": 50}
 
-            for url in endpoints:
+            for url in urls:
                 try:
                     response = self.client.get(url, params=params)
                     response.raise_for_status()
                     data = response.json()
-                    activity = data.get("data", []) or data.get("activity", [])
+                    activity = data.get("data", []) or data.get("alerts", [])
                     if activity:
-                        logger.info(f"Retrieved {len(activity)} unusual activity records")
+                        logger.info("Retrieved %s flow alerts", len(activity))
                         return activity
-                except httpx.HTTPStatusError:
-                    continue
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code == 404:
+                        logger.debug("Flow alerts endpoint not available: %s", url)
+                        continue
+                    raise
 
-            logger.debug("No unusual activity endpoint working")
+            logger.debug("No flow alerts returned from Unusual Whales")
             return []
         except Exception as error:
             logger.error(f"Error getting unusual activity: {error}")
             return []
 
     def get_flow_summary(self, symbol: str) -> dict:
-        if not self.client or not self.api_token:
-            return {}
-
-        try:
-            endpoints = [
-                f"{self.BASE_URL}/api/flow/{symbol}",
-                f"{self.BASE_URL}/api/options/flow/{symbol}",
-            ]
-
-            for url in endpoints:
-                try:
-                    response = self.client.get(url)
-                    response.raise_for_status()
-                    data = response.json()
-                    return data.get("data", {})
-                except httpx.HTTPStatusError:
-                    continue
-
-            return {}
-        except Exception as error:
-            logger.error(f"Error getting flow summary for {symbol}: {error}")
-            return {}
+        """Return the most recent flow items for the ticker.
+        
+        Aliases to get_flow_snapshot for aggregation.
+        """
+        return self.get_flow_snapshot(symbol, datetime.utcnow())
 
     def get_implied_volatility(self, symbol: str) -> Optional[float]:
+        """Pull the 30-day implied volatility from the realized volatility endpoint."""
+
         if not self.client or not self.api_token:
             return None
 
         try:
-            endpoints = [
-                f"{self.BASE_URL}/api/stock/{symbol}/iv",
-                f"{self.BASE_URL}/api/options/{symbol}/iv",
-            ]
+            url = f"{self.base_url}/api/stock/{symbol}/volatility/realized"
+            response = self.client.get(url, params={"timeframe": "30d"})
+            response.raise_for_status()
+            data = response.json().get("data")
 
-            for url in endpoints:
-                try:
-                    response = self.client.get(url)
-                    response.raise_for_status()
-                    data = response.json()
-                    iv = data.get("data", {}).get("iv")
-                    if iv is not None:
-                        return float(iv)
-                except httpx.HTTPStatusError:
-                    continue
+            if isinstance(data, list) and data:
+                first = data[0]
+                iv_value = first.get("implied_volatility")
+                if iv_value is not None:
+                    return float(iv_value)
 
+            return None
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                logger.info("Volatility endpoint missing for %s (404)", symbol)
+                return None
+            logger.error(
+                "Failed to fetch implied volatility for %s | status=%s | detail=%s",
+                symbol,
+                exc.response.status_code,
+                self._extract_detail(exc.response),
+            )
             return None
         except Exception as error:
             logger.error(f"Error getting IV for {symbol}: {error}")
